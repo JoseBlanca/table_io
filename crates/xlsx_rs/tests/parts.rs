@@ -482,6 +482,35 @@ fn a_file_with_no_package_relationships_is_unreadable() {
     );
 }
 
+/// The date of [`read_of_1904_date`] with the parts of `xl/` moved to the
+/// folder `folder`, and the target of the workbook in `_rels/.rels`
+/// written `target`, as the XML writes it.
+fn read_of_1904_date_in_folder(folder: &str, target: &str) -> Result<Sheet, ReadError> {
+    read_of_1904_date(|parts| {
+        for (name, xml) in parts.iter_mut() {
+            if let Some(name_in_folder) = name.strip_prefix("xl/") {
+                *name = format!("{folder}{name_in_folder}");
+            }
+            if name == "_rels/.rels" {
+                *xml = xml.replace(
+                    r#"Target="xl/workbook.xml""#,
+                    &format!(r#"Target="{target}""#),
+                );
+                assert!(xml.contains(target));
+            }
+        }
+    })
+}
+
+// calamine looks for the workbook, the folder of the target followed by
+// workbook.xml, ignoring case.
+#[test]
+fn a_target_of_the_workbook_in_capitals_is_found() {
+    let read = read_of_1904_date_in_folder("xl/", "XL/Workbook.xml");
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
 /// `xml` with spaces after its declaration, `<?xml ... ?>`, up to
 /// `num_bytes` bytes, which XML reads as it read `xml`; `None` when `xml`
 /// has no declaration or more bytes than that.

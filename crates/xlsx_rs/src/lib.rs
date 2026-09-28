@@ -94,13 +94,8 @@ pub enum ReadError {
     /// A file refused, with what its words need.
     Refused(Refusal),
     /// A file xlsx_rs cannot read, with a message for the console: the zip
-    /// crate's, for a file that is not a zip past its first bytes or a part
-    /// damaged; calamine's, for a zip it cannot read as a workbook or whose
-    /// sheet it cannot read; or xlsx_rs's, for a workbook with no worksheet
-    /// that is not hidden, a sheet whose cells cannot be laid out, two
-    /// merged ranges that overlap, and a file that passes one of the bounds
-    /// of "The refusals" and "What xlsx_rs reads before calamine" of
-    /// `docs/specs/read.md`, as [`read_first_sheet`] lists them.
+    /// crate's, calamine's or xlsx_rs's message, as [`read_first_sheet`]
+    /// lists them.
     Unreadable(String),
 }
 

@@ -9,7 +9,7 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Workbook, XlsxError};
+use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Formula, Workbook, XlsxError};
 
 /// The path of `file_name` in `tests/data/` at the root of the repository.
 fn data_path(file_name: &str) -> PathBuf {
@@ -110,4 +110,52 @@ fn write_table_at_c2_xlsx() {
     }
 
     save(&mut workbook, "table_at_c2.xlsx").unwrap();
+}
+
+/// `getting_data.xlsx`, for the refusal `cellError` in the test of the
+/// package: a header, and a formula saved with `#GETTING_DATA`, an error
+/// calamine does not know, at A2.
+#[test]
+#[ignore = "writes tests/data/getting_data.xlsx; run by hand"]
+fn write_getting_data_xlsx() {
+    let mut workbook = workbook_of_fixed_date().unwrap();
+    let worksheet = workbook.add_worksheet().set_name("Individuos").unwrap();
+    worksheet.write_string(0, 0, "Individuo").unwrap();
+    worksheet
+        .write_formula(1, 0, Formula::new("=A1").set_result("#GETTING_DATA"))
+        .unwrap();
+
+    save(&mut workbook, "getting_data.xlsx").unwrap();
+}
+
+/// `wide_table_at_c2.xlsx`, for the refusal `sheetTooLarge` in the test of
+/// the package, read there with a limit of 16 cells: a header of 5 columns
+/// from C2 and 5 individuals, so that the rectangle at the refusal, rows 2
+/// to 5 and columns C to G, has a first row, a first column, a number of
+/// rows and a number of columns that all differ.
+#[test]
+#[ignore = "writes tests/data/wide_table_at_c2.xlsx; run by hand"]
+fn write_wide_table_at_c2_xlsx() {
+    let mut workbook = workbook_of_fixed_date().unwrap();
+    let worksheet = workbook.add_worksheet().set_name("Individuos").unwrap();
+    let header = ["Individuo", "Población", "Altura", "Peso", "Afectado"];
+    for (column, name) in (2u16..).zip(header) {
+        worksheet.write_string(1, column, name).unwrap();
+    }
+    let rows = [
+        ("ind1", "Andalucía", 1.75, 70.0, true),
+        ("ind2", "Andalucía", 1.62, 58.5, false),
+        ("ind3", "Murcia", 1.80, 81.0, true),
+        ("ind4", "Murcia", 1.55, 52.0, false),
+        ("ind5", "Murcia", 1.68, 64.5, true),
+    ];
+    for (row, (individual, population, height, weight, is_affected)) in (2u32..).zip(rows) {
+        worksheet.write_string(row, 2, individual).unwrap();
+        worksheet.write_string(row, 3, population).unwrap();
+        worksheet.write_number(row, 4, height).unwrap();
+        worksheet.write_number(row, 5, weight).unwrap();
+        worksheet.write_boolean(row, 6, is_affected).unwrap();
+    }
+
+    save(&mut workbook, "wide_table_at_c2.xlsx").unwrap();
 }

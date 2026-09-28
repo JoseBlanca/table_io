@@ -5,8 +5,9 @@
 //
 // Until the owner's excel_en.xlsx and encrypted.xlsx exist, the files read
 // are those of tests/data/ that crates/xlsx_rs/tests/write_fixtures.rs
-// writes, written.xlsx, empty_first_sheet.xlsx and table_at_c2.xlsx, and
-// the refusal is that of a CSV.
+// writes, written.xlsx, empty_first_sheet.xlsx, table_at_c2.xlsx,
+// getting_data.xlsx and wide_table_at_c2.xlsx, and the refusal is that of a
+// CSV.
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -32,9 +33,12 @@ function typeOfCell(cell) {
     return cell === null ? "null" : typeof cell;
 }
 
-/** Reads `bytes`, gives back the fields of what readXlsx returns, and frees it. */
-function fieldsOfRead(bytes) {
-    const read = readXlsx(bytes, MAX_SHEET_CELLS);
+/**
+ * Reads `bytes` with the limit `maxCells`, MAX_SHEET_CELLS unless given,
+ * gives back the fields of what readXlsx returns, and frees it.
+ */
+function fieldsOfRead(bytes, maxCells = MAX_SHEET_CELLS) {
+    const read = readXlsx(bytes, maxCells);
     try {
         return {
             refusal: read.refusal,
@@ -140,6 +144,42 @@ test("a table at C2 starts at row 2 and column 3", async () => {
             "ind1", 1.75, true,
             "ind2", 1.62, false,
         ],
+    });
+});
+
+test("a cell saved with an error calamine does not know is refused as cellError with its text", async () => {
+    const bytes = await readFile(new URL("getting_data.xlsx", dataDir));
+
+    const fields = fieldsOfRead(bytes);
+
+    assert.deepEqual(fields, {
+        refusal: "cellError",
+        detail: "#GETTING_DATA",
+        sheet: "",
+        firstRow: 0,
+        firstColumn: 0,
+        numRows: 0,
+        numColumns: 0,
+        cells: [],
+    });
+});
+
+test("a table at C2 of 5 columns read with a limit of 16 cells is refused as sheetTooLarge at row 5", async () => {
+    // Rows 2 to 4 are 15 cells; C5 makes the rectangle 4 rows of 5
+    // columns, 20 cells, past the limit.
+    const bytes = await readFile(new URL("wide_table_at_c2.xlsx", dataDir));
+
+    const fields = fieldsOfRead(bytes, 16);
+
+    assert.deepEqual(fields, {
+        refusal: "sheetTooLarge",
+        detail: "",
+        sheet: "Individuos",
+        firstRow: 2,
+        firstColumn: 3,
+        numRows: 4,
+        numColumns: 5,
+        cells: [],
     });
 });
 

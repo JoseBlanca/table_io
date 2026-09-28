@@ -1,7 +1,7 @@
 //! The files refused by their first bytes, those calamine cannot read, and
-//! the workbook with no visible worksheet, and the cell with an error
-//! calamine does not know ("The refusals" of `docs/specs/read.md`, points
-//! 1 to 5).
+//! the workbook with no visible worksheet, the cell with an error calamine
+//! does not know, and the sheet too large ("The refusals" of
+//! `docs/specs/read.md`, points 1 to 6).
 
 use rust_xlsxwriter::{Chart, ChartType, Formula, Workbook};
 use xlsx_rs::{ReadError, Refusal, read_first_sheet};
@@ -155,6 +155,97 @@ fn a_formula_saved_with_an_error_calamine_does_not_know_is_refused_with_its_text
         read,
         Err(ReadError::Refused(Refusal::CellError {
             error: "#GETTING_DATA".to_owned()
+        }))
+    );
+}
+
+/// The last column of Excel, XFD, counted from 0 as rust_xlsxwriter counts
+/// the columns.
+const LAST_COLUMN: u16 = 16_383;
+
+#[test]
+fn a_value_at_a1_and_one_at_xfd200_are_a_sheet_too_large_of_200_rows_and_16384_columns() {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 0, "id").unwrap();
+    worksheet.write_string(199, LAST_COLUMN, "a note").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Refused(Refusal::SheetTooLarge {
+            sheet: "Sheet1".to_owned(),
+            first_row: 1,
+            first_column: 1,
+            num_rows: 200,
+            num_columns: 16_384,
+        }))
+    );
+}
+
+#[test]
+fn a_value_at_xfd1_over_column_a_down_to_row_200_is_too_large_at_row_123() {
+    // 122 rows of 16,384 columns are 1,998,848 cells, and 123 rows are
+    // 2,015,232, the first rectangle above 2,000,000.
+    //
+    // A150 holds a formula saved with #GETTING_DATA, an error calamine
+    // refuses the sheet at. A read that went on past row 123, or that
+    // checked the limit only once the whole sheet was read, meets it and
+    // gives CellError; a read stopped at row 123 never reaches it.
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet().set_name("Individuos").unwrap();
+    worksheet.write_string(0, LAST_COLUMN, "a note").unwrap();
+    for row in 0..200 {
+        if row == 149 {
+            worksheet
+                .write_formula(row, 0, Formula::new("=A1").set_result("#GETTING_DATA"))
+                .unwrap();
+        } else {
+            worksheet.write_string(row, 0, "ind").unwrap();
+        }
+    }
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Refused(Refusal::SheetTooLarge {
+            sheet: "Individuos".to_owned(),
+            first_row: 1,
+            first_column: 1,
+            num_rows: 123,
+            num_columns: 16_384,
+        }))
+    );
+}
+
+#[test]
+fn a_rectangle_of_as_many_cells_as_the_limit_is_read_and_one_more_is_refused() {
+    // Two rows of three columns from B2: 6 cells.
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    for row in 1..3 {
+        for column in 1..4 {
+            worksheet.write_number(row, column, 1.0).unwrap();
+        }
+    }
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read_at_the_limit = read_first_sheet(&bytes, 6);
+    let read_past_the_limit = read_first_sheet(&bytes, 5);
+
+    assert_eq!(read_at_the_limit.map(|sheet| sheet.cells.len()), Ok(6));
+    assert_eq!(
+        read_past_the_limit,
+        Err(ReadError::Refused(Refusal::SheetTooLarge {
+            sheet: "Sheet1".to_owned(),
+            first_row: 2,
+            first_column: 2,
+            num_rows: 2,
+            num_columns: 3,
         }))
     );
 }

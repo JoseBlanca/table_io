@@ -75,7 +75,7 @@ impl Rectangle {
     /// The number of cells, rows times columns, `u64::MAX` for the one
     /// rectangle whose count does not fit in a `u64`, of 2^32 rows and 2^32
     /// columns, which no memory holds either.
-    fn num_cells(&self) -> u64 {
+    pub(crate) fn num_cells(&self) -> u64 {
         // The last row and column are never before the first ones, as
         // `of_position` and `extended_to` build them.
         let rows = u64::from(self.last_row)

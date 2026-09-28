@@ -144,7 +144,7 @@ boolean, an empty cell as `null`.
 | in the file | calamine gives | the cell |
 |---|---|---|
 | nothing, or a text with no character | `Empty`, `SharedString("")`, `String("")` | empty |
-| a text | `SharedString`; `String` for the text a formula saved, for a text written in the cell itself, which programs other than Excel may write, and for a value of no type that is not a number | the text as it is, spaces at its ends and line breaks in it kept; the reader removes the spaces (popnei_web's `docs/specs/worker/individuals.md`) |
+| a text | `SharedString`; `String` for the text a formula saved, for a text written in the cell itself, which programs other than Excel may write, and for a value of no type that is not a number | the text as it is, spaces at its ends and line breaks in it kept when the file marks the text to be kept so, `xml:space="preserve"`, as Excel and rust_xlsxwriter do; calamine removes the spaces, tabs and line breaks at the ends of a text the file does not mark, as its `read_string_with_bufs` does, so a text of spaces alone is then empty; the reader removes the spaces (popnei_web's `docs/specs/worker/individuals.md`) |
 | text with several fonts in it | `SharedString`, its parts joined | the text |
 | a number, of any format that is not a date: `1,75`, `50 %`, `001` | `Float` | the number, `1.75`, `0.5`, `1` |
 | a whole number | `Float`: an xlsx stores every number alike, and calamine gives `Int` only for other formats | the number |
@@ -236,12 +236,19 @@ and the light worker makes the refusal of it. In the order it looks:
 1. **An older file of Office**, whose bytes start with the mark of a
    compound file of Office, `D0 CF 11 E0 A1 B1 1A E1`: an xlsx saved with
    a password, which Excel encrypts inside such a file, is `encrypted`,
-   found by calamine, which looks for its part `EncryptedPackage` and
-   gives `XlsxError::Password`; any other is a workbook of Excel 97–2003,
+   found by xlsx_rs in the bytes of the file, which hold the name of its
+   part `EncryptedPackage`, written as a compound file writes its names,
+   in UTF-16 (little-endian); any other is a workbook of Excel 97–2003,
    an `.xls` whose name was changed, or another file of the old Office,
    and is `oldExcel`. An `.xls` whose name ends in `.xls` never reaches
    xlsx_rs: the Individuals step does not load it
    (popnei_web's `docs/specs/steps/individuals.md`).
+   calamine is not asked, as this spec had it until the review of 28
+   September 2026 found that its reader of compound files panics on one
+   cut short, at 11,234 of the 40,960 lengths of an encrypted xlsx, which
+   in the wasm ends the light worker. What the search costs: an `.xls`
+   that holds the text `EncryptedPackage` in its cells, stored in UTF-16,
+   is refused as `encrypted` and not as `oldExcel`; both are refused.
 2. **Not a zip file**, whose bytes do not start with `PK` and the bytes 3
    and 4, as every xlsx does, since an xlsx is a zip of XML files:
    `notXlsx`. It is most often a CSV saved with the name `.xlsx`, which
@@ -368,8 +375,9 @@ which the message of an `Error` would carry only as text to be taken
 apart again. The result is a struct that stays in the wasm's memory;
 JavaScript reads its fields through functions wasm-bindgen generates,
 each of which copies the field out (`getter_with_clone`), and the light
-worker then calls its `free()`, since JavaScript's garbage collector does
-not free the memory of a wasm.
+worker then calls its `free()`: JavaScript's garbage collector frees it
+too, through a `FinalizationRegistry` wasm-bindgen registers, but at a
+time nobody chooses, and a read holds up to 2,000,000 cells.
 
 ```rust
 #[wasm_bindgen(getter_with_clone)]
@@ -592,13 +600,23 @@ holds, and the literal cells it gives:
 | a text of several fonts, `write_rich_string` | the parts joined |
 | a population merged over rows 2 to 4, and a name merged over two columns of the header | the population in the three rows; the name in both columns |
 | a hidden first sheet, and the table on the second | the second, by its name |
+| a very hidden first sheet, which only a macro can show, and the table on the second | the second, by its name |
+| a table with a hidden row and a hidden column | both read |
+| "id" at A1, and a blank cell with a format at E10 | a rectangle of one cell: a format is not a value |
+| values at B1, C1 and A3 | the rectangle from row 1 and column A, 3 × 3 |
 | a first sheet with no value, and a table on the second | `EmptySheet`, with the name of the first |
 | a value at A1 and one at XFD200, with `max_cells` 2,000,000 | `SheetTooLarge`, from row 1 and column 1, 200 rows and 16,384 columns |
 | a value at XFD1, and one in column A of each row down to row 200 | `SheetTooLarge` at row 123, 16,384 × 123 being the first rectangle above 2,000,000: 123 rows and 16,384 columns, the rows after it not read |
 | a formula saved with the value `#GETTING_DATA` | `CellError`, `#GETTING_DATA` |
 | the bytes of `id,pop\n` | `NotXlsx`; and the empty bytes |
 | the first 500 bytes of an xlsx | `Unreadable`, with calamine's message |
+| the 22 bytes of an empty zip, `PK` and the bytes 5 and 6 | `NotXlsx` |
 | the eight bytes of a compound file of Office followed by zeros | `OldExcel` |
+| a compound file with `EncryptedPackage` in UTF-16 among its bytes, cut short | `Encrypted`, and no panic |
+
+A text with no character, the first row of "Each cell", is tested at the
+function that makes the cell of one value, since rust_xlsxwriter writes
+an empty text as no cell and a formula saved with `""` as the number 0.
 
 rust_xlsxwriter writes neither the date system of 1904, nor a password,
 nor an `.xls`, nor the errors of the newest Excel, nor a date as ISO
@@ -645,7 +663,8 @@ to be bent.
 **No file makes it panic**, added on 28 September 2026 by the owner's
 decision, from the rules of pop_var_caller's review. One test takes a file
 written by the tests with a text, a number, a boolean, a date, a formula,
-a merged range and a hidden first sheet, and reads it cut short at every
+a merged range and a hidden first sheet, and a compound file with
+`EncryptedPackage` in UTF-16 among its bytes, and reads each cut short at every
 length from 0 bytes to its whole size, and with each of its bytes in turn
 replaced by its complement, the byte with every bit flipped. For every
 copy, `read_first_sheet` returns, a sheet, a refusal or an error, and
@@ -670,8 +689,13 @@ Until the owner's two files exist, as the owner decided on 28 September
 a table of a few rows with a text, a number, a boolean, a date and a
 merged range, which a test of xlsx_rs marked `#[ignore]` writes with
 rust_xlsxwriter when it is run by hand and which is committed; and the
-bytes of `id,pop\n`, a CSV: the cells the Rust tests give for the first,
-and the refusal `notXlsx` for the second. They stay when the owner's
+bytes of `id,pop\n`, a CSV: every cell of the first as the Rust tests
+give it, its type in JavaScript among it, a blank cell `null`, and the
+refusal `notXlsx` for the second. Two more files written the same way,
+a first sheet with no value and a table that starts at C2, give the
+refusal `emptySheet` with its sheet's name and a rectangle whose first
+row and first column differ, so that the codes and the fields popnei_web
+reads are each checked in the package. They stay when the owner's
 files arrive, and a release made before that says in its notes that
 `excel_en.xlsx` and `encrypted.xlsx` were not read.
 
@@ -680,8 +704,11 @@ The same test compares the declarations wasm-bindgen generated,
 the whole file wasm-bindgen writes: the lines of "The Rust interface"
 above, the doc comments of the binding crate, which it copies as
 comments of JavaScript, and the types and the function `initSync` it
-always adds, which the spec does not show. A difference fails the test,
-so that a
+always adds, which the spec does not show; but not the interface
+`InitOutput`, the functions wasm-bindgen exports for its own
+JavaScript, which change with its version and are not read by
+popnei_web, and which the test leaves out of both files before it
+compares them. A difference fails the test, so that a
 change of the contract with popnei_web is made in that file, and seen,
 before it is released (added on 28 September 2026 by the owner's
 decision).

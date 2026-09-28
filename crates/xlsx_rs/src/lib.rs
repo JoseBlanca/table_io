@@ -162,10 +162,7 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         .merge_cells_by_sheet_name(&sheet_name)
         .map_err(read_error_of)?
         .into_iter()
-        .map(|calamine_range| MergedRange {
-            first: calamine_range.start,
-            last: calamine_range.end,
-        })
+        .map(|calamine_range| MergedRange::of_corners(calamine_range.start, calamine_range.end))
         .collect();
     let bounds = excel_bounds_of(&rectangle, &sheet_name)?;
     let cells = rectangle

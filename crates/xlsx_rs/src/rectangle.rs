@@ -11,9 +11,30 @@ pub(crate) type Position = (u32, u32);
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MergedRange {
     /// The position of the first cell, which holds the value of the range.
-    pub(crate) first: Position,
+    first: Position,
     /// The position of the last cell.
-    pub(crate) last: Position,
+    last: Position,
+}
+
+impl MergedRange {
+    /// The range between two opposite corners, `corner` and
+    /// `opposite_corner`, in either order: a range the file writes from its
+    /// last cell to its first, `B4:B2`, is the range `B2:B4` ("Merged
+    /// cells" of `docs/specs/read.md`).
+    pub(crate) fn of_corners(corner: Position, opposite_corner: Position) -> Self {
+        let (corner_row, corner_column) = corner;
+        let (opposite_row, opposite_column) = opposite_corner;
+        Self {
+            first: (
+                corner_row.min(opposite_row),
+                corner_column.min(opposite_column),
+            ),
+            last: (
+                corner_row.max(opposite_row),
+                corner_column.max(opposite_column),
+            ),
+        }
+    }
 }
 
 /// The smallest rectangle that holds every position seen, its rows and
@@ -229,10 +250,7 @@ mod tests {
             ((1, 1), SheetCell::Bool(true)),
             ((2, 2), SheetCell::Number(7.0)),
         ];
-        let merged_range = MergedRange {
-            first: (0, 0),
-            last: (1, 1),
-        };
+        let merged_range = MergedRange::of_corners((0, 0), (1, 1));
 
         assert_eq!(
             rectangle.laid_out(kept_cells, &[merged_range]),

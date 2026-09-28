@@ -1,8 +1,12 @@
 //! Every cell of a merged range with the value of its first cell, within
 //! the rectangle of the values ("Merged cells" of `docs/specs/read.md`).
 
+mod hand_written;
+
 use rust_xlsxwriter::{Format, Workbook};
 use xlsx_rs::{Sheet, SheetCell, read_first_sheet};
+
+use crate::hand_written::{text_cell, xlsx_of_worksheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
@@ -111,5 +115,52 @@ fn a_merged_range_reaching_past_the_values_fills_only_the_rectangle() {
                 text("Sevilla"),
             ],
         }
+    );
+}
+
+/// The `<sheetData>` of a header and three individuals from A1, with the
+/// population `Andalucía` at B2 and nothing else in column B: the cells of
+/// the tests of ranges rust_xlsxwriter does not write.
+fn individuals_with_a_population_at_b2() -> String {
+    [
+        format!(
+            r#"<row r="1">{}{}</row>"#,
+            text_cell("A1", "Individuo"),
+            text_cell("B1", "Población")
+        ),
+        format!(
+            r#"<row r="2">{}{}</row>"#,
+            text_cell("A2", "ind1"),
+            text_cell("B2", "Andalucía")
+        ),
+        format!(r#"<row r="3">{}</row>"#, text_cell("A3", "ind2")),
+        format!(r#"<row r="4">{}</row>"#, text_cell("A4", "ind3")),
+    ]
+    .concat()
+}
+
+#[test]
+fn a_range_written_from_its_last_cell_b4_b2_is_the_range_b2_b4() {
+    // Excel writes a range from its first cell; this file writes it from
+    // its last, which calamine gives as it is, start B4 and end B2.
+    let bytes = xlsx_of_worksheet(&format!(
+        r#"<sheetData>{}</sheetData><mergeCells count="1"><mergeCell ref="B4:B2"/></mergeCells>"#,
+        individuals_with_a_population_at_b2()
+    ));
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(
+        sheet.cells,
+        vec![
+            text("Individuo"),
+            text("Población"),
+            text("ind1"),
+            text("Andalucía"),
+            text("ind2"),
+            text("Andalucía"),
+            text("ind3"),
+            text("Andalucía"),
+        ]
     );
 }

@@ -46,3 +46,11 @@ allow_attributes_without_reason = "deny"
 opt-level = 3
 lto = true
 codegen-units = 1
+
+[profile.dev.package.calamine]
+# calamine adds and subtracts row and column numbers with plain operators,
+# which panic in a build with overflow checks and wrap in the release build
+# of the package; off here too, the builds of the tests among them, so that
+# a test of a damaged file meets what the package does
+# (docs/architecture.md, section 6).
+overflow-checks = false

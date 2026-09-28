@@ -235,13 +235,13 @@ popnei_web's test; and the tests of the owner's files waiting for them.
 
 **Tasks:**
 
-- [ ] 4.1 The test that no file panics, over a file written by the test
+- [x] 4.1 The test that no file panics, over a file written by the test
   with the kinds the spec names ("How it is verified", "No file makes it
   panic"). Serves 1.
-- [ ] 4.2 The node test over every cell of `written.xlsx`, and
+- [x] 4.2 The node test over every cell of `written.xlsx`, and
   `individuals_10000.xlsx` with its test. Serves 2 and 3. Can run beside
   4.1.
-- [ ] 4.3 The tests of the owner's files, with the cells "Made by the
+- [x] 4.3 The tests of the owner's files, with the cells "Made by the
   owner" says each shows. Serves 4. Can run beside 4.1 and 4.2.
 
 **What could go wrong:** the test of 4.1 runs one read for each byte of

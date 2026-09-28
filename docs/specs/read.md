@@ -519,8 +519,21 @@ refused when xlsx_rs cannot find it.
      of this section, which the spec's review of 28 September 2026 found
      too close; no such file has been measured. calamine holds of the
      styles little more than a byte for each, and of a workbook of 50 MB
-     of defined names about 100 MB, estimated from the 1.61 GB it held
-     for 20,000,000 names;
+     of defined names about 175 MB natively, estimated from the 80 bytes
+     of memory for each name of the 1.61 GB above and from the shortest
+     name, `<definedName name="a"/>`, 23 bytes, 2,170,000 names in 50 MB;
+   - each of these parts and each table of texts is refused when it is
+     in an encoding other than UTF-8, "a part of the file is not in
+     UTF-8": whenever quick-xml's reader of the part, reading it to its
+     end or first error, would decode it with another, from a byte order
+     mark at its start or from the `encoding` of its declaration
+     `<?xml … ?>`. calamine decodes the texts of a part in the encoding it
+     declares, and one declared `windows-1252` turns a byte `80` into
+     `€`, 3 bytes of UTF-8, so every bound of this point, counted in the
+     bytes of the part, would hold 3 times as much: in the spec's review,
+     paths of sheets counted at 96,171,600 bytes took calamine 300 MB.
+     Excel, LibreOffice and Google Sheets write UTF-8, and so do the
+     twelve files of `tests/data/`;
    - calamine keeps, for each sheet the workbook lists, the path of its
      part, the folder of the workbook followed by the target of the
      sheet's relationship, and every sheet may name the same
@@ -613,7 +626,8 @@ file:
   largest number a `usize` of the wasm holds, which calamine there does
   not read as a number and reserves nothing for;
 - a part named as one of point 3 in a folder calamine does not read,
-  held to the same bound.
+  held to the same bound;
+- a part of point 3 in an encoding other than UTF-8.
 
 Not bounded: the time. calamine's `read_styles` reads the format of a
 style once for each style that uses it (`detect_custom_number_format`
@@ -663,6 +677,8 @@ unless it is named:
   refused; the same cut short before `</sst>`, refused; a `uniqueCount`
   of 1,000 with two texts, read; one of `00010000001`, refused, and of
   `+400000000`, read;
+- a part of relationships declared `windows-1252`, and a table of texts
+  that starts with the byte order mark of UTF-16: each refused;
 - the file of the spec's review, 2,000 sheets naming one target of
   500 KB: refused;
 - a table of texts named in capitals, `XL/SHAREDSTRINGS.XML`, checked

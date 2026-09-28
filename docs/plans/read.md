@@ -17,8 +17,8 @@ it is verified" that runs in xlsx_rs.
 
 Out:
 
-- The release, its tag and its notes: step 5 of the work, by hand, on the
-  owner's order.
+- The release, its tag and its notes: made by hand after this plan, on
+  the owner's order, as `docs/architecture.md`, section 5, gives it.
 - What popnei_web does with the package, and its tests: its stage-4
   plan, `docs/plans/individuals-pca.md` there, work package 9, which
   waits for the release and copies `excel_en.xlsx`, `encrypted.xlsx` and
@@ -86,7 +86,9 @@ calamine cannot open and a first sheet with no value.
    committed.
 5. The size. Check: the report gives `wasm/xlsx_rs_bg.wasm` and
    `wasm/xlsx_rs.js`, raw and with `gzip -9 -c | wc -c`, beside the
-   295,475 and 2,962 bytes gzipped of the spec, "Its size".
+   295,475 and 2,962 bytes gzipped of the spec, "Its size". They are
+   reported, not a threshold; a `.wasm` more than 10% larger gzipped than
+   the spec's is told to the owner before work package 2.
 
 **Stands on:** nothing but what is in place above.
 
@@ -157,9 +159,11 @@ its text.
   laying out of the rectangle and not the cell of one value, and its own
   test file.
 - [ ] 2.3 The limit of "The sheet read", refusal 6: the rectangle checked
-  as each cell arrives, and the read stopped at the first cell that
-  passes the limit. A task of its own, since a limit checked after the
-  read gives the same refusal and breaks the memory the spec promises.
+  as each cell arrives, and the read stopped at the first cell that makes
+  the rectangle larger than the limit. A task of its own, since a limit
+  checked after the whole sheet is read gives the same refusal but holds
+  every cell of the sheet first, where the spec promises that a read
+  never holds more than the limit.
   The test of XFD1 has, besides the spec's cells, a formula saved with
   `#GETTING_DATA` at A150: a read that went on past row 123 meets it and
   gives `CellError`, where the spec gives `SheetTooLarge`. The test says
@@ -243,7 +247,7 @@ popnei_web's test; and the tests of the owner's files waiting for them.
 
 **What could go wrong:** the test of 4.1 runs one read for each byte of
 its file twice; at a few milliseconds a read and a file of about 6 KB it
-takes about a minute, an estimate. If it takes more than two, the file is
+takes about a minute on the owner's Mac, an estimate. If it takes more than two, the file is
 made smaller and the report says so. A panic inside calamine is a stop
 for the owner.
 

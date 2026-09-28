@@ -14,32 +14,39 @@ What a user of popnei_web gets from it, once it is released: the dates of
 a workbook of the 1904 system saved by Excel 365, the owner's
 `excel_1904.xlsx` among them, are right, `2024-05-13` where the release
 before this plan would have given `2020-05-12`; a file damaged inside its
-compressed bytes is refused instead of read with cells missing; and the
-files the reviews wrote by hand to make calamine hold GBs, the smallest
-2.5 KB, are refused with a message instead of ending the light worker,
-the thread of popnei_web's tab that reads the user's files. A table of
+compressed bytes is refused instead of read with cells missing; and
+files written by hand in the reviews, as small as 2.5 KB, that made
+calamine hold GBs are refused with a message instead of ending the light
+worker, the thread of popnei_web's tab that reads the user's files. A table of
 10,000 individuals is read in 1.20 times the time of `main`, and the
 package is 300,145 bytes gzipped, 15,275 more than `main`'s.
 
 What is left open: one cell of a sheet can still hold a text large enough
-to end the light worker, from a zip of 390 KB. The spec accepted this
-before it was measured; it is Open 3 of `docs/specs/read.md`, and its fix
-would be a plan of its own.
+to end the light worker, from a zip of 390 KB; popnei_web then tells the
+user the file could not be read, and the tab goes on. The spec accepted
+this before it was measured. It is now the third of the spec's open
+points, the decisions it leaves to the owner, "Open 3" at the end of
+`docs/specs/read.md`, and its fix would be a plan of its own.
 
 What is asked of the owner:
 
 1. The merge of `plan/own-parts` into `main`.
-2. Open 3 of the spec: whether to leave that trap for now, as recommended,
-   and bound every part in a plan after the first release.
-3. The order for the first release, `js-v0.1.0-dev.1`, which popnei_web's
-   stage 4 waits for: `main` pushed to `github.com/JoseBlanca/xlsx_rs`,
-   and the pre-release made as `docs/architecture.md`, section 5, says.
+2. Open 3: whether to leave that trap for now, as recommended, and bound
+   every part, the sheet among them, in a plan after the first release;
+   or to do it before the release, which then waits for that plan and
+   for the measure of the largest sheet a user saves.
+3. Whether to make the first release after the merge: `main` pushed to
+   `github.com/JoseBlanca/xlsx_rs`, where it is public, and the
+   pre-release `js-v0.1.0-dev.1` made from it, as `docs/architecture.md`,
+   section 5, says. popnei_web's stage 4 waits for it. Neither can be
+   undone once others have downloaded them.
 
 ## Work packages 1 and 2, built
 
 - 1.1, 5797372: the zip opened before calamine, every part read to its
-  end, `MAX_UNZIPPED_BYTES`. 1.2, bb40625: the date system from the
-  `workbookPr` of the workbook's root; the owner's `excel_1904.xlsx` now
+  end, and refused past 1,000,000,000 bytes unzipped,
+  `MAX_UNZIPPED_BYTES`. 1.2, bb40625: the date system from the setting
+  of the workbook that holds it, `workbookPr`, at the workbook's root; the owner's `excel_1904.xlsx` now
   gives `2024-05-13`. 2.1, 540af16: the settings parts, the table of
   texts and its `uniqueCount` bounded. 2.2, b1a0909: the merged ranges
   counted. 2.3, bd4af18: `tests/data/unique_count.xlsx`, 2,588 bytes, and
@@ -63,26 +70,31 @@ What is asked of the owner:
 Three reviewers read 56a6903 on 28 September 2026 and found that the
 bounds could be passed: xlsx_rs read the parts as calamine reads them,
 and every small difference between the two readings let a file past a
-bound. Files of about 2.5 KB trapped the package under node through a
-form feed before the name of an attribute, a table of texts cut short,
-and a sheet listed inside a defined name or after a stray end tag.
+bound. Files of about 2.5 KB trapped the package under node, the
+JavaScript runtime outside the browser, in three ways: a form feed, an
+invisible character that calamine reads as a space and xlsx_rs did not,
+before the name of a setting in the XML; a table of texts cut short
+before its end; and a list of sheets that xlsx_rs read differently from
+calamine, with a decoy sheet inside a defined name, the name Excel lets a
+user give a range, or after a stray closing tag.
 
 The fix, written into the spec first (1e44906) and built after: each
 bound counts at least what calamine could hold, in every part calamine
 could read for it, found by the end of the part's name, and to the end
 of the part; the attributes are read with a copy of calamine's own reader
 of them, under its MIT license; and the merged ranges are counted as the
-bytes `mergeCell` in every part, so that xlsx_rs no longer looks for the
-sheet's part. The spec's review of that change found two more ways past
+bytes `mergeCell`, the name of a merged range in the XML, in every part,
+so that xlsx_rs no longer looks for the sheet's part. The spec's review of that change found two more ways past
 a bound before any code was written, and both are in the spec and the
 code:
 
 - calamine keeps a path for every sheet the workbook lists, and 2,000
   sheets naming one target of 500 KB, a zip of 8,586 bytes, took 1.0 GB:
   now refused, "the workbook lists too many sheets";
-- calamine decodes a part in the encoding it declares, and a byte of
-  `windows-1252` can become 3 bytes: a part calamine holds whole in
-  another encoding than UTF-8 is now refused.
+- calamine decodes a part in the encoding it declares, and a byte of an
+  older encoding of Windows, `windows-1252`, can become 3 bytes of UTF-8,
+  the encoding Excel writes: a part calamine holds whole in another
+  encoding than UTF-8 is now refused.
 
 It also led to three changes of what is refused, each of files no
 program writes except the second: a `uniqueCount`, the number of texts a
@@ -90,8 +102,8 @@ table says it holds, larger than its texts is read, as calamine reads
 it, and only one past 10,000,000 is refused; the parts of settings, the
 workbook and the styles among them, are refused past 50,000,000 bytes
 instead of 10,000,000, since a workbook that gathered tens of thousands
-of styles can pass 10 MB; and a file whose `_rels/.rels` names no
-workbook is refused by xlsx_rs rather than by calamine. The files
+of styles can pass 10 MB; and a file whose `_rels/.rels`, the part of the
+zip that says where the workbook is, names no workbook is refused by xlsx_rs rather than by calamine. The files
 xlsx_rs now refuses that calamine would read are listed in the spec, at
 the end of "What xlsx_rs reads before calamine".
 
@@ -130,8 +142,8 @@ At 247df4d, on the owner's Mac, 28 September 2026:
   sheet of 100,000 rows × 20 columns, 9.6 MB zipped, 1,808 ms and
   2,226 ms, 1.23 times. The plan asked to be told if either doubled.
 - Memory, measured by the architecture reviewer: no file it tried raised
-  the largest memory of a read; a zip of 220,000 empty parts takes
-  175 MB natively, against 166 MB for calamine alone and 261 MB before
+  the largest memory of a read under node; a zip of 220,000 empty parts
+  takes 175 MB natively, compiled for the Mac and not for the browser, against 166 MB for calamine alone and 261 MB before
   the fix, since xlsx_rs now lets go of its zip before calamine opens
   the file.
 - The `.wasm` is 564,714 bytes, 300,145 gzipped with `gzip -9`, against
@@ -167,8 +179,8 @@ For the issues of xlsx_rs, once its repository is on GitHub:
   errors reviewer, no such file built. calamine opened such a file the
   same way before this plan.
 - A styles part of 5 MB of one format and 250,000 styles using it is
-  about 1.25 × 10^12 characters of calamine's reading, minutes or more;
-  computed, not measured. It is slow and not a trap.
+  about 1.25 × 10^12 characters of calamine's reading, 20 minutes at a
+  thousand million characters a second; computed, not measured. It is slow and not a trap.
 - xlsx_rs's own reading of a table of texts holds its longest text, up
   to 400 MB, also for a table in a folder calamine never opens; the
   memory calamine takes for the table it reads is the same.
@@ -187,8 +199,8 @@ The owner can stop reading here.
 - **Asking the spec reviewer to build a file that passes the bound
   worked.** Its first review found a trap of 1.0 GB from 8.6 KB, its
   second one of 300 MB through an encoding, both before any code; the
-  code reviewer of the spec category, asked the same, found the trap of
-  one cell. The `spec-reviewer` and the `spec` category could ask it of
+  reviewer of the code against the spec, asked the same, found the trap
+  of one cell. The `spec-reviewer` and the `spec` category could ask it of
   every bound.
 - **A test file that carries two hostile things cannot fail for the
   first.** The form feed of `_rels/.rels` was tested with a file that

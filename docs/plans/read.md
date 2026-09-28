@@ -151,13 +151,13 @@ its text.
 
 **Tasks:**
 
-- [ ] 2.1 The rest of "Each cell" but the dates and the durations,
+- [x] 2.1 The rest of "Each cell" but the dates and the durations,
   every arm of calamine's `DataRef` named as the coding skill asks, and
   refusal 5 of "The refusals". Serves 1 and 3, its last case. Needs 1.2.
-- [ ] 2.2 "Merged cells". Serves 2. Can run beside 2.1: it touches the
+- [x] 2.2 "Merged cells". Serves 2. Can run beside 2.1: it touches the
   laying out of the rectangle and not the cell of one value, and its own
   test file.
-- [ ] 2.3 The limit of "The sheet read", refusal 6: the rectangle checked
+- [x] 2.3 The limit of "The sheet read", refusal 6: the rectangle checked
   as each cell arrives, and the read stopped at the first cell that makes
   the rectangle larger than the limit. A task of its own, since a limit
   checked after the whole sheet is read gives the same refusal but holds

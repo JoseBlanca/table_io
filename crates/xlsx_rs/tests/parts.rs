@@ -1071,6 +1071,22 @@ fn a_type_of_the_package_relationships_after_a_form_feed_is_read_as_calamine_rea
     );
 }
 
+// The same file with nothing else hostile: xlsx_rs finds the workbook, and
+// its date system, only by reading the Type as calamine does.
+#[test]
+fn a_type_after_a_form_feed_gives_the_workbook_and_its_date_system() {
+    let read = read_of_1904_date(|parts| {
+        for (name, xml) in parts.iter_mut() {
+            if name == "_rels/.rels" {
+                *xml = xml.replace(" Type=", &format!(" {FORM_FEED}Type="));
+                assert!(xml.contains(FORM_FEED));
+            }
+        }
+    });
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
 /// The xlsx of [`parts_of_one_number`] whose sheet has a form feed before
 /// the attribute `name` in the workbook, and `num_merged_ranges` merged
 /// ranges, each `D1:E1`, outside its rectangle, deflated.

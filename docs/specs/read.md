@@ -293,12 +293,14 @@ and the light worker makes the refusal of it. In the order it looks:
 3. **A zip that calamine cannot open as a workbook, or whose sheet it
    cannot read**: a file cut short, damaged, or another format in a zip,
    a sheet of LibreOffice in its own format, `.ods`, or Excel's binary
-   workbook, `.xlsb`, with the name `.xlsx`. calamine's message
-   goes into the refusal `files`, which says the file could not be read
-   as a workbook and may be damaged, and the message is written to the
-   console, where it helps the one who reports it: "Zip error: invalid
-   Zip archive: Could not find EOCD", the record that ends every zip, for
-   the first 500 bytes of an xlsx, in the trial.
+   workbook, `.xlsb`, with the name `.xlsx`. The message of the zip
+   crate, of the reader of XML or of calamine, whichever failed, goes into
+   the refusal `files`, which says the file could not be read as a
+   workbook and may be damaged, and the message is written to the
+   console, where it helps the one who reports it: "invalid Zip archive:
+   Could not find EOCD", the record that ends every zip, for the first
+   500 bytes of an xlsx, since xlsx_rs opens the zip itself ("What
+   xlsx_rs reads before calamine").
 4. **No worksheet that is not hidden**, which Excel does not let a user
    save: `files`, with xlsx_rs's own message, "no visible worksheet",
    as `ReadError::Unreadable`.

@@ -59,12 +59,12 @@ refused instead of read with cells missing.
 
 **Tasks:**
 
-- [ ] 1.1 The dependencies `zip` and `quick-xml` as the spec's "Its
+- [x] 1.1 The dependencies `zip` and `quick-xml` as the spec's "Its
   dependencies" gives them; a module of the library that opens the zip,
   finds each part as calamine finds it, and reads every part to its end,
   counting the bytes ("What xlsx_rs reads before calamine", the opening
   and point 1). Serves 1 and 3.
-- [ ] 1.2 The date system from the `workbookPr` that is a direct child of
+- [x] 1.2 The date system from the `workbookPr` that is a direct child of
   the workbook's root, used in the place of `has_1904_epoch` (point 2).
   A task of its own: a wrong date system is every date wrong and no
   failure. Serves 1, 2 and 3. Needs 1.1.

@@ -57,7 +57,11 @@ refusal. It runs through these steps, whose rules are the spec's
    does an xlsx saved with a password, which Excel encrypts inside such a
    file; every zip, which an xlsx is, starts with `PK`. Anything else is
    refused before calamine sees it.
-2. calamine opens the zip as a workbook, reading from the bytes in memory, and
+2. xlsx_rs opens the zip itself, reads every part to its end so that the
+   zip checks each part's checksum, takes the date system from the
+   workbook, and refuses a file whose parts would make calamine hold more
+   than its bounds (`specs/read.md`, "What xlsx_rs reads before
+   calamine"). Then calamine opens the same bytes as a workbook, and
    gives the list of its sheets with whether each is hidden and whether
    it is a worksheet. The sheet read is the first worksheet in the order
    of the tabs that is not hidden.

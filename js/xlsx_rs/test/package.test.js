@@ -3,13 +3,15 @@
 // declarations of the contract with popnei_web ("The package, built" of
 // docs/specs/read.md).
 //
-// Until the owner's excel_en.xlsx and encrypted.xlsx exist, the files read
-// are those of tests/data/ that crates/xlsx_rs/tests/write_fixtures.rs
-// writes, written.xlsx, empty_first_sheet.xlsx, table_at_c2.xlsx,
-// getting_data.xlsx and wide_table_at_c2.xlsx, and the refusal is that of a
-// CSV.
+// The owner's excel_en.xlsx and encrypted.xlsx are read when they are in
+// tests/data/, and their tests are skipped with the name of the file while
+// they are not. The files of tests/data/ that
+// crates/xlsx_rs/tests/write_fixtures.rs writes, written.xlsx,
+// empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx and
+// wide_table_at_c2.xlsx, and a CSV, are read in any case.
 
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { before, test } from "node:test";
 
@@ -188,6 +190,90 @@ test("a file calamine cannot read throws an Error with its message", async () =>
         name: "Error",
         message: "Zip error: invalid Zip archive: Could not find EOCD",
     });
+});
+
+/**
+ * The option of node:test that skips a test of the owner's `fileName` while
+ * it is not in tests/data/, with the reason the Rust test gives.
+ */
+function skippedUntilMade(fileName) {
+    return {
+        skip: existsSync(new URL(fileName, dataDir))
+            ? false
+            : `waits for tests/data/${fileName}, made by the owner`,
+    };
+}
+
+/**
+ * The cells under `header` in the first row of the sheet of `fields`, from
+ * the second row to the last; empty when no cell of the first row is
+ * `header`.
+ */
+function columnUnder(fields, header) {
+    const column = fields.cells.slice(0, fields.numColumns).indexOf(header);
+    if (column === -1) {
+        return [];
+    }
+    const cells = [];
+    for (let row = 1; row < fields.numRows; row++) {
+        cells.push(fields.cells[row * fields.numColumns + column]);
+    }
+    return cells;
+}
+
+// What "Made by the owner" of docs/specs/read.md says excel_en.xlsx holds,
+// as crates/xlsx_rs/tests/owner_files.rs asserts it; the cells the owner
+// says the file shows in Excel are to be added as literals when it arrives.
+test("excel_en.xlsx gives the cells of English Excel", skippedUntilMade("excel_en.xlsx"), async () => {
+    const bytes = await readFile(new URL("excel_en.xlsx", dataDir));
+
+    const fields = fieldsOfRead(bytes);
+
+    assert.equal(fields.refusal, "");
+    const headerRow = fields.cells.slice(0, fields.numColumns);
+    for (const name of ["Individuo", "Población", "Altura", "Fecha", "Hora", "Afectado", "Código"]) {
+        assert.ok(headerRow.includes(name), `no ${name} in the header ${JSON.stringify(headerRow)}`);
+    }
+    const expectedInColumns = [
+        ["Altura", 1.75],
+        ["Fecha", "2024-05-13"],
+        ["Hora", "14:30:00"],
+        ["Afectado", true],
+        ["Afectado", false],
+        ["Código", 7],
+    ];
+    for (const [header, cell] of expectedInColumns) {
+        const column = columnUnder(fields, header);
+        assert.ok(
+            column.includes(cell),
+            `no ${JSON.stringify(cell)} under ${header}, which holds ${JSON.stringify(column)}`,
+        );
+    }
+    for (const cell of ["001", "#N/A", "#DIV/0!"]) {
+        assert.ok(fields.cells.includes(cell), `no cell is ${cell}`);
+    }
+    const populations = columnUnder(fields, "Población");
+    assert.ok(
+        populations.some(
+            (population, row) => population !== null && population === populations[row + 1],
+        ),
+        `no population in two rows running, as a merged one is, in ${JSON.stringify(populations)}`,
+    );
+    const rows = [];
+    for (let row = 0; row < fields.numRows; row++) {
+        rows.push(fields.cells.slice(row * fields.numColumns, (row + 1) * fields.numColumns));
+    }
+    assert.ok(rows.some((row) => row.every((cell) => cell === null)), "no blank row");
+});
+
+test("encrypted.xlsx is refused as encrypted", skippedUntilMade("encrypted.xlsx"), async () => {
+    const bytes = await readFile(new URL("encrypted.xlsx", dataDir));
+
+    const fields = fieldsOfRead(bytes);
+
+    assert.equal(fields.refusal, "encrypted");
+    assert.equal(fields.sheet, "");
+    assert.deepEqual(fields.cells, []);
 });
 
 /**

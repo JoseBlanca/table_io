@@ -440,11 +440,12 @@ in capitals would.
    saying 400,000,000 trapped the package; one of 80,000,000 empty texts,
    1.9 MB zipped, took 1.93 GB natively; a workbook listing 20,000,000
    defined names, 3.2 MB zipped, 1.61 GB. So:
-   - the workbook, the relationships and the styles are each refused
+   - the workbook, the relationships, those of the package in
+     `_rels/.rels` among them, and the styles are each refused
      past 10,000,000 bytes unzipped, `MAX_SETTINGS_PART_BYTES`, "a part
      of the file is too large", where a real one is a few KB;
    - the table of texts is refused past 400,000,000 bytes unzipped,
-     twice `MAX_TEXT_BYTES`, "too much text", and past 10,000,000 texts,
+     `MAX_TEXT_TABLE_BYTES`, twice `MAX_TEXT_BYTES`, "too much text", and past 10,000,000 texts,
      `MAX_TEXTS`, "too many texts", 120 MB of calamine's room for them in
      the wasm, where a table of individuals has at most as many texts as
      cells, 2,000,000;
@@ -453,7 +454,8 @@ in capitals would.
      holds more texts than it does": the nine files of `tests/data/` from
      Excel, Google Sheets and rust_xlsxwriter give the count they hold,
      LibreOffice's is not checked; a `uniqueCount` that is missing or is
-     not a number is let be, as calamine does.
+     not a number is let be, as calamine does. The texts, and the merged
+     ranges of point 4, are counted as calamine counts them.
 4. **The merged ranges of the sheet read.** calamine reads every merged
    range of the sheet, each an element `mergeCell`, into memory, 16 bytes
    each, before xlsx_rs sees one: 40,000,000 in a zip of 5.1 MB held 650
@@ -486,8 +488,8 @@ a table of texts whose `uniqueCount` is 400,000,000 with two texts; a
 file whose table of texts is named in capitals, `XL/SHAREDSTRINGS.XML`,
 checked as the other; a Strict file of the 1904 system; a sheet with more
 merged ranges than `max_cells`. Under node, the owner's 1904 file, and
-the file of 6 KB whose `uniqueCount` trapped the package, written by the
-test helper of hand-made files and committed as
+a file of 2.6 KB whose `uniqueCount` of 400,000,000 trapped the package,
+written by the test helper of hand-made files and committed as
 `tests/data/unique_count.xlsx`, now refused.
 
 ## The Rust interface

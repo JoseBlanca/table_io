@@ -97,12 +97,12 @@ the first cell, which ends popnei_web's light worker.
 
 **Tasks:**
 
-- [ ] 2.1 The bounds of point 3: the settings parts, the table of texts
+- [x] 2.1 The bounds of point 3: the settings parts, the table of texts
   and its count. Serves 1.
-- [ ] 2.2 The count of the merged ranges of point 4, after calamine has
+- [x] 2.2 The count of the merged ranges of point 4, after calamine has
   opened the file. Serves 1. Needs 2.1, since both change the same
   module.
-- [ ] 2.3 The node tests, `unique_count.xlsx` written by
+- [x] 2.3 The node tests, `unique_count.xlsx` written by
   `crates/xlsx_rs/tests/hand_written/`, which builds an xlsx from the XML
   of its parts, and committed, and the measurements. Serves 2 and 3.
 

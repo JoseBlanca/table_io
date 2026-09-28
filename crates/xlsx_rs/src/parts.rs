@@ -784,16 +784,10 @@ fn is_number_past(digits: &[u8], max_number: u64) -> bool {
     if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
         return false;
     }
-    let significant_digits = digits
-        .iter()
-        .position(|digit| *digit != b'0')
-        .and_then(|first_significant| digits.get(first_significant..))
-        .unwrap_or_default();
-    // A number of 20 digits or more passes any u64.
-    if significant_digits.len() >= 20 {
-        return true;
-    }
-    let number = significant_digits.iter().fold(0_u64, |number, digit| {
+    // Saturating: a number past a u64, however many digits, is u64::MAX,
+    // past any bound below it, MAX_TEXTS among them; zeros first add
+    // nothing.
+    let number = digits.iter().fold(0_u64, |number, digit| {
         number
             .saturating_mul(10)
             .saturating_add(u64::from(digit.saturating_sub(b'0')))
@@ -902,7 +896,28 @@ fn text_of_count(count: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::parts::{ElementCounter, MERGED_RANGE_NAME, text_of_count};
+    use crate::parts::{ElementCounter, MERGED_RANGE_NAME, is_number_past, text_of_count};
+
+    // Numbers of 20 digits from 10^19 to u64::MAX fit in a u64 and are
+    // compared as they are; past u64::MAX they are u64::MAX.
+    #[test]
+    fn a_number_of_20_digits_is_compared_as_it_is() {
+        assert!(!is_number_past(
+            b"12345678901234567890",
+            12_345_678_901_234_567_890
+        ));
+        assert!(is_number_past(
+            b"12345678901234567890",
+            12_345_678_901_234_567_889
+        ));
+        assert!(!is_number_past(
+            b"0012345678901234567890",
+            12_345_678_901_234_567_890
+        ));
+        assert!(is_number_past(b"18446744073709551616", u64::MAX - 1));
+        assert!(!is_number_past(b"+1", 0));
+        assert!(!is_number_past(b"", 0));
+    }
 
     /// The count of merged ranges in `bytes` given in two reads, split at
     /// `split`.

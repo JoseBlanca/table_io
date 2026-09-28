@@ -8,7 +8,7 @@ writes a plan.
 
 ## State
 
-Under way. Work packages 1 and 2 are done; work package 3 is being built.
+Under way. Work packages 1 to 3 are done; work package 4 is being built.
 The owner is asked whether xlsx_rs may read the zip's checksums and the
 merged ranges itself, with the `zip` and `quick-xml` crates calamine
 brings, as direct dependencies (below, work packages 1 and 2).
@@ -135,3 +135,31 @@ spec and d166157 to e1183d1 for the code:
 - The refusals `cellError` and `sheetTooLarge` were not read in the
   package's test, and no test had a rectangle refused whose first row and
   column differ: both added.
+
+## Work package 3: the dates
+
+- 3.1, a896b39; 3.2, 674e93f. Every value of the spec's row of dates and
+  the four of the 1904 system came out as the spec gives them.
+- Decided with the work and written into the spec, b36599c and 426ec8c:
+  the milliseconds of a time alone and of a duration are written when
+  they are not 0, as for a date and a time; the hours of a duration have
+  no leading 0; a number just below 0 that rounds to 0 milliseconds is
+  the time `00:00:00`; calamine is never asked for a day past 2,958,466,
+  since it keeps the year in 16 bits and gave 2024 for the day
+  23,981,957; a time that rounds to a whole day is the date `1900-01-01`
+  where Excel shows `00:00:00`, since calamine gives no format.
+
+Deliverables, on 5a2e243:
+
+1. `cargo test -p xlsx_rs --lib date -- --list`: 12 tests, which pass.
+2. `cargo test -p xlsx_rs --test dates`: 17 passed.
+
+The review, two reviewers over tests with spec, and numbers with errors
+and api. No wrong date: the reviewer of the numbers compared every whole
+day of both date systems, 1 to 2,958,465 and 1 to 2,957,003, with the
+calendar of the chrono crate, and found 0 differences. What mattered,
+fixed in 1d5d07f to 5a2e243: nothing tested that the reader uses the
+workbook's date system, and with it forced to 1900 a Mac workbook of the
+1904 system gave every date 4 years and a day early; now a workbook
+written with `date1904="1"` is read through `read_first_sheet`. Three
+rules and the cap on days had no test; they have.

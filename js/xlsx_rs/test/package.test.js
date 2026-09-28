@@ -152,11 +152,26 @@ test("a file calamine cannot read throws an Error with its message", async () =>
     });
 });
 
+/**
+ * `declarations` without the block `export interface InitOutput { ... }`,
+ * the functions wasm-bindgen exports for its own JavaScript, which change
+ * with its version and which popnei_web does not read. Throws when the
+ * block is not there, so that the comparison cannot pass on a file whose
+ * block was not found.
+ */
+function withoutInitOutput(declarations) {
+    const initOutput = /^export interface InitOutput \{\n(?:.*\n)*?\}\n/m;
+    assert.match(declarations, initOutput);
+    return declarations.replace(initOutput, "");
+}
+
 test("the declarations generated are the ones kept in git", async () => {
     // A difference is a change of the contract with popnei_web: the spec
-    // first, then test/xlsx_rs.d.ts, then a new release.
+    // first, then test/xlsx_rs.d.ts, then a new release. The kept file is
+    // the whole file wasm-bindgen writes, InitOutput among it, which the
+    // comparison leaves out of both.
     const generated = await readFile(new URL("wasm/xlsx_rs.d.ts", packageDir), "utf8");
     const kept = await readFile(new URL("test/xlsx_rs.d.ts", packageDir), "utf8");
 
-    assert.equal(generated, kept);
+    assert.equal(withoutInitOutput(generated), withoutInitOutput(kept));
 });

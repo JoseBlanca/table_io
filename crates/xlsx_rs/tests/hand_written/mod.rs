@@ -11,7 +11,8 @@
 //! `t="inlineStr"`, so that there is no table of shared texts. A workbook
 //! of 1904 holds a sixth, `xl/styles.xml`, where the formats of its
 //! numbers are, which calamine finds by that name with no relationship to
-//! it.
+//! it. `tests/no_panic.rs` zips with [`stored_zip`] the parts of a
+//! workbook of its own, some of them damaged.
 
 #![expect(
     clippy::unwrap_used,
@@ -113,17 +114,19 @@ fn styles(number_formats: &[&str]) -> String {
 const WORKBOOK_RELATIONSHIPS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#;
 
-/// A zip of `files`, each a name and its text, stored with no compression:
-/// a local header and the bytes of each file, then the central directory
-/// that lists them, then the record that ends the zip.
-fn stored_zip(files: &[(&str, String)]) -> Vec<u8> {
+/// A zip of `files`, each a name and its bytes, stored with no
+/// compression: a local header and the bytes of each file, with their
+/// CRC-32, then the central directory that lists them, then the record that
+/// ends the zip. The bytes need not be XML nor UTF-8.
+pub fn stored_zip<Contents: AsRef<[u8]>>(files: &[(&str, Contents)]) -> Vec<u8> {
     let mut zip = Vec::new();
     let mut central_directory = Vec::new();
     for (name, contents) in files {
+        let contents = contents.as_ref();
         let offset = u32::try_from(zip.len()).unwrap();
         let name_length = u16::try_from(name.len()).unwrap();
         let size = u32::try_from(contents.len()).unwrap();
-        let crc = crc32(contents.as_bytes());
+        let crc = crc32(contents);
 
         zip.extend(0x0403_4b50u32.to_le_bytes());
         // Version 2.0, no flags, stored, a time of 0 and 1 January 1980.
@@ -134,7 +137,7 @@ fn stored_zip(files: &[(&str, String)]) -> Vec<u8> {
         zip.extend(name_length.to_le_bytes());
         zip.extend(0u16.to_le_bytes());
         zip.extend(name.as_bytes());
-        zip.extend(contents.as_bytes());
+        zip.extend(contents);
 
         central_directory.extend(0x0201_4b50u32.to_le_bytes());
         central_directory.extend([20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0x21, 0]);

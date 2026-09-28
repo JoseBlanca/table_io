@@ -188,9 +188,14 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// First, as every part of the zip is unzipped before calamine opens the
 /// file, the first a part meets, the parts in the order of the zip:
 ///
-/// - the zip crate's, for a file that is not a zip past its first bytes, a
-///   file cut short among them, and for a part of the zip whose bytes are
-///   not those it was saved with, "Invalid checksum";
+/// - the zip crate's: for a file that is not a zip past its first bytes, a
+///   file cut short among them, "invalid Zip archive: …"; for a part whose
+///   bytes are not those it was saved with, "Invalid checksum", or, from
+///   the reader of its compression, "corrupt deflate stream" or
+///   "incomplete deflate stream"; for a part saved with a password,
+///   "unsupported Zip archive: Password required to decrypt file"; and for
+///   a part in a compression the zip crate does not read, "compression
+///   method not supported: …", with the number of the method;
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a settings part past

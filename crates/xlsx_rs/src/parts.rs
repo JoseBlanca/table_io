@@ -64,8 +64,12 @@ pub(crate) struct PartBounds {
 /// # Errors
 ///
 /// [`ReadError::Unreadable`] with the zip crate's message for any error of
-/// the zip, "Invalid checksum" for a part whose bytes are not those it was
-/// saved with; "the file names no workbook" when the package
+/// the zip: "Invalid checksum", "corrupt deflate stream" or "incomplete
+/// deflate stream" for a part whose bytes are not those it was saved with,
+/// "unsupported Zip archive: Password required to decrypt file" for a part
+/// saved with a password, and "compression method not supported: …" for a
+/// compression the zip crate does not read, as [`crate::read_first_sheet`]
+/// lists them; "the file names no workbook" when the package
 /// relationships, `_rels/.rels`, are missing or name no workbook, which
 /// calamine refuses too; "the file unzips to more than … bytes" when the parts hold
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the

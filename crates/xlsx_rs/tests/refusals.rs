@@ -190,6 +190,53 @@ fn a_value_at_a1_and_one_at_xfd200_are_a_sheet_too_large_of_200_rows_and_16384_c
 }
 
 #[test]
+fn id_at_c2_and_a_value_at_xfd200_are_a_sheet_too_large_from_row_2_and_column_3() {
+    // Rows 2 to 200 and columns C to XFD: 199 rows of 16,382 columns, a
+    // first row and a first column that differ.
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(1, 2, "id").unwrap();
+    worksheet.write_string(199, LAST_COLUMN, "a note").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Refused(Refusal::SheetTooLarge {
+            sheet: "Sheet1".to_owned(),
+            first_row: 2,
+            first_column: 3,
+            num_rows: 199,
+            num_columns: 16_382,
+        }))
+    );
+}
+
+#[test]
+fn an_unknown_error_met_before_the_limit_is_passed_is_the_refusal_cell_error() {
+    // The error at A2 comes before the note at XFD200, the cell that
+    // passes the limit: the refusal is the one met first in the file.
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 0, "id").unwrap();
+    worksheet
+        .write_formula(1, 0, Formula::new("=A1").set_result("#GETTING_DATA"))
+        .unwrap();
+    worksheet.write_string(199, LAST_COLUMN, "a note").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Refused(Refusal::CellError {
+            error: "#GETTING_DATA".to_owned()
+        }))
+    );
+}
+
+#[test]
 fn a_value_at_xfd1_over_column_a_down_to_row_200_is_too_large_at_row_123() {
     // 122 rows of 16,384 columns are 1,998,848 cells, and 123 rows are
     // 2,015,232, the first rectangle above 2,000,000.

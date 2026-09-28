@@ -191,6 +191,26 @@ mod tests {
         );
     }
 
+    // calamine's reader of an xlsx gives a cell of type "d", a date written
+    // in ISO 8601, as DateTimeIso, and never gives DurationIso; both are
+    // their text.
+
+    #[test]
+    fn a_date_written_in_iso_8601_is_its_text() {
+        assert_eq!(
+            cell_of_value(&DataRef::DateTimeIso("2024-05-13".to_owned())),
+            SheetCell::Text("2024-05-13".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_duration_written_in_iso_8601_is_its_text() {
+        assert_eq!(
+            cell_of_value(&DataRef::DurationIso("PT1H30M".to_owned())),
+            SheetCell::Text("PT1H30M".to_owned())
+        );
+    }
+
     #[test]
     fn an_error_of_getting_data_is_the_text_excel_writes() {
         // calamine writes it #DATA!, and its reader of an xlsx refuses the

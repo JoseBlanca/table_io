@@ -2,8 +2,12 @@
 //! reads before calamine" of `docs/specs/read.md`): every part read to its
 //! end, so that a part whose checksum fails refuses the file, and the bytes
 //! so read counted and bounded; the date system, from the `workbookPr` that
-//! is a direct child of the root of the workbook; and the bounds of the
-//! parts calamine reads whole when it opens the file.
+//! is a direct child of the root of the workbook, in the workbook that
+//! `_rels/.rels` names; the bounds of the parts calamine holds whole, found
+//! by the end of their names in any folder, each at its value; the merged
+//! ranges counted in every part; and the files of the review of 28
+//! September 2026 that trapped the package. The messages of the bounds are
+//! also tested with small bounds in `src/bounds_tests.rs`.
 
 #[cfg(test)]
 #[expect(
@@ -213,6 +217,68 @@ fn a_date1904_of_true_is_the_system_of_1904() {
         read.unwrap().cells,
         [SheetCell::Text("2024-05-13".to_owned())]
     );
+}
+
+/// The date of [`read_of_1904_date`] whose `workbookPr` is replaced by
+/// `workbook_properties`.
+fn read_of_date_with_workbook_properties(workbook_properties: &str) -> Result<Sheet, ReadError> {
+    read_of_1904_date(|parts| {
+        for (name, xml) in parts.iter_mut() {
+            if name == "xl/workbook.xml" {
+                *xml = xml.replace(r#"<workbookPr date1904="1"/>"#, workbook_properties);
+                assert!(xml.contains(workbook_properties));
+            }
+        }
+    })
+}
+
+/// The cell of 43963 read in the system of 1904, 13 May 2024.
+fn date_of_1904() -> Vec<SheetCell> {
+    vec![SheetCell::Text("2024-05-13".to_owned())]
+}
+
+/// The cell of 43963 read in the system of 1900, 12 May 2020.
+fn date_of_1900() -> Vec<SheetCell> {
+    vec![SheetCell::Text("2020-05-12".to_owned())]
+}
+
+#[test]
+fn a_workbook_pr_with_a_prefix_gives_the_date_system() {
+    let read = read_of_date_with_workbook_properties(
+        r#"<x:workbookPr xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main" date1904="1"/>"#,
+    );
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
+#[test]
+fn a_date1904_of_0_is_the_system_of_1900() {
+    let read = read_of_date_with_workbook_properties(r#"<workbookPr date1904="0"/>"#);
+
+    assert_eq!(read.unwrap().cells, date_of_1900());
+}
+
+#[test]
+fn of_two_workbook_pr_children_of_the_root_the_last_gives_the_date_system() {
+    let last_of_1900 =
+        read_of_date_with_workbook_properties(r#"<workbookPr date1904="1"/><workbookPr/>"#);
+    let last_of_1904 =
+        read_of_date_with_workbook_properties(r#"<workbookPr/><workbookPr date1904="1"/>"#);
+
+    assert_eq!(last_of_1900.unwrap().cells, date_of_1900());
+    assert_eq!(last_of_1904.unwrap().cells, date_of_1904());
+}
+
+// calamine reads the first attribute of the name, with RawAttrIter.
+#[test]
+fn of_two_date1904_the_first_gives_the_date_system() {
+    let first_of_1904 =
+        read_of_date_with_workbook_properties(r#"<workbookPr date1904="1" date1904="0"/>"#);
+    let first_of_1900 =
+        read_of_date_with_workbook_properties(r#"<workbookPr date1904="0" date1904="1"/>"#);
+
+    assert_eq!(first_of_1904.unwrap().cells, date_of_1904());
+    assert_eq!(first_of_1900.unwrap().cells, date_of_1900());
 }
 
 // A file Excel saves as "Strict Open XML" has other namespaces for its
@@ -1235,4 +1301,176 @@ fn a_table_of_texts_that_starts_with_the_byte_order_mark_of_utf_8_is_read() {
     let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
 
     assert_eq!(read.unwrap().cells, the_two_texts());
+}
+
+/// The parts of [`parts_with_texts`], its table of texts `shared_strings_xml`
+/// and its sheet with `merge_cells` after its cells, with every part of
+/// `xl/` moved to `data/`, where `_rels/.rels` names the workbook.
+fn parts_in_data_folder(shared_strings_xml: String, merge_cells: &str) -> Vec<(String, String)> {
+    let mut parts = parts_with_texts(shared_strings_xml);
+    for (name, xml) in &mut parts {
+        if name == "xl/worksheets/sheet1.xml" {
+            *xml = xml.replace("</sheetData>", &format!("</sheetData>{merge_cells}"));
+        }
+        if let Some(name_in_folder) = name.strip_prefix("xl/") {
+            *name = format!("data/{name_in_folder}");
+        }
+        if name == "_rels/.rels" {
+            *xml = xml.replace(
+                r#"Target="xl/workbook.xml""#,
+                r#"Target="data/workbook.xml""#,
+            );
+        }
+    }
+    parts
+}
+
+// calamine reads the parts of the folder the package relationships give,
+// here data/, and so they are checked as those of xl/.
+#[test]
+fn a_workbook_in_a_folder_data_has_its_parts_checked_as_those_of_xl() {
+    let two_texts = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
+    let read_in_data = |shared_strings_xml: String, merge_cells: &str, max_cells: u32| {
+        let parts = parts_in_data_folder(shared_strings_xml, merge_cells);
+        assert!(parts.iter().all(|(name, _)| !name.starts_with("xl/")));
+        read_first_sheet(&xlsx_of_parts(&parts), max_cells)
+    };
+
+    let read = read_in_data(two_texts.clone(), "", MAX_SHEET_CELLS);
+    let unique_count = read_in_data(
+        shared_strings(r#"uniqueCount="400000000""#, &["id", "pop"]),
+        "",
+        MAX_SHEET_CELLS,
+    );
+    let merged_ranges = read_in_data(two_texts, &merge_cells_of(50, ""), 10);
+
+    assert_eq!(read.unwrap().cells, the_two_texts());
+    assert_eq!(
+        unique_count,
+        Err(ReadError::Unreadable("too many texts".to_owned()))
+    );
+    assert_eq!(
+        merged_ranges,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
+}
+
+#[test]
+fn a_workbook_in_a_folder_data_has_its_settings_parts_held_to_their_bound() {
+    for part_name in [
+        "data/workbook.xml",
+        "data/_rels/workbook.xml.rels",
+        "data/styles.xml",
+    ] {
+        let mut parts =
+            parts_in_data_folder(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]), "");
+        parts.push((
+            "data/styles.xml".to_owned(),
+            parts_of_1904_worksheet("", &[])
+                .into_iter()
+                .find(|(name, _)| name == "xl/styles.xml")
+                .map(|(_, xml)| xml)
+                .unwrap(),
+        ));
+        let xml = xml_of(&mut parts, part_name).unwrap();
+        *xml = padded(xml, 50_000_001).unwrap();
+
+        let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "a part of the file is too large".to_owned()
+            )),
+            "{part_name}"
+        );
+    }
+}
+
+/// A zip of the parts of [`parts_of_one_number`] and a part
+/// `docProps/padding.xml` of spaces whose size makes the parts unzip to
+/// `num_unzipped_bytes` bytes together, deflated.
+fn xlsx_unzipping_to(num_unzipped_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let parts = parts_of_one_number();
+    let parts_bytes: u64 = parts
+        .iter()
+        .map(|(_, xml)| u64::try_from(xml.len()).unwrap_or(u64::MAX))
+        .sum();
+    let num_padding_bytes = num_unzipped_bytes
+        .checked_sub(parts_bytes)
+        .ok_or("fewer bytes than the parts")?;
+    let mut repeated_parts = unrepeated(&parts);
+    repeated_parts.push(RepeatedPart {
+        name: "docProps/padding.xml",
+        head: "",
+        middle: " ",
+        num_middles: num_padding_bytes,
+        tail: "",
+    });
+    deflated_zip(&repeated_parts)
+}
+
+#[test]
+#[ignore = "takes 70 s in cargo test, deflating and unzipping 2 GB, past 10 s; run before each release"]
+fn a_file_that_unzips_to_1_000_000_000_bytes_is_read_and_one_byte_more_refused() {
+    let at_bound = read_first_sheet(&xlsx_unzipping_to(1_000_000_000).unwrap(), MAX_SHEET_CELLS);
+    let past_bound = read_first_sheet(&xlsx_unzipping_to(1_000_000_001).unwrap(), MAX_SHEET_CELLS);
+
+    assert_eq!(at_bound.unwrap().cells, [SheetCell::Number(7.0)]);
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable(
+            "the file unzips to more than 1,000,000,000 bytes".to_owned()
+        ))
+    );
+}
+
+/// A zip of the parts of [`parts_with_texts`] whose table of texts, of `id`
+/// and `pop`, holds `num_bytes` bytes, padded inside its root with
+/// elements `<x/>` among spaces, which calamine reads and lets be;
+/// deflated.
+fn xlsx_with_text_table_of(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
+    let (head, tail) = shared_strings_xml
+        .split_once("</sst>")
+        .ok_or("no end of the table")?;
+    let tail = format!("</sst>{tail}");
+    let middle = format!("{}<x/>", " ".repeat(4_092));
+    let bare_bytes = u64::try_from(head.len().saturating_add(tail.len()))?;
+    let padding_bytes = num_bytes
+        .checked_sub(bare_bytes)
+        .ok_or("fewer bytes than the table")?;
+    let num_middles = padding_bytes / 4_096;
+    let spaces = " ".repeat(usize::try_from(padding_bytes % 4_096)?);
+    let head = format!("{head}{spaces}");
+    let parts = parts_with_texts(String::new());
+    let mut repeated_parts = unrepeated(&parts);
+    let text_table = repeated_parts
+        .iter_mut()
+        .find(|part| part.name == "xl/sharedStrings.xml")
+        .ok_or("no table of texts")?;
+    text_table.head = &head;
+    text_table.middle = &middle;
+    text_table.num_middles = num_middles;
+    text_table.tail = &tail;
+    deflated_zip(&repeated_parts)
+}
+
+#[test]
+#[ignore = "takes 32 s in cargo test, deflating and reading 800 MB, past 10 s; run before each release"]
+fn a_table_of_texts_of_400_000_000_bytes_is_read_and_one_byte_more_refused() {
+    let at_bound = read_first_sheet(
+        &xlsx_with_text_table_of(400_000_000).unwrap(),
+        MAX_SHEET_CELLS,
+    );
+    let past_bound = read_first_sheet(
+        &xlsx_with_text_table_of(400_000_001).unwrap(),
+        MAX_SHEET_CELLS,
+    );
+
+    assert_eq!(at_bound.unwrap().cells, the_two_texts());
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable("too much text".to_owned()))
+    );
 }

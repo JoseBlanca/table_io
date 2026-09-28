@@ -237,10 +237,11 @@ the first cell's value over the range, and LibreOffice can keep the
 values of the other cells hidden in the file. Such a hidden value still
 counts for the rectangle. A range the file writes from its last cell to
 its first, `B4:B2`, which Excel does not write, is the same range,
-`B2:B4`. Two ranges that overlap, which Excel does not let a user make,
-make the file unreadable, `ReadError::Unreadable` with xlsx_rs's message
+`B2:B4`. Two ranges that overlap inside the rectangle, which Excel does
+not let a user make, make the file unreadable, `ReadError::Unreadable` with xlsx_rs's message
 "overlapping merged ranges": which value their shared cells took would
-depend on the order of the ranges in the file. These three were decided
+depend on the order of the ranges in the file; an overlap outside the
+rectangle changes no cell and is let be. These three were decided
 after the review of work package 2, on 28 September 2026.
 
 ### The refusals

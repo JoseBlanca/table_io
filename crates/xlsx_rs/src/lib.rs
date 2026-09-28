@@ -145,13 +145,18 @@ pub const MAX_SETTINGS_PART_BYTES: u64 = 50_000_000;
 /// `sharedStrings.xml`, `\` read as `/` and ignoring case, in any folder.
 pub const MAX_TEXT_TABLE_BYTES: u64 = MAX_TEXT_BYTES.saturating_mul(2);
 
-/// The most texts, elements `si`, the table of texts may hold, 10,000,000:
-/// past it the read is [`ReadError::Unreadable`], "too many texts".
+/// The most texts, elements of local name `si`, each table of texts may
+/// hold, and the largest number of texts, its attribute `uniqueCount`, it
+/// may say it holds, 10,000,000: past either the read is
+/// [`ReadError::Unreadable`], "too many texts". Every `si` of the part is
+/// counted, and every `uniqueCount` of every element of local name `sst`
+/// read, since calamine reserves room for as many texts as the first says
+/// before it reads one.
 ///
 /// The value is that of "What xlsx_rs reads before calamine" of
-/// `docs/specs/read.md`: calamine holds 12 bytes in the wasm for each text
-/// before its characters, 120 MB for these, where a table of individuals
-/// has at most as many texts as cells, 2,000,000.
+/// `docs/specs/read.md`, point 3: calamine holds 12 bytes in the wasm for
+/// each text before its characters, 120 MB for these, where a table of
+/// individuals has at most as many texts as cells, 2,000,000.
 pub const MAX_TEXTS: u64 = 10_000_000;
 
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
@@ -175,13 +180,12 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// - "a part of the file is too large", for a settings part past
 ///   [`MAX_SETTINGS_PART_BYTES`], in any folder;
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
-///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder;
-///   "too many texts", for one of more texts than [`MAX_TEXTS`]; and "the
-///   table of texts says it holds more texts than it does", for one whose
-///   attribute `uniqueCount` is larger than its texts;
+///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder; and
+///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
+///   attribute `uniqueCount` passes it;
 /// - "the part … cannot be read as XML: …", with the message of quick-xml,
-///   for package relationships, a table of texts or a workbook whose XML
-///   xlsx_rs cannot read up to what it takes of it;
+///   for package relationships or a workbook whose XML xlsx_rs cannot read
+///   up to what it takes of it;
 /// - calamine's, for a zip it cannot read as a workbook, or whose sheet it
 ///   cannot read;
 /// - "no visible worksheet", for a workbook whose worksheets are all
@@ -210,6 +214,7 @@ const PART_BOUNDS: PartBounds = PartBounds {
     max_unzipped_bytes: MAX_UNZIPPED_BYTES,
     max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
     max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
+    max_texts: MAX_TEXTS,
 };
 
 /// Reads as [`read_first_sheet`] does, with `max_unzipped_bytes` in the
@@ -230,6 +235,7 @@ pub fn read_first_sheet_within_unzipped_bytes(
         max_unzipped_bytes,
         max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
         max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
+        max_texts: MAX_TEXTS,
     };
     read_first_sheet_within(bytes, max_cells, bounds)
 }
@@ -251,6 +257,7 @@ pub fn read_first_sheet_within_text_table_bytes(
         max_unzipped_bytes: MAX_UNZIPPED_BYTES,
         max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
         max_text_table_bytes,
+        max_texts: MAX_TEXTS,
     };
     read_first_sheet_within(bytes, max_cells, bounds)
 }

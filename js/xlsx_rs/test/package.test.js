@@ -333,7 +333,7 @@ test("unique_count.xlsx, whose table of texts says it holds 400,000,000 texts, t
 
     assert.throws(() => readXlsx(bytes, MAX_SHEET_CELLS), {
         name: "Error",
-        message: "the table of texts says it holds more texts than it does",
+        message: "too many texts",
     });
     // The package still reads after it, as it does not after a trap.
     const written = await readFile(new URL("written.xlsx", dataDir));

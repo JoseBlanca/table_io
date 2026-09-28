@@ -41,6 +41,9 @@ pub(crate) struct PartBounds {
     /// The most bytes each table of texts may hold once unzipped,
     /// [`crate::MAX_TEXT_TABLE_BYTES`] outside the tests.
     pub(crate) max_text_table_bytes: u64,
+    /// The most texts, and the largest `uniqueCount`, each table of texts
+    /// may hold, [`crate::MAX_TEXTS`] outside the tests.
+    pub(crate) max_texts: u64,
 }
 
 /// What xlsx_rs reads of the parts before calamine opens the file, and the
@@ -175,12 +178,11 @@ impl PartsRead<'_> {
 /// relationships, `_rels/.rels`, are missing or name no workbook, which
 /// calamine refuses too; "the file unzips to more than … bytes" when the parts hold
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
-/// file is too large", "too much text", "too many texts" and "the table of
-/// texts says it holds more texts than it does", for the bounds of the
-/// parts calamine reads whole ("What xlsx_rs reads before calamine",
-/// point 3); and "the part … cannot be read as XML: …",
-/// with quick-xml's message, for package relationships, a table of texts
-/// or a workbook whose XML cannot be read up to what xlsx_rs takes of it.
+/// file is too large", "too much text" and "too many texts", for the
+/// bounds of the parts calamine reads whole ("What xlsx_rs reads before
+/// calamine", point 3); and "the part … cannot be read as XML: …", with
+/// quick-xml's message, for package relationships or a workbook whose XML
+/// cannot be read up to what xlsx_rs takes of it.
 pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'_>, ReadError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
     read_every_part(&mut archive, bounds)?;
@@ -191,8 +193,6 @@ pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'
         ));
     };
     let workbook_path = format!("{workbook_folder}workbook.xml");
-    let text_table_path = format!("{workbook_folder}sharedStrings.xml");
-    check_text_table(&mut archive, &part_names, &text_table_path)?;
     let (date_system, sheets) = read_workbook(&mut archive, &part_names, &workbook_path)?;
     Ok(PartsRead {
         date_system,
@@ -389,10 +389,20 @@ fn read_every_part(archive: &mut Archive<'_>, bounds: PartBounds) -> Result<(), 
         let part = archive
             .by_index(part_index)
             .map_err(unreadable_of_zip_error)?;
-        let bound = PartKind::of_zip_name(part.name()).bound_of_bytes(&bounds);
-        let mut part_reader = PartReader::new(part, bound, &mut unzipped);
-        let copy_result = io::copy(&mut part_reader, &mut io::sink());
-        part_reader.finish(copy_result)?;
+        let part_kind = PartKind::of_zip_name(part.name());
+        let mut part_reader =
+            PartReader::new(part, part_kind.bound_of_bytes(&bounds), &mut unzipped);
+        match part_kind {
+            PartKind::TextTable => read_text_table(part_reader, bounds.max_texts)?,
+            PartKind::PackageRelationships
+            | PartKind::Workbook
+            | PartKind::WorkbookRelationships
+            | PartKind::Styles
+            | PartKind::Other => {
+                let copy_result = io::copy(&mut part_reader, &mut io::sink());
+                part_reader.finish(copy_result)?;
+            }
+        }
     }
     Ok(())
 }
@@ -445,13 +455,19 @@ fn xml_reader_of<'archive>(
         Err(ZipError::FileNotFound) => return Ok(None),
         Err(zip_error) => return Err(unreadable_of_zip_error(zip_error)),
     };
-    let mut xml_reader = XmlReader::from_reader(BufReader::new(part));
+    Ok(Some(xml_reader_over(BufReader::new(part))))
+}
+
+/// A reader of the XML of `part`, configured as calamine's `xml_reader`
+/// configures its own, so that the two meet the same elements.
+fn xml_reader_over<Part: BufRead>(part: Part) -> XmlReader<Part> {
+    let mut xml_reader = XmlReader::from_reader(part);
     let config = xml_reader.config_mut();
     config.check_end_names = false;
     config.trim_text(false);
     config.check_comments = false;
     config.expand_empty_elements = true;
-    Ok(Some(xml_reader))
+    xml_reader
 }
 
 /// The folder of the workbook, such as `xl/`, as calamine's
@@ -541,92 +557,110 @@ fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, Attr
     })
 }
 
-/// Checks the table of texts `path` as calamine's `read_shared_strings`
-/// reads it: the elements `si` of its root `sst`, each a text, those
-/// inside another `si` not counted; and the attribute `uniqueCount` of
-/// `sst`, the number of texts it says it holds, for which calamine reserves
-/// room before it reads the first. A `uniqueCount` that is not a whole
-/// number written in digits is let be, as calamine does; a part with no
-/// root `sst`, or cut short, is let be too, for calamine to refuse.
+/// Reads the table of texts that `part_reader` unzips with quick-xml,
+/// configured as calamine configures it, to the end of the part or to its
+/// first error of XML, and then the rest of its bytes, so that the part is
+/// read to its end ("What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`, point 3). It counts every element of local name
+/// `si`, each a text, those inside another `si` and outside the root among
+/// them, and reads every attribute `uniqueCount` of every element of local
+/// name `sst`, the number of texts the table says it holds, for which
+/// calamine reserves room when it meets the first `sst`. calamine counts
+/// fewer: the `si` of the first `sst`, not those inside another, and
+/// reserves room for the first `uniqueCount` of the first `sst`.
+///
+/// An error of XML is not an error here: calamine refuses a file at one
+/// before `</sst>` and never reads one after it.
 ///
 /// # Errors
 ///
-/// [`ReadError::Unreadable`]: "too many texts" past
-/// [`crate::MAX_TEXTS`], at the first `si` past it; "the table of texts
-/// says it holds more texts than it does" for a `uniqueCount` larger than
-/// the texts; and "the part … cannot be read as XML: …".
-fn check_text_table(
-    archive: &mut Archive<'_>,
-    part_names: &PartNames,
-    path: &str,
+/// [`ReadError::Unreadable`]: "too many texts" at the first `si` past
+/// `max_texts`, or at a `uniqueCount` past it; and the failure of
+/// `part_reader`, an error of the zip or a bound of its bytes passed.
+fn read_text_table<Part: Read>(
+    part_reader: PartReader<'_, Part>,
+    max_texts: u64,
 ) -> Result<(), ReadError> {
-    let Some(mut xml_reader) = xml_reader_of(archive, part_names, path)? else {
-        return Ok(());
-    };
-    let unreadable = |cause: &dyn std::fmt::Display| unreadable_xml_error_of(path, cause);
-    let mut buffer = Vec::new();
-    let unique_count = loop {
-        buffer.clear();
-        match xml_reader.read_event_into(&mut buffer) {
-            Ok(Event::Start(element)) if element.local_name().as_ref() == b"sst" => {
-                break unique_count_of(&element).map_err(|xml_error| unreadable(&xml_error))?;
-            }
-            Ok(Event::Eof) => return Ok(()),
-            Err(xml_error) => return Err(unreadable(&xml_error)),
-            Ok(_) => {}
-        }
-    };
+    let mut xml_reader = xml_reader_over(BufReader::new(part_reader));
     let mut num_texts: u64 = 0;
+    let mut buffer = Vec::new();
     loop {
         buffer.clear();
         match xml_reader.read_event_into(&mut buffer) {
-            Ok(Event::Start(element)) if element.local_name().as_ref() == b"si" => {
-                num_texts = num_texts.saturating_add(1);
-                if num_texts > crate::MAX_TEXTS {
-                    return Err(ReadError::Unreadable("too many texts".to_owned()));
-                }
-                // calamine reads a text up to the first end of an element of
-                // the same name, and counts nothing inside it.
-                let text_name = element.name().as_ref().to_vec();
-                let mut text_buffer = Vec::new();
-                loop {
-                    text_buffer.clear();
-                    match xml_reader.read_event_into(&mut text_buffer) {
-                        Ok(Event::End(end)) if end.name().as_ref() == text_name.as_slice() => break,
-                        Ok(Event::Eof) => return Ok(()),
-                        Err(xml_error) => return Err(unreadable(&xml_error)),
-                        Ok(_) => {}
+            Ok(Event::Start(element)) => match element.local_name().as_ref() {
+                b"si" => {
+                    num_texts = num_texts.saturating_add(1);
+                    if num_texts > max_texts {
+                        return Err(too_many_texts());
                     }
                 }
-            }
-            Ok(Event::End(element)) if element.local_name().as_ref() == b"sst" => break,
-            Ok(Event::Eof) => return Ok(()),
-            Err(xml_error) => return Err(unreadable(&xml_error)),
+                b"sst" if is_unique_count_past(&element, max_texts) => {
+                    return Err(too_many_texts());
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
             Ok(_) => {}
         }
     }
-    if unique_count.is_some_and(|unique_count| unique_count > num_texts) {
-        return Err(ReadError::Unreadable(
-            "the table of texts says it holds more texts than it does".to_owned(),
-        ));
-    }
-    Ok(())
+    read_to_end(xml_reader)
 }
 
-/// The attribute `uniqueCount` of `sst`, the root of a table of texts, as
-/// calamine reads it, up to the first attribute of that name: a number
-/// when it is written in digits alone, any zeros first among them, and
-/// `None` when it is missing, holds anything else, or passes a `u64`.
-fn unique_count_of(sst: &BytesStart<'_>) -> Result<Option<u64>, AttrError> {
-    let Some(digits) = attribute_of(sst, b"uniqueCount")? else {
-        return Ok(None);
-    };
+/// The error of a table of texts past [`crate::MAX_TEXTS`].
+fn too_many_texts() -> ReadError {
+    ReadError::Unreadable("too many texts".to_owned())
+}
+
+/// Whether an attribute `uniqueCount` of `sst`, an element of local name
+/// `sst`, is a number past `max_texts`, its attributes read with
+/// [`RawAttrIter`] up to the first it cannot read. A `uniqueCount` is a
+/// number when it is one or more digits and nothing else, as calamine
+/// reads it with `atoi_simd::parse::<usize, true, false>`, which takes any
+/// zeros first and no sign; it is compared whatever its size, so one past
+/// 4,294,967,295, which calamine in the wasm cannot read, is past too.
+fn is_unique_count_past(sst: &BytesStart<'_>, max_texts: u64) -> bool {
+    RawAttrIter::of_element(sst)
+        .map_while(Result::ok)
+        .filter(|(key, _)| *key == b"uniqueCount")
+        .any(|(_, digits)| is_number_past(digits, max_texts))
+}
+
+/// Whether `digits` are one or more ASCII digits and nothing else, and
+/// the number they write, any zeros first left out, is past `max_number`.
+fn is_number_past(digits: &[u8], max_number: u64) -> bool {
     if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
-        return Ok(None);
+        return false;
     }
-    Ok(std::str::from_utf8(digits)
-        .ok()
-        .and_then(|digits| digits.parse::<u64>().ok()))
+    let significant_digits = digits
+        .iter()
+        .position(|digit| *digit != b'0')
+        .and_then(|first_significant| digits.get(first_significant..))
+        .unwrap_or_default();
+    // A number of 20 digits or more passes any u64.
+    if significant_digits.len() >= 20 {
+        return true;
+    }
+    let number = significant_digits.iter().fold(0_u64, |number, digit| {
+        number
+            .saturating_mul(10)
+            .saturating_add(u64::from(digit.saturating_sub(b'0')))
+    });
+    number > max_number
+}
+
+/// Reads what is left of the part of `xml_reader` to its end, past where
+/// the reader of XML stopped, and gives the failure of the part, if any.
+///
+/// # Errors
+///
+/// The failure of the part: an error of the zip, or a bound of its bytes
+/// passed.
+fn read_to_end<Part: Read>(
+    xml_reader: XmlReader<BufReader<PartReader<'_, Part>>>,
+) -> Result<(), ReadError> {
+    let mut buffered_part = xml_reader.into_inner();
+    let copy_result = io::copy(&mut buffered_part, &mut io::sink());
+    buffered_part.into_inner().finish(copy_result)
 }
 
 /// The date system of the workbook `path`, and the sheets it lists.

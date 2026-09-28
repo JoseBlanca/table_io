@@ -617,14 +617,20 @@ fn a_table_of_texts_past_the_bound_of_its_bytes_is_too_much_text() {
     assert_eq!(at_bound.unwrap().cells, the_two_texts());
 }
 
-#[test]
-fn a_table_of_more_than_10_000_000_texts_is_unreadable() {
-    let shared_strings_xml = format!(
+/// A table of texts of `num_texts` texts, the first two `id` and `pop` and
+/// the others empty, `<si/>`, with no `uniqueCount`.
+fn shared_strings_of_num_texts(num_texts: usize) -> String {
+    format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{}</sst>"#,
-        "<si/>".repeat(10_000_001)
-    );
-    let bytes = xlsx_of_parts(&parts_with_texts(shared_strings_xml));
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>id</t></si><si><t>pop</t></si>{}</sst>"#,
+        "<si/>".repeat(num_texts.saturating_sub(2))
+    )
+}
+
+#[test]
+#[ignore = "takes 12 s in cargo test, past 10 s; run before each release"]
+fn a_table_of_more_than_10_000_000_texts_is_unreadable() {
+    let bytes = xlsx_of_parts(&parts_with_texts(shared_strings_of_num_texts(10_000_001)));
 
     let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
 
@@ -635,28 +641,120 @@ fn a_table_of_more_than_10_000_000_texts_is_unreadable() {
 }
 
 #[test]
-fn a_table_of_texts_whose_unique_count_is_larger_than_its_texts_is_unreadable() {
-    for unique_count in ["3", "400000000"] {
+#[ignore = "takes 19 s in cargo test, past 10 s; run before each release"]
+fn a_table_of_10_000_000_texts_is_read() {
+    let bytes = xlsx_of_parts(&parts_with_texts(shared_strings_of_num_texts(10_000_000)));
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(read.unwrap().cells, the_two_texts());
+}
+
+// calamine reserves room for as many texts as the first uniqueCount of the
+// first sst says, before it reads the first text, and whatever the texts
+// that follow: 400,000,000 trapped the package.
+#[test]
+fn a_table_of_texts_whose_unique_count_passes_10_000_000_is_unreadable() {
+    for unique_count in [
+        "10000001",
+        "400000000",
+        "00010000001",
+        "4294967296",
+        "123456789012345678901234567890",
+    ] {
         let read = read_with_texts(&format!(r#"uniqueCount="{unique_count}""#));
 
         assert_eq!(
             read,
-            Err(ReadError::Unreadable(
-                "the table of texts says it holds more texts than it does".to_owned()
-            )),
+            Err(ReadError::Unreadable("too many texts".to_owned())),
             "uniqueCount {unique_count}"
         );
     }
 }
 
 #[test]
-fn a_table_of_texts_whose_unique_count_is_its_texts_missing_or_not_a_number_is_read() {
+fn a_table_of_texts_cut_short_after_a_unique_count_past_10_000_000_is_unreadable() {
+    let shared_strings_xml = shared_strings(r#"uniqueCount="400000000""#, &["id", "pop"]);
+    let cut_short = shared_strings_xml.replace("</sst>", "");
+
+    let read = read_first_sheet(
+        &xlsx_of_parts(&parts_with_texts(cut_short)),
+        MAX_SHEET_CELLS,
+    );
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many texts".to_owned()))
+    );
+}
+
+// Every uniqueCount of every sst is read, and every si counted, in any part
+// whose name ends in sharedStrings.xml: more than calamine can hold.
+#[test]
+fn a_unique_count_past_10_000_000_anywhere_in_a_table_of_texts_is_unreadable() {
+    let two_texts = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
+    for shared_strings_xml in [
+        two_texts.replace("</sst>", r#"</sst><sst uniqueCount="400000000"/>"#),
+        two_texts.replace(
+            r#"uniqueCount="2""#,
+            r#"uniqueCount="2" uniqueCount="400000000""#,
+        ),
+        two_texts.replace("<si>", r#"<x:sst uniqueCount="400000000"/><si>"#),
+    ] {
+        let read = read_first_sheet(
+            &xlsx_of_parts(&parts_with_texts(shared_strings_xml.clone())),
+            MAX_SHEET_CELLS,
+        );
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable("too many texts".to_owned())),
+            "{shared_strings_xml}"
+        );
+    }
+}
+
+#[test]
+fn a_table_of_texts_in_another_folder_is_counted() {
+    let mut parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
+    parts.push((
+        "data/sharedStrings.xml".to_owned(),
+        shared_strings(r#"uniqueCount="400000000""#, &[]),
+    ));
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many texts".to_owned()))
+    );
+}
+
+// calamine reserves room for 10,000,000 texts, 240 MB natively, and reads
+// the two there are.
+#[test]
+fn a_table_of_texts_whose_unique_count_is_10_000_000_is_read() {
+    let read = read_with_texts(r#"uniqueCount="10000000""#);
+
+    assert_eq!(read.unwrap().cells, the_two_texts());
+}
+
+// A uniqueCount larger than the texts is a file calamine reads, and the
+// room it reserves is within the bound; one with a sign is not a number to
+// calamine, which reserves nothing for it.
+#[test]
+fn a_table_of_texts_whose_unique_count_is_within_10_000_000_missing_or_not_a_number_is_read() {
     for sst_attributes in [
         r#"count="5" uniqueCount="2""#,
         r#"uniqueCount="1""#,
+        r#"uniqueCount="1000""#,
+        r#"uniqueCount="0010000000""#,
         "",
         r#"uniqueCount="many""#,
         r#"uniqueCount="-3""#,
+        r#"uniqueCount="+400000000""#,
+        r#"uniqueCount="""#,
+        r#"uniquecount="400000000""#,
     ] {
         let read = read_with_texts(sst_attributes);
 
@@ -699,10 +797,8 @@ fn a_table_of_texts_named_in_capitals_is_checked() {
 
     assert_eq!(read_of_unique_count("2").unwrap().cells, the_two_texts());
     assert_eq!(
-        read_of_unique_count("3"),
-        Err(ReadError::Unreadable(
-            "the table of texts says it holds more texts than it does".to_owned()
-        ))
+        read_of_unique_count("400000000"),
+        Err(ReadError::Unreadable("too many texts".to_owned()))
     );
 }
 
@@ -840,9 +936,7 @@ fn a_unique_count_after_a_form_feed_is_read_as_calamine_reads_it() {
 
     assert_eq!(
         read,
-        Err(ReadError::Unreadable(
-            "the table of texts says it holds more texts than it does".to_owned()
-        ))
+        Err(ReadError::Unreadable("too many texts".to_owned()))
     );
 }
 
@@ -862,9 +956,7 @@ fn a_type_of_the_package_relationships_after_a_form_feed_is_read_as_calamine_rea
 
     assert_eq!(
         read,
-        Err(ReadError::Unreadable(
-            "the table of texts says it holds more texts than it does".to_owned()
-        ))
+        Err(ReadError::Unreadable("too many texts".to_owned()))
     );
 }
 

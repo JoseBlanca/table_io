@@ -1,10 +1,9 @@
 # The report of the reading of an xlsx
 
 The work report of `docs/plans/read.md`, carried out on the branch
-`plan/read` from 28 September 2026. It is written as the work goes, one
-section for each work package, for the owner, who decides the merge and
-the release; its last section is for whoever next revises a skill or
-writes a plan.
+`plan/read` on 28 September 2026: a section for each work package, with
+its deliverables, what its review found and what changed. The last
+section is for whoever next revises a skill or writes a plan.
 
 ## State
 
@@ -17,7 +16,8 @@ visible sheet of an xlsx into its cells as the spec gives them; the
 binding `crates/xlsx_rs_js`; and the package `js/xlsx_rs`, which `npm
 pack` builds, tests and packs as `xlsx_rs-0.1.0.tgz`, 291,672 bytes, whose
 `.wasm` is 517,781 bytes and 284,870 gzipped with `gzip -9`, against the
-295,475 of the spec's trial. 102 tests pass under `cargo test`, and 14
+295,475 gzipped of the crates of trial of 27 September 2026, built the
+same way on the owner's Mac with calamine alone, which the spec gives. 102 tests pass under `cargo test`, and 14
 are ignored: the 8 of the owner's files, which wait for them, and the 6
 that write the committed test files, run by hand. Under node 9 tests
 pass and 2 are skipped until `excel_en.xlsx` and `encrypted.xlsx` exist.
@@ -27,7 +27,11 @@ that.
 
 Asked of the owner:
 
-1. The merge of `plan/read` into `main`.
+1. The merge of `plan/read` into `main`. It does not wait for question
+   2: what is left open below touches only files damaged or written to
+   break the reader, none of which Excel, LibreOffice or Google Sheets
+   save, and the spec says each of them; the answer to question 2 is a
+   plan of its own.
 2. Whether xlsx_rs may read three parts of the file itself, with the
    `zip` and `quick-xml` crates that calamine already brings, at the
    same versions, as direct dependencies: the checksums of the zip,
@@ -36,10 +40,15 @@ Asked of the owner:
    were, in work package 1); the merged ranges, and the table of texts,
    which calamine reads whole with no bound, so that a file written for
    it cannot trap popnei_web's light worker (a file of 6 KB did, in work
-   package 4). Meanwhile the spec says what is not bounded.
-3. The eight files of the spec's "Made by the owner". Their tests fail
-   until the owner's cells are written into them, so that none can pass
-   by being switched on without them.
+   package 4). Meanwhile the spec says what is not bounded. One more
+   gap is calamine's alone and stays until calamine fixes it: a row
+   number past 2^32 in the file wraps, and its value lands in another
+   cell; an issue for calamine.
+3. The eight files of the spec's "Made by the owner", made in Excel,
+   LibreOffice and Google Sheets, and for each what its cells show there;
+   those cells are then written into its test as literals. Until then
+   each test is ignored, and it fails if it is switched on without
+   them.
 4. The repository on GitHub, and the order for the first release,
    `js-v0.1.0-dev.1`, which popnei_web's work package 9 of stage 4 waits
    for.

@@ -87,12 +87,72 @@ fn text_of_error(calamine_error: &CellErrorType) -> &'static str {
     }
 }
 
+/// The bytes of UTF-8 of the texts of the cells made so far, held to a
+/// bound: one text is copied into every cell that holds it, so a small
+/// file can make many ("The refusals" of `docs/specs/read.md`).
+#[derive(Debug)]
+pub(crate) struct TextCount {
+    /// The bytes counted so far.
+    num_bytes: u64,
+    /// The most bytes the count may reach.
+    max_bytes: u64,
+}
+
+/// The texts of the cells made have passed the bound of a [`TextCount`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TooMuchText;
+
+impl TextCount {
+    /// A count of no bytes, which may reach `max_bytes`.
+    pub(crate) fn with_bound(max_bytes: u64) -> Self {
+        Self {
+            num_bytes: 0,
+            max_bytes,
+        }
+    }
+
+    /// Counts the bytes of `cell`, a text, before it is made; a cell of
+    /// another kind counts none.
+    ///
+    /// # Errors
+    ///
+    /// [`TooMuchText`] when the bytes counted pass the bound.
+    pub(crate) fn count(&mut self, cell: &SheetCell) -> Result<(), TooMuchText> {
+        let cell_bytes = match cell {
+            SheetCell::Text(cell_text) => u64::try_from(cell_text.len()).unwrap_or(u64::MAX),
+            SheetCell::Empty | SheetCell::Number(_) | SheetCell::Bool(_) => 0,
+        };
+        self.num_bytes = self.num_bytes.saturating_add(cell_bytes);
+        if self.num_bytes > self.max_bytes {
+            Err(TooMuchText)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use calamine::{CellErrorType, DataRef};
 
     use crate::SheetCell;
-    use crate::cell::cell_of_value;
+    use crate::cell::{TextCount, TooMuchText, cell_of_value};
+
+    #[test]
+    fn texts_up_to_the_bound_are_counted_and_one_byte_more_is_too_much() {
+        let mut text_count = TextCount::with_bound(10);
+
+        assert_eq!(
+            text_count.count(&SheetCell::Text("Población".to_owned())),
+            Ok(())
+        );
+        assert_eq!(text_count.count(&SheetCell::Number(1.5)), Ok(()));
+        assert_eq!(text_count.count(&SheetCell::Empty), Ok(()));
+        assert_eq!(
+            text_count.count(&SheetCell::Text("x".to_owned())),
+            Err(TooMuchText)
+        );
+    }
 
     #[test]
     fn a_shared_text_with_no_character_is_an_empty_cell() {

@@ -10,7 +10,7 @@ use std::io::Cursor;
 
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
-use crate::cell::cell_of_value;
+use crate::cell::{TextCount, cell_of_value};
 use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
@@ -93,6 +93,16 @@ pub enum ReadError {
     Unreadable(String),
 }
 
+/// The most bytes of UTF-8 the texts of the cells of a read may hold,
+/// 200,000,000, a text merged over several cells counted in each: past it
+/// the read is [`ReadError::Unreadable`], "too much text".
+///
+/// The value is that of "The refusals" of `docs/specs/read.md`: 200 MB of
+/// UTF-8 are 400 MB or more as the strings of JavaScript, the most a tab
+/// can be asked to hold, where a table of individuals of 20 MB of CSV
+/// holds about 20 MB of text.
+pub const MAX_TEXT_BYTES: u64 = 200_000_000;
+
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
 /// refusing it at the first cell that makes the rectangle of the values
 /// larger than `max_cells` cells.
@@ -117,12 +127,13 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         .map(|calamine_sheet| calamine_sheet.name.clone())
         .ok_or_else(|| ReadError::Unreadable("no visible worksheet".to_owned()))?;
 
-    let (rectangle, kept_cells) = {
+    let (rectangle, kept_cells, mut text_count) = {
         let mut cells_reader = workbook
             .worksheet_cells_reader(&sheet_name)
             .map_err(read_error_of)?;
         let mut rectangle: Option<Rectangle> = None;
         let mut kept_cells = Vec::new();
+        let mut text_count = TextCount::with_bound(MAX_TEXT_BYTES);
         while let Some(calamine_cell) = cells_reader.next_cell().map_err(read_error_of)? {
             let cell = cell_of_value(calamine_cell.get_value());
             if cell == SheetCell::Empty {
@@ -154,10 +165,11 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
                     "cells written more than once".to_owned(),
                 ));
             }
+            text_count.count(&cell).map_err(|_| too_much_text())?;
             rectangle = Some(extended_rectangle);
             kept_cells.push((position, cell));
         }
-        (rectangle, kept_cells)
+        (rectangle, kept_cells, text_count)
     };
 
     let Some(rectangle) = rectangle else {
@@ -175,7 +187,7 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         .collect();
     let bounds = excel_bounds_of(&rectangle, &sheet_name)?;
     let cells = rectangle
-        .laid_out(kept_cells, &merged_ranges)
+        .laid_out(kept_cells, &merged_ranges, &mut text_count)
         .map_err(|layout_error| match layout_error {
             LayoutError::TooManyCells { num_cells } => unreadable_sheet(
                 &sheet_name,
@@ -192,6 +204,7 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
             LayoutError::OverlappingMergedRanges => {
                 ReadError::Unreadable("overlapping merged ranges".to_owned())
             }
+            LayoutError::TooMuchText => too_much_text(),
         })?;
     Ok(Sheet {
         name: sheet_name,
@@ -243,6 +256,11 @@ fn excel_bounds_of(rectangle: &Rectangle, sheet_name: &str) -> Result<ExcelBound
         num_rows,
         num_columns,
     })
+}
+
+/// The error of a read whose texts passed [`MAX_TEXT_BYTES`].
+fn too_much_text() -> ReadError {
+    ReadError::Unreadable("too much text".to_owned())
 }
 
 /// The error of a sheet xlsx_rs cannot give, with `cause` after its name.

@@ -291,3 +291,21 @@ fn a_cell_written_twice_with_a_limit_of_2_cells_takes_the_last_value() {
         Ok(vec![SheetCell::Text("ind2".to_owned())])
     );
 }
+
+#[test]
+fn a_text_of_100000_characters_merged_over_2001_cells_is_unreadable_as_too_much_text() {
+    // The text at A1 is merged over A1:A2001, and a number at B2001 makes
+    // the rectangle reach row 2001: 2,001 cells of 100,000 bytes are
+    // 200,100,000 bytes, past MAX_TEXT_BYTES, 200,000,000, at the last
+    // cell. Excel allows 32,767 characters in a cell, so rust_xlsxwriter
+    // does not write this text.
+    let long_text = "x".repeat(100_000);
+    let bytes = xlsx_of_worksheet(&format!(
+        r#"<sheetData><row r="1">{}</row><row r="2001"><c r="B2001"><v>1</v></c></row></sheetData><mergeCells count="1"><mergeCell ref="A1:A2001"/></mergeCells>"#,
+        text_cell("A1", &long_text)
+    ));
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(read, Err(ReadError::Unreadable("too much text".to_owned())));
+}

@@ -2,6 +2,7 @@
 //! after row ("The sheet read" of `docs/specs/read.md`).
 
 use crate::SheetCell;
+use crate::cell::TextCount;
 
 /// A position as calamine gives it: the row and the column, both from 0.
 pub(crate) type Position = (u32, u32);
@@ -134,13 +135,16 @@ impl Rectangle {
     ///
     /// [`LayoutError::TooManyCells`] when the memory cannot hold the cells
     /// of the rectangle, [`LayoutError::PositionOutside`] for a cell of
-    /// `kept_cells` outside it, and
+    /// `kept_cells` outside it,
     /// [`LayoutError::OverlappingMergedRanges`] when two of
-    /// `merged_ranges` share a cell inside it.
+    /// `merged_ranges` share a cell inside it, and
+    /// [`LayoutError::TooMuchText`] when the text a range copies into its
+    /// cells, counted in `text_count`, passes its bound.
     pub(crate) fn laid_out(
         &self,
         kept_cells: Vec<(Position, SheetCell)>,
         merged_ranges: &[MergedRange],
+        text_count: &mut TextCount,
     ) -> Result<Vec<SheetCell>, LayoutError> {
         let num_cells = self.num_cells();
         let too_many_cells = || LayoutError::TooManyCells { num_cells };
@@ -170,7 +174,7 @@ impl Rectangle {
                     .map_err(|_| too_many_cells())?;
                 is_merged.resize(capacity, false);
                 for merged_range in merged_ranges {
-                    self.fill_merged_range(&mut cells, &mut is_merged, *merged_range)?;
+                    self.fill_merged_range(&mut cells, &mut is_merged, text_count, *merged_range)?;
                 }
             }
             cells
@@ -180,16 +184,20 @@ impl Rectangle {
 
     /// Gives every cell of `merged_range` inside the rectangle, among
     /// `cells` laid out row after row, the value of the range's first cell,
-    /// and marks it in `is_merged`, laid out the same way.
+    /// and marks it in `is_merged`, laid out the same way. The value copied
+    /// into each cell but the first, which was counted as it was read, is
+    /// counted in `text_count` before it is copied.
     ///
     /// # Errors
     ///
     /// [`LayoutError::OverlappingMergedRanges`] at a cell `is_merged`
-    /// already marks, one of another range.
+    /// already marks, one of another range, and [`LayoutError::TooMuchText`]
+    /// when the count passes its bound.
     fn fill_merged_range(
         &self,
         cells: &mut [SheetCell],
         is_merged: &mut [bool],
+        text_count: &mut TextCount,
         merged_range: MergedRange,
     ) -> Result<(), LayoutError> {
         let MergedRange {
@@ -214,6 +222,11 @@ impl Rectangle {
                         return Err(LayoutError::OverlappingMergedRanges);
                     }
                     *mark = true;
+                }
+                if (row, column) != merged_range.first {
+                    text_count
+                        .count(&first_value)
+                        .map_err(|_| LayoutError::TooMuchText)?;
                 }
                 if let Some(slot) = cells.get_mut(index) {
                     slot.clone_from(&first_value);
@@ -240,11 +253,14 @@ pub(crate) enum LayoutError {
     },
     /// Two merged ranges that share a cell of the rectangle.
     OverlappingMergedRanges,
+    /// The texts of the cells passed the bound of their count.
+    TooMuchText,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::SheetCell;
+    use crate::cell::TextCount;
     use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
     #[test]
@@ -254,7 +270,7 @@ mod tests {
         let rectangle = Rectangle::of_position((0, 0)).extended_to((u32::MAX - 1, u32::MAX - 1));
 
         assert_eq!(
-            rectangle.laid_out(Vec::new(), &[]),
+            rectangle.laid_out(Vec::new(), &[], &mut TextCount::with_bound(0)),
             Err(LayoutError::TooManyCells {
                 num_cells: 18_446_744_065_119_617_025
             })
@@ -267,7 +283,7 @@ mod tests {
         let kept_cells = vec![((0, 0), SheetCell::Bool(true))];
 
         assert_eq!(
-            rectangle.laid_out(kept_cells, &[]),
+            rectangle.laid_out(kept_cells, &[], &mut TextCount::with_bound(0)),
             Err(LayoutError::PositionOutside { position: (0, 0) })
         );
     }
@@ -285,7 +301,7 @@ mod tests {
         let merged_range = MergedRange::of_corners((0, 0), (1, 1));
 
         assert_eq!(
-            rectangle.laid_out(kept_cells, &[merged_range]),
+            rectangle.laid_out(kept_cells, &[merged_range], &mut TextCount::with_bound(0)),
             Ok(vec![
                 SheetCell::Empty,
                 SheetCell::Empty,

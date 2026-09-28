@@ -205,13 +205,64 @@ fn is_visible_worksheet(calamine_sheet: &calamine::Sheet) -> bool {
 /// The error of xlsx_rs for an error of calamine: the refusal it means, or
 /// calamine's message.
 ///
-/// An error calamine may add in a later version is the message, a file
-/// that could not be read, until the spec makes it a refusal; so this is
-/// an `if` over the errors that are refusals and not a `match` of every
-/// one.
+/// Every error of calamine is named, so that one its next version adds
+/// stops the build here, where whether it is a refusal is decided.
 fn read_error_of(calamine_error: XlsxError) -> ReadError {
-    if let XlsxError::Password = calamine_error {
-        return ReadError::Refused(Refusal::Encrypted);
+    match calamine_error {
+        XlsxError::Password => ReadError::Refused(Refusal::Encrypted),
+        // An error of a cell calamine does not know is to be refusal 5,
+        // `CellError`, in task 2.1 of docs/plans/read.md; the message until
+        // then.
+        XlsxError::CellError(_)
+        | XlsxError::Io(_)
+        | XlsxError::Zip(_)
+        | XlsxError::Vba(_)
+        | XlsxError::Xml(_)
+        | XlsxError::XmlAttr(_)
+        | XlsxError::Parse(_)
+        | XlsxError::ParseFloat(_)
+        | XlsxError::ParseInt(_)
+        | XlsxError::XmlEof(_)
+        | XlsxError::UnexpectedNode(_)
+        | XlsxError::FileNotFound(_)
+        | XlsxError::RelationshipNotFound
+        | XlsxError::Alphanumeric(_)
+        | XlsxError::NumericColumn(_)
+        | XlsxError::RangeWithoutColumnComponent
+        | XlsxError::RangeWithoutRowComponent
+        | XlsxError::ColumnNumberOverflow
+        | XlsxError::RowNumberOverflow
+        | XlsxError::DimensionCount(_)
+        | XlsxError::CellTAttribute(_)
+        | XlsxError::Unexpected(_)
+        | XlsxError::Unrecognized { .. }
+        | XlsxError::WorksheetNotFound(_)
+        | XlsxError::TableNotFound(_)
+        | XlsxError::NotAWorksheet(_)
+        | XlsxError::Encoding(_)
+        | XlsxError::PivotTableNotFound(_) => ReadError::Unreadable(calamine_error.to_string()),
     }
-    ReadError::Unreadable(calamine_error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use calamine::XlsxError;
+
+    use crate::{ReadError, Refusal, read_error_of};
+
+    #[test]
+    fn calamines_error_of_a_password_is_the_refusal_encrypted() {
+        assert_eq!(
+            read_error_of(XlsxError::Password),
+            ReadError::Refused(Refusal::Encrypted)
+        );
+    }
+
+    #[test]
+    fn another_error_of_calamine_is_unreadable_with_its_message() {
+        assert_eq!(
+            read_error_of(XlsxError::FileNotFound("xl/workbook.xml".to_owned())),
+            ReadError::Unreadable("File not found 'xl/workbook.xml'".to_owned())
+        );
+    }
 }

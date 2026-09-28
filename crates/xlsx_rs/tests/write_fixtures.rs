@@ -6,10 +6,18 @@
 //! cargo test -p xlsx_rs --test write_fixtures -- --ignored
 //! ```
 
+#[expect(
+    dead_code,
+    reason = "only the workbook of a table of texts is written from its parts here"
+)]
+mod hand_written;
+
 use std::error::Error;
 use std::path::PathBuf;
 
 use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Formula, Workbook, XlsxError};
+
+use crate::hand_written::{parts_of_worksheet, shared_strings, xlsx_of_parts};
 
 /// The path of `file_name` in `tests/data/` at the root of the repository.
 fn data_path(file_name: &str) -> PathBuf {
@@ -260,4 +268,27 @@ fn write_individuals_10000_xlsx() {
     }
 
     save(&mut workbook, "individuals_10000.xlsx").unwrap();
+}
+
+/// `unique_count.xlsx`, for the test of the package that reads it and gets
+/// an error, not a trap: a sheet whose A1 and B1 are the texts `id` and
+/// `pop` of a table of texts that holds those two and says, in its
+/// attribute `uniqueCount`, that it holds 400,000,000. calamine reserves
+/// room for that many texts before it reads the first, 4.8 GB in the wasm,
+/// which trapped the package, in the review of 28 September 2026 ("What
+/// xlsx_rs reads before calamine" of `docs/specs/read.md`, point 3).
+/// rust_xlsxwriter writes the count it holds, so the file is written from
+/// the XML of its parts.
+#[test]
+#[ignore = "writes tests/data/unique_count.xlsx; run by hand"]
+fn write_unique_count_xlsx() {
+    let mut parts = parts_of_worksheet(
+        r#"<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row></sheetData>"#,
+    );
+    parts.push((
+        "xl/sharedStrings.xml".to_owned(),
+        shared_strings(r#"count="2" uniqueCount="400000000""#, &["id", "pop"]),
+    ));
+    let path = data_path("unique_count.xlsx");
+    std::fs::write(&path, xlsx_of_parts(&parts)).unwrap();
 }

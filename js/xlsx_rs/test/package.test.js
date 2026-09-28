@@ -3,11 +3,12 @@
 // declarations of the contract with popnei_web ("The package, built" of
 // docs/specs/read.md).
 //
-// The owner's excel_en.xlsx and encrypted.xlsx, in tests/data/, are read
-// with the cells the owner typed. The files of tests/data/ that
-// crates/xlsx_rs/tests/write_fixtures.rs writes, written.xlsx,
-// empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx and
-// wide_table_at_c2.xlsx, and a CSV, are read in any case.
+// The owner's excel_en.xlsx, excel_1904.xlsx and encrypted.xlsx, in
+// tests/data/, are read with the cells the owner typed. The files of
+// tests/data/ that crates/xlsx_rs/tests/write_fixtures.rs writes,
+// written.xlsx, empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx,
+// wide_table_at_c2.xlsx and unique_count.xlsx, and a CSV, are read in any
+// case.
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -302,6 +303,41 @@ test("excel_en.xlsx gives the cells of English Excel", async () => {
         "ind4", "Murcia", 1.55, "2024-05-16", "07:00:00", false, "#N/A",
         "ind5", "Murcia", 1.7, "2024-05-17", "12:15:00", true, "#DIV/0!",
     ]);
+});
+
+// The owner's file, saved by Excel for Mac in the date system of 1904,
+// with an element workbookPr of another namespace after the one of the
+// workbook, which calamine alone read as the system of 1900, 2020-05-12.
+test("excel_1904.xlsx gives the date and the time as Excel shows them", async () => {
+    const bytes = await readFile(new URL("excel_1904.xlsx", dataDir));
+
+    const fields = fieldsOfRead(bytes);
+
+    assert.deepEqual(fields, {
+        refusal: "",
+        detail: "",
+        sheet: "Sheet1",
+        firstRow: 1,
+        firstColumn: 1,
+        numRows: 2,
+        numColumns: 2,
+        cells: ["Fecha", "Hora", "2024-05-13", "14:30:00"],
+    });
+});
+
+// A table of texts of two texts that says it holds 400,000,000, for which
+// calamine reserved room before it read the first, and the package
+// trapped, a failure that ends the worker, before xlsx_rs checked it.
+test("unique_count.xlsx, whose table of texts says it holds 400,000,000 texts, throws an Error", async () => {
+    const bytes = await readFile(new URL("unique_count.xlsx", dataDir));
+
+    assert.throws(() => readXlsx(bytes, MAX_SHEET_CELLS), {
+        name: "Error",
+        message: "the table of texts says it holds more texts than it does",
+    });
+    // The package still reads after it, as it does not after a trap.
+    const written = await readFile(new URL("written.xlsx", dataDir));
+    assert.equal(fieldsOfRead(written).sheet, "Individuos");
 });
 
 test("encrypted.xlsx is refused as encrypted", async () => {

@@ -867,8 +867,10 @@ What xlsx_rs releases, as popnei releases its own
 (`/Users/jose/devel/popnei/js/popnei/package.json`): a package named
 `xlsx_rs`, in `js/xlsx_rs/` of its repository, of `"type": "module"`,
 whose `exports` give `./wasm/xlsx_rs.js` with its declarations
-`./wasm/xlsx_rs.d.ts`, and whose `files` hold `wasm/`, the README and
-the license. Its `build` compiles the binding crate with `cargo build
+`./wasm/xlsx_rs.d.ts`, and whose `files` hold `wasm/`, the README,
+the license and `THIRD_PARTY_LICENSES.md`, the notices of the 29 crates
+compiled into the `.wasm`, calamine among them, which their licenses ask
+to go with every copy. Its `build` compiles the binding crate with `cargo build
 --release --target wasm32-unknown-unknown`, then runs `wasm-bindgen
 --target web --remove-name-section --out-dir wasm --out-name xlsx_rs`
 over it, which writes the JavaScript, its declarations and

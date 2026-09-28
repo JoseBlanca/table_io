@@ -295,6 +295,7 @@ rust_xlsxwriter, used by the tests only and not shipped, under MIT or
 Apache 2.0. `crates/xlsx_rs/src/attrs.rs` is a copy of calamine's reader
 of attributes, `RawAttrIter`, with calamine's notice of copyright and
 license above it. The MIT license asks for its notice in every copy, and
-the package is mostly calamine's code compiled: its notice, and those of
-zip and quick-xml, are to be shipped in the package beside `LICENSE`
-before the first release.
+the package is mostly calamine's code compiled: the notices of the 29
+crates compiled into the `.wasm` are in `THIRD_PARTY_LICENSES.md` at the
+root, which the package copies beside `LICENSE`; all are permissive, MIT,
+Apache 2.0, BSD, Zlib, Unlicense or Unicode.

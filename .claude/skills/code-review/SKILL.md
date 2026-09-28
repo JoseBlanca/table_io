@@ -55,13 +55,17 @@ When in doubt, send it. A reviewer with nothing to report costs little.
 The subagent is `code-reviewer`. Its prompt gives the category, the
 commit under review, the files in scope, the path of the spec item, the
 output of the checks, and the context of step 4. `spec` and `tests` build
-and change code to see what happens, so they are sent with
-`isolation: "worktree"`, each in its own tree, because two agents that
-edit one checkout overwrite each other and then no result can be trusted.
-A worktree starts on `main` and not on the commit under review: the prompt
-gives the commit and tells the reviewer to check it out and confirm it
-with `git rev-parse HEAD` before anything else. The other categories only
-read, and share the checkout.
+and change code to see what happens, so each works in a tree of its
+own, because two agents that edit one checkout overwrite each other and
+then no result can be trusted. The orchestrator makes those trees, `git
+-C /Users/jose/devel/xlsx_rs worktree add --detach
+.claude/worktrees/review-<category> <commit>`, and gives each reviewer
+its path: `isolation: "worktree"` makes the tree in the repository the
+session was started in, which on 28 September 2026 was popnei_web, and
+the two reviewers sent so found no xlsx_rs in it. The prompt still tells
+the reviewer to confirm the commit with `git rev-parse HEAD` before
+anything else. The trees are removed after the review. The other
+categories only read, and share the checkout of the plan.
 
 ## Acting on the findings
 

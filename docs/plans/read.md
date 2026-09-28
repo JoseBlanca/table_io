@@ -79,8 +79,8 @@ calamine cannot open and a first sheet with no value.
    gives its `init` the bytes of the `.wasm`, reads the CSV as
    `notXlsx`, reads `tests/data/written.xlsx` with `refusal` `""` and its
    sheet's name and rectangle, and fails when `wasm/xlsx_rs.d.ts` differs
-   from `js/xlsx_rs/test/xlsx_rs.d.ts`, which is the spec's declarations
-   without the comments added there. That the comparison can fail is shown
+   from `js/xlsx_rs/test/xlsx_rs.d.ts`, kept as the spec's "The package,
+   built" says. That the comparison can fail is shown
    once by changing a line of the kept file, and the change is not
    committed.
 5. The size. Check: the report gives `wasm/xlsx_rs_bg.wasm` and

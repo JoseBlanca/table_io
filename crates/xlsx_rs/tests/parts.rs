@@ -831,13 +831,13 @@ fn read_with_merged_ranges(
     read_first_sheet(&xlsx_of_parts(&parts), 4)
 }
 
-// The part of the sheet is found by the relationship the workbook gives
-// it, relative to the folder of the workbook or from the root of the zip,
-// and not by its name.
+// The count is of the bytes `mergeCell` after `<` or `:` in any part, so
+// the start of the element `mergeCells` around the ranges counts too: 4
+// ranges are 5 with a limit of 4 cells, and 3 ranges are 4.
 #[test]
 fn a_sheet_with_more_merged_ranges_than_the_limit_of_cells_is_unreadable() {
     for relationship_target in ["worksheets/data.xml", "/xl/worksheets/data.xml"] {
-        let read = read_with_merged_ranges(5, relationship_target);
+        let read = read_with_merged_ranges(4, relationship_target);
 
         assert_eq!(
             read,
@@ -848,9 +848,9 @@ fn a_sheet_with_more_merged_ranges_than_the_limit_of_cells_is_unreadable() {
 }
 
 #[test]
-fn a_sheet_with_as_many_merged_ranges_as_the_limit_of_cells_is_read() {
+fn a_sheet_with_as_many_merged_ranges_and_merge_cells_as_the_limit_of_cells_is_read() {
     for relationship_target in ["worksheets/data.xml", "/xl/worksheets/data.xml"] {
-        let read = read_with_merged_ranges(4, relationship_target);
+        let read = read_with_merged_ranges(3, relationship_target);
 
         assert_eq!(
             read.unwrap().cells,
@@ -858,6 +858,135 @@ fn a_sheet_with_as_many_merged_ranges_as_the_limit_of_cells_is_read() {
             "{relationship_target}"
         );
     }
+}
+
+/// The merged ranges of [`read_with_merged_ranges`], `num_merged_ranges`
+/// of them, D1:E1, D2:E2 and so on, outside the rectangle of A1, in their
+/// element `mergeCells`, with the prefix `prefix`, such as `x:`, on each.
+fn merge_cells_of(num_merged_ranges: u32, prefix: &str) -> String {
+    let merge_cells: String = (1..=num_merged_ranges)
+        .map(|row| format!(r#"<{prefix}mergeCell ref="D{row}:E{row}"/>"#))
+        .collect();
+    format!(r#"<{prefix}mergeCells count="{num_merged_ranges}">{merge_cells}</{prefix}mergeCells>"#)
+}
+
+/// The parts of [`parts_of_worksheet`] with the sheet of one cell, A1, the
+/// number 7, and a second sheet, `Decoy`, in `xl/worksheets/decoy.xml`,
+/// named by the relationship `rId2`; the sheet `Sheet1` has 50 merged
+/// ranges outside its rectangle, the decoy none.
+fn parts_with_decoy_sheet() -> Vec<(String, String)> {
+    let mut parts = parts_of_worksheet(&format!(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData>{}"#,
+        merge_cells_of(50, "")
+    ));
+    parts.push((
+        "xl/worksheets/decoy.xml".to_owned(),
+        parts_of_one_number()
+            .into_iter()
+            .find(|(name, _)| name == "xl/worksheets/sheet1.xml")
+            .map(|(_, xml)| xml)
+            .unwrap_or_default(),
+    ));
+    for (name, xml) in &mut parts {
+        if name == "xl/_rels/workbook.xml.rels" {
+            *xml = xml.replace(
+                "</Relationships>",
+                r#"<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/decoy.xml"/></Relationships>"#,
+            );
+        }
+    }
+    parts
+}
+
+// calamine reads the content of a defined name as text, and lists no sheet
+// in it; xlsx_rs listed this one, of the same name, and counted the merged
+// ranges of the decoy, none.
+#[test]
+fn a_sheet_listed_inside_a_defined_name_does_not_hide_the_merged_ranges_of_the_sheet_read() {
+    let mut parts = parts_with_decoy_sheet();
+    let workbook = xml_of(&mut parts, "xl/workbook.xml").unwrap();
+    *workbook = workbook.replace(
+        "<sheets>",
+        r#"<definedNames><definedName name="decoy"><sheet name="Sheet1" sheetId="2" r:id="rId2"/></definedName></definedNames><sheets>"#,
+    );
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), 10);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
+}
+
+// calamine reads the workbook up to the end tag named workbook; xlsx_rs
+// stopped where a stray end tag closed its count of elements open, before
+// the sheets, and found no sheet to count. The element <z> left open keeps
+// quick-xml from refusing </workbook> as an end tag with nothing open.
+#[test]
+fn a_stray_end_tag_before_the_sheets_does_not_hide_the_merged_ranges_of_the_sheet_read() {
+    let mut parts = parts_with_decoy_sheet();
+    let workbook = xml_of(&mut parts, "xl/workbook.xml").unwrap();
+    *workbook = workbook
+        .replace("<sheets>", "</x><sheets>")
+        .replace("</workbook>", "<z></workbook>");
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), 10);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
+}
+
+// A sheet that is not read, hidden here, is counted too: every part is.
+#[test]
+fn another_sheet_with_more_merged_ranges_than_the_limit_of_cells_is_unreadable() {
+    let mut parts = parts_with_decoy_sheet();
+    for (name, xml) in &mut parts {
+        if name == "xl/workbook.xml" {
+            *xml = xml.replace(
+                "</sheets>",
+                r#"<sheet name="Hidden" sheetId="2" state="hidden" r:id="rId2"/></sheets>"#,
+            );
+        }
+        if name == "xl/worksheets/sheet1.xml" {
+            *xml = xml.replace(&merge_cells_of(50, ""), "");
+        }
+        if name == "xl/worksheets/decoy.xml" {
+            *xml = xml.replace(
+                "</worksheet>",
+                &format!("{}</worksheet>", merge_cells_of(50, "")),
+            );
+        }
+    }
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), 10);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
+}
+
+#[test]
+fn merged_ranges_with_a_prefix_are_counted() {
+    let mut parts = parts_with_decoy_sheet();
+    for (_, xml) in &mut parts {
+        *xml = xml
+            .replace(&merge_cells_of(50, ""), &merge_cells_of(50, "x:"))
+            .replace(
+                "<worksheet xmlns=",
+                r#"<worksheet xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns="#,
+            );
+    }
+    assert!(parts.iter().any(|(_, xml)| xml.contains("<x:mergeCell ")));
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), 10);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
 }
 
 /// A part of a zip, a name and its bytes, given as `head`, then `middle`
@@ -1000,7 +1129,7 @@ fn a_name_of_the_sheet_after_a_form_feed_is_read_as_calamine_reads_it() {
 // The file of the review held 36,000,000 merged ranges, which calamine
 // held in 583 MB natively.
 #[test]
-#[ignore = "takes 15 s in cargo test, past 10 s; run before each release"]
+#[ignore = "takes 15 to 55 s in cargo test, deflating 864 MB of XML, past 10 s; run before each release"]
 fn a_name_of_the_sheet_after_a_form_feed_with_36_000_000_merged_ranges_is_unreadable() {
     let bytes = xlsx_of_form_feed_name(36_000_000).unwrap();
 

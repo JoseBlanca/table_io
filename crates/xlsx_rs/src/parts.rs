@@ -3,16 +3,18 @@
 //!
 //! An xlsx is a zip of parts, each an XML file: the workbook, which lists
 //! the sheets and holds the settings of the file, the date system among
-//! them; the relationships, which give where the other parts are; the
-//! sheets. Each part carries a checksum of its bytes, which the zip crate
-//! checks only once the part has been read to its end; calamine stops
-//! reading a sheet at its last cell, so xlsx_rs reads every part to its end
-//! first, and counts the bytes. calamine also reads four parts whole when
-//! it opens the file, the workbook, its relationships, the styles and the
-//! table of texts, and reserves room for as many texts as the table says it
-//! holds, so xlsx_rs bounds their sizes and the texts. A part is found as
-//! calamine 0.36.1 finds it (`xlsx/mod.rs` and `utils.rs`), so that no file
-//! passes these checks with a part calamine reads under another name.
+//! them; the relationships, which give where the other parts are; the table
+//! of texts, which holds once each text the cells hold; the styles; and
+//! the sheets. Each part carries a checksum of its bytes, which the zip
+//! crate checks only once the part has been read to its end, and calamine
+//! stops reading a sheet at its last cell; so xlsx_rs reads every part to
+//! its end first, counting its bytes. calamine also holds four parts whole
+//! when it opens the file, and every merged range of the sheet before
+//! xlsx_rs sees one. xlsx_rs bounds, in that one reading, at least what
+//! calamine could hold of each: it does not copy calamine's reading, since
+//! every small difference between two readings let a file past a bound in
+//! the review of 28 September 2026. The one part it finds as calamine
+//! finds it is the workbook, for its date system.
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Cursor, Read};
@@ -24,7 +26,7 @@ use zip::ZipArchive;
 use zip::result::ZipError;
 
 use crate::ReadError;
-use crate::attrs::{RawAttrIter, attribute_of, attributes_of, local_name_matches};
+use crate::attrs::{RawAttrIter, attribute_of, attributes_of};
 use crate::date::DateSystem;
 
 /// The bounds of the parts of a read, which a test lowers so as to pass
@@ -46,126 +48,12 @@ pub(crate) struct PartBounds {
     pub(crate) max_texts: u64,
 }
 
-/// What xlsx_rs reads of the parts before calamine opens the file, and the
-/// zip, kept for the merged ranges of the sheet calamine reads.
-pub(crate) struct PartsRead<'bytes> {
-    /// The date system of the workbook.
-    pub(crate) date_system: DateSystem,
-    /// The zip of the file.
-    archive: Archive<'bytes>,
-    /// The names of its parts.
-    part_names: PartNames,
-    /// The workbook the package relationships name.
-    workbook: WorkbookRead,
-}
-
-/// What xlsx_rs reads of the workbook for the part of a sheet.
-struct WorkbookRead {
-    /// The folder of the workbook, such as `xl/`.
-    folder: String,
-    /// The sheets the workbook lists, in its order.
-    sheets: Vec<WorkbookSheet>,
-}
-
-/// A sheet as the workbook lists it, an element `sheet`.
-struct WorkbookSheet {
-    /// Its name, as its tab shows it.
-    name: String,
-    /// The identifier of the relationship that gives its part, as the XML
-    /// writes it, before its entities are read.
-    raw_relationship_id: Vec<u8>,
-}
-
-impl PartsRead<'_> {
-    /// Counts the merged ranges, the elements `mergeCell`, of the sheet
-    /// `sheet_name`, in its first element `mergeCells`, as calamine's
-    /// `merge_cells_by_sheet_name` finds them: its part is that of the first
-    /// sheet of that name the workbook lists, given by the relationship of
-    /// the workbook whose identifier the sheet names, relative to the folder
-    /// of the workbook or, when it starts with `/`, to the root of the zip.
-    /// A sheet whose part cannot be found so is let be, for calamine to
-    /// refuse.
-    ///
-    /// calamine holds 16 bytes for each merged range before xlsx_rs sees
-    /// one: 40,000,000 in a zip of 5.1 MB held 650 MB.
-    ///
-    /// # Errors
-    ///
-    /// [`ReadError::Unreadable`]: "too many merged ranges" for more than
-    /// `max_merged_ranges`, at the first past it; "the part … cannot be read
-    /// as XML: …", with quick-xml's message, for relationships of the
-    /// workbook or a sheet whose XML cannot be read up to what xlsx_rs takes
-    /// of it; and the zip crate's message for an error of the zip.
-    pub(crate) fn check_merged_ranges(
-        &mut self,
-        sheet_name: &str,
-        max_merged_ranges: u32,
-    ) -> Result<(), ReadError> {
-        let workbook = &self.workbook;
-        let Some(sheet) = workbook
-            .sheets
-            .iter()
-            .find(|workbook_sheet| workbook_sheet.name == sheet_name)
-        else {
-            return Ok(());
-        };
-        let relationships_path = format!("{}_rels/workbook.xml.rels", workbook.folder);
-        let Some(target) = relationship_target_of(
-            &mut self.archive,
-            &self.part_names,
-            &relationships_path,
-            &sheet.raw_relationship_id,
-        )?
-        else {
-            return Ok(());
-        };
-        let sheet_path = match target.strip_prefix('/') {
-            Some(path_from_root) => path_from_root.to_owned(),
-            None => format!("{}{target}", workbook.folder),
-        };
-        let Some(mut xml_reader) = xml_reader_of(&mut self.archive, &self.part_names, &sheet_path)?
-        else {
-            return Ok(());
-        };
-        let unreadable =
-            |cause: &dyn std::fmt::Display| unreadable_xml_error_of(&sheet_path, cause);
-        let mut buffer = Vec::new();
-        loop {
-            buffer.clear();
-            match xml_reader.read_event_into(&mut buffer) {
-                Ok(Event::Start(element)) if element.local_name().as_ref() == b"mergeCells" => {
-                    break;
-                }
-                Ok(Event::Eof) => return Ok(()),
-                Err(xml_error) => return Err(unreadable(&xml_error)),
-                Ok(_) => {}
-            }
-        }
-        let mut num_merged_ranges: u32 = 0;
-        loop {
-            buffer.clear();
-            match xml_reader.read_event_into(&mut buffer) {
-                Ok(Event::Start(element)) if element.local_name().as_ref() == b"mergeCell" => {
-                    num_merged_ranges = num_merged_ranges.saturating_add(1);
-                    if num_merged_ranges > max_merged_ranges {
-                        return Err(ReadError::Unreadable("too many merged ranges".to_owned()));
-                    }
-                }
-                Ok(Event::End(element)) if element.local_name().as_ref() == b"mergeCells" => {
-                    return Ok(());
-                }
-                Ok(Event::Eof) => return Ok(()),
-                Err(xml_error) => return Err(unreadable(&xml_error)),
-                Ok(_) => {}
-            }
-        }
-    }
-}
-
 /// Reads every part of the zip `bytes` to its end, so that the zip crate
-/// checks its checksum; checks the size of the parts calamine reads whole
-/// when it opens the file, and the number of texts of its table of texts;
-/// and reads the date system of its workbook and the sheets it lists.
+/// checks its checksum, and bounds what calamine could hold of each within
+/// `bounds`, and the merged ranges of each within `max_cells`; then gives
+/// the date system of the workbook. The zip is let go of before it
+/// returns, so that calamine does not open the file while xlsx_rs holds
+/// the list of its parts.
 ///
 /// A workbook named by the package relationships but missing is given the
 /// system of 1900; calamine then finds no sheet.
@@ -180,12 +68,17 @@ impl PartsRead<'_> {
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
 /// bounds of the parts calamine reads whole ("What xlsx_rs reads before
-/// calamine", point 3); and "the part … cannot be read as XML: …", with
-/// quick-xml's message, for package relationships or a workbook whose XML
-/// cannot be read up to what xlsx_rs takes of it.
-pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'_>, ReadError> {
+/// calamine", point 3); "too many merged ranges" for a part with more
+/// merged ranges than `max_cells` (point 4); and "the part … cannot be read
+/// as XML: …", with quick-xml's message, for package relationships or a
+/// workbook whose XML cannot be read up to what xlsx_rs takes of it.
+pub(crate) fn read_parts(
+    bytes: &[u8],
+    max_cells: u32,
+    bounds: PartBounds,
+) -> Result<DateSystem, ReadError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
-    read_every_part(&mut archive, bounds)?;
+    read_every_part(&mut archive, max_cells, bounds)?;
     let part_names = PartNames::of_archive(&archive);
     let Some(workbook_folder) = workbook_folder_of(&mut archive, &part_names)? else {
         return Err(ReadError::Unreadable(
@@ -193,16 +86,7 @@ pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'
         ));
     };
     let workbook_path = format!("{workbook_folder}workbook.xml");
-    let (date_system, sheets) = read_workbook(&mut archive, &part_names, &workbook_path)?;
-    Ok(PartsRead {
-        date_system,
-        archive,
-        part_names,
-        workbook: WorkbookRead {
-            folder: workbook_folder,
-            sheets,
-        },
-    })
+    date_system_of(&mut archive, &part_names, &workbook_path)
 }
 
 /// The zip of an xlsx held in memory.
@@ -310,19 +194,31 @@ struct PartReader<'unzipped, Part> {
     num_bytes: u64,
     /// The bytes of every part read so far.
     unzipped: &'unzipped mut UnzippedBytes,
+    /// The merged ranges of this part, the bytes `mergeCell` right after
+    /// `<` or `:`, counted so far.
+    merged_ranges: ElementCounter,
+    /// The most merged ranges a part may hold, `max_cells`.
+    max_merged_ranges: u64,
     /// The first failure, `None` while there is none.
     failure: Option<ReadError>,
 }
 
 impl<'unzipped, Part: Read> PartReader<'unzipped, Part> {
     /// A reader of `part`, whose bytes are held to `bound` and counted in
-    /// `unzipped`.
-    fn new(part: Part, bound: Option<PartBound>, unzipped: &'unzipped mut UnzippedBytes) -> Self {
+    /// `unzipped`, and whose merged ranges are held to `max_merged_ranges`.
+    fn new(
+        part: Part,
+        bound: Option<PartBound>,
+        unzipped: &'unzipped mut UnzippedBytes,
+        max_merged_ranges: u64,
+    ) -> Self {
         Self {
             part,
             bound,
             num_bytes: 0,
             unzipped,
+            merged_ranges: ElementCounter::of_name(MERGED_RANGE_NAME),
+            max_merged_ranges,
             failure: None,
         }
     }
@@ -373,14 +269,98 @@ impl<Part: Read> Read for PartReader<'_, Part> {
         {
             return Err(self.fail(ReadError::Unreadable(bound.message.to_owned())));
         }
+        self.merged_ranges
+            .count_in(buffer.get(..num_read).unwrap_or_default());
+        if self.merged_ranges.num_elements > self.max_merged_ranges {
+            return Err(self.fail(ReadError::Unreadable("too many merged ranges".to_owned())));
+        }
         Ok(num_read)
     }
 }
 
+/// The nine bytes every element `mergeCell`, a merged range, has at the
+/// start of its name, with a prefix or without.
+const MERGED_RANGE_NAME: &[u8] = b"mergeCell";
+
+/// A count of the times the bytes of a name of an element come right after
+/// `<` or `:`, in bytes given a read at a time, a match split between two
+/// reads counted too, and nothing of them held ("What xlsx_rs reads before
+/// calamine" of `docs/specs/read.md`, point 4).
+///
+/// Every element of that name, with a prefix or without, has those bytes
+/// at the start of its name, since quick-xml reads the bytes of a part as
+/// they are; so the count is at least the elements calamine reads. It is
+/// more for a longer name that starts with them, `mergeCells`, an end tag
+/// with a prefix, `</x:mergeCell>`, and the bytes written as text.
+struct ElementCounter {
+    /// The bytes of the name.
+    name: &'static [u8],
+    /// The bytes of the name matched at the end of the bytes given so far,
+    /// after a `<` or a `:`; `None` when the last bytes given start no
+    /// match.
+    num_matched: Option<usize>,
+    /// The times the name was found.
+    num_elements: u64,
+}
+
+impl ElementCounter {
+    /// A count, at 0, of the element `name`, which holds neither `<` nor
+    /// `:`.
+    fn of_name(name: &'static [u8]) -> Self {
+        Self {
+            name,
+            num_matched: None,
+            num_elements: 0,
+        }
+    }
+
+    /// Counts the name in `bytes`, the bytes that follow those given before.
+    fn count_in(&mut self, bytes: &[u8]) {
+        let mut rest = bytes;
+        loop {
+            let Some(num_matched) = self.num_matched else {
+                let Some(mark_position) = rest.iter().position(|byte| is_name_mark(*byte)) else {
+                    return;
+                };
+                rest = rest
+                    .get(mark_position.saturating_add(1)..)
+                    .unwrap_or_default();
+                self.num_matched = Some(0);
+                continue;
+            };
+            let name_left = self.name.get(num_matched..).unwrap_or_default();
+            if let Some(after_name) = rest.strip_prefix(name_left) {
+                self.num_elements = self.num_elements.saturating_add(1);
+                self.num_matched = None;
+                rest = after_name;
+            } else if name_left.starts_with(rest) {
+                // The bytes end inside the name: the next ones go on with it.
+                self.num_matched = Some(num_matched.saturating_add(rest.len()));
+                return;
+            } else {
+                // No match here; the name holds no mark, so the next match
+                // starts at the next mark, which may be the first byte left.
+                self.num_matched = None;
+            }
+        }
+    }
+}
+
+/// Whether `byte` is one a name of an element comes right after: `<`, or
+/// `:` after a prefix.
+fn is_name_mark(byte: u8) -> bool {
+    byte == b'<' || byte == b':'
+}
+
 /// Reads every part of `archive` to its end and discards what it reads, so
 /// that the zip crate checks the checksum of each, counting the bytes of
-/// each and of all within `bounds`.
-fn read_every_part(archive: &mut Archive<'_>, bounds: PartBounds) -> Result<(), ReadError> {
+/// each and of all within `bounds`, the texts of each table of texts, and
+/// the merged ranges of each part within `max_cells`.
+fn read_every_part(
+    archive: &mut Archive<'_>,
+    max_cells: u32,
+    bounds: PartBounds,
+) -> Result<(), ReadError> {
     let mut unzipped = UnzippedBytes {
         num_bytes: 0,
         max_bytes: bounds.max_unzipped_bytes,
@@ -390,8 +370,12 @@ fn read_every_part(archive: &mut Archive<'_>, bounds: PartBounds) -> Result<(), 
             .by_index(part_index)
             .map_err(unreadable_of_zip_error)?;
         let part_kind = PartKind::of_zip_name(part.name());
-        let mut part_reader =
-            PartReader::new(part, part_kind.bound_of_bytes(&bounds), &mut unzipped);
+        let mut part_reader = PartReader::new(
+            part,
+            part_kind.bound_of_bytes(&bounds),
+            &mut unzipped,
+            u64::from(max_cells),
+        );
         match part_kind {
             PartKind::TextTable => read_text_table(part_reader, bounds.max_texts)?,
             PartKind::PackageRelationships
@@ -663,30 +647,32 @@ fn read_to_end<Part: Read>(
     buffered_part.into_inner().finish(copy_result)
 }
 
-/// The date system of the workbook `path`, and the sheets it lists.
+/// The date system of the workbook `path` ("What xlsx_rs reads before
+/// calamine" of `docs/specs/read.md`, point 2): that of the last element
+/// `workbookPr` that is a direct child of its root element, whatever the
+/// namespace of either, 1904 when its attribute `date1904` is `1` or
+/// `true`, as calamine reads that attribute; 1900 when there is no such
+/// element or no such part. calamine takes the last element of that name
+/// anywhere in the workbook, and Excel 365 writes one of the namespace
+/// `x15` inside `extLst`, after the one of the root, with no `date1904`:
+/// every workbook of 1904 Excel 365 saves would be read by calamine as one
+/// of 1900.
 ///
-/// The date system is that of the last element `workbookPr` that is a
-/// direct child of its root element, whatever the namespace of either,
-/// 1904 when its attribute `date1904` is `1` or `true`, as calamine reads
-/// that attribute; 1900 when there is no such element or no such part.
-/// calamine takes the last element of that name anywhere in the workbook,
-/// and Excel 365 writes one of the namespace `x15` inside `extLst`, after
-/// the one of the root, with no `date1904`: every workbook of 1904 Excel
-/// 365 saves would be read by calamine as one of 1900.
+/// The workbook is read up to the end of its root element, found by
+/// counting the elements open.
 ///
-/// The sheets are the elements `sheet` anywhere in the workbook, as
-/// calamine's `read_workbook` lists them: the name from the last attribute
-/// `name`, its entities read, and the relationship from the last attribute
-/// whose name, after any prefix, is `id`. A sheet whose name cannot be
-/// read is left out, since calamine refuses the file.
-fn read_workbook(
+/// # Errors
+///
+/// [`ReadError::Unreadable`]: "the part … cannot be read as XML: …", with
+/// quick-xml's message, for a workbook whose XML cannot be read up to the
+/// end of its root, and the zip crate's message for an error of the zip.
+fn date_system_of(
     archive: &mut Archive<'_>,
     part_names: &PartNames,
     path: &str,
-) -> Result<(DateSystem, Vec<WorkbookSheet>), ReadError> {
-    let mut sheets = Vec::new();
+) -> Result<DateSystem, ReadError> {
     let Some(mut xml_reader) = xml_reader_of(archive, part_names, path)? else {
-        return Ok((DateSystem::Excel1900, sheets));
+        return Ok(DateSystem::Excel1900);
     };
     let unreadable = |cause: &dyn std::fmt::Display| unreadable_xml_error_of(path, cause);
     let mut date_system = DateSystem::Excel1900;
@@ -702,26 +688,6 @@ fn read_workbook(
                     date_system = date_system_of_element(&element)
                         .map_err(|xml_error| unreadable(&xml_error))?;
                 }
-                if element.local_name().as_ref() == b"sheet" {
-                    let (raw_name, raw_relationship_id) =
-                        raw_sheet_of(&element).map_err(|xml_error| unreadable(&xml_error))?;
-                    let name =
-                        xml_reader
-                            .decoder()
-                            .decode(&raw_name)
-                            .ok()
-                            .and_then(|decoded_name| {
-                                quick_xml::escape::unescape(&decoded_name)
-                                    .ok()
-                                    .map(std::borrow::Cow::into_owned)
-                            });
-                    if let Some(name) = name {
-                        sheets.push(WorkbookSheet {
-                            name,
-                            raw_relationship_id,
-                        });
-                    }
-                }
                 depth = depth.saturating_add(1);
             }
             Ok(Event::End(_)) => {
@@ -735,88 +701,7 @@ fn read_workbook(
             Ok(_) => {}
         }
     }
-    Ok((date_system, sheets))
-}
-
-/// The attributes `name` and `id` of `sheet`, an element `sheet` of the
-/// workbook, as the XML writes them, each the last of its name and empty
-/// when missing, as calamine reads them; `id` with any prefix, `r:id` as
-/// Excel writes it.
-fn raw_sheet_of(sheet: &BytesStart<'_>) -> Result<(Vec<u8>, Vec<u8>), AttrError> {
-    let mut raw_name = Vec::new();
-    let mut raw_relationship_id = Vec::new();
-    for attribute in RawAttrIter::of_element(sheet) {
-        let (key, value) = attribute?;
-        if key == b"name" {
-            raw_name = value.to_vec();
-        } else if local_name_matches(key, b"id") {
-            raw_relationship_id = value.to_vec();
-        }
-    }
-    Ok((raw_name, raw_relationship_id))
-}
-
-/// The target of the relationship of identifier `raw_relationship_id` in
-/// the relationships of the workbook `path`, as calamine's
-/// `read_relationships` reads them: the last relationship of that
-/// identifier, its target decoded and its entities not read. `None` when
-/// there is no such part or relationship, a file calamine refuses.
-fn relationship_target_of(
-    archive: &mut Archive<'_>,
-    part_names: &PartNames,
-    path: &str,
-    raw_relationship_id: &[u8],
-) -> Result<Option<String>, ReadError> {
-    let Some(mut xml_reader) = xml_reader_of(archive, part_names, path)? else {
-        return Ok(None);
-    };
-    let unreadable = |cause: &dyn std::fmt::Display| unreadable_xml_error_of(path, cause);
-    let mut target = None;
-    let mut buffer = Vec::new();
-    loop {
-        buffer.clear();
-        match xml_reader.read_event_into(&mut buffer) {
-            Ok(Event::Start(element)) if element.local_name().as_ref() == b"Relationship" => {
-                let RawWorkbookRelationship { raw_id, raw_target } =
-                    raw_workbook_relationship_of(&element)
-                        .map_err(|xml_error| unreadable(&xml_error))?;
-                if raw_id.as_deref() == Some(raw_relationship_id) {
-                    let decoded_target = xml_reader
-                        .decoder()
-                        .decode(raw_target.as_deref().unwrap_or_default())
-                        .map_err(|encoding_error| unreadable(&encoding_error))?;
-                    target = Some(decoded_target.into_owned());
-                }
-            }
-            Ok(Event::End(element)) if element.local_name().as_ref() == b"Relationships" => break,
-            Ok(Event::Eof) => break,
-            Err(xml_error) => return Err(unreadable(&xml_error)),
-            Ok(_) => {}
-        }
-    }
-    Ok(target)
-}
-
-/// The attributes `Id` and `Target` of a relationship of the workbook, as
-/// the XML writes them, before their entities are read; either may be
-/// missing.
-struct RawWorkbookRelationship {
-    /// The identifier a sheet of the workbook names the relationship by.
-    raw_id: Option<Vec<u8>>,
-    /// The path of the part it names.
-    raw_target: Option<Vec<u8>>,
-}
-
-/// The attributes `Id` and `Target` of `element`, a relationship of the
-/// workbook, read as calamine's `get_attrs!` reads them with `Type`.
-fn raw_workbook_relationship_of(
-    element: &BytesStart<'_>,
-) -> Result<RawWorkbookRelationship, AttrError> {
-    let [raw_id, _, raw_target] = attributes_of(element, [b"Id", b"Type", b"Target"])?;
-    Ok(RawWorkbookRelationship {
-        raw_id: raw_id.map(<[u8]>::to_vec),
-        raw_target: raw_target.map(<[u8]>::to_vec),
-    })
+    Ok(date_system)
 }
 
 /// The date system `workbook_pr`, an element `workbookPr`, gives: 1904 when
@@ -863,7 +748,44 @@ fn text_of_count(count: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::parts::text_of_count;
+    use crate::parts::{ElementCounter, MERGED_RANGE_NAME, text_of_count};
+
+    /// The count of merged ranges in `bytes` given in two reads, split at
+    /// `split`.
+    fn merged_ranges_in(bytes: &[u8], split: usize) -> u64 {
+        let (first, second) = bytes.split_at(split);
+        let mut counter = ElementCounter::of_name(MERGED_RANGE_NAME);
+        counter.count_in(first);
+        counter.count_in(second);
+        counter.num_elements
+    }
+
+    // The start of mergeCells, a longer name, is counted with the two
+    // ranges; its end tag, with no prefix, is not.
+    #[test]
+    fn a_name_after_a_mark_is_counted_wherever_the_reads_split_it() {
+        let bytes = br#"<mergeCells count="2"><mergeCell ref="A1:B1"/><x:mergeCell ref="A2:B2"/></mergeCells>"#;
+        for split in 0..=bytes.len() {
+            assert_eq!(merged_ranges_in(bytes, split), 3, "split at {split}");
+        }
+    }
+
+    #[test]
+    fn a_name_not_right_after_a_mark_is_not_counted() {
+        let bytes = b"mergeCell <mergeCel <mergecell < mergeCell <<:mergeCell";
+        for split in 0..=bytes.len() {
+            assert_eq!(merged_ranges_in(bytes, split), 1, "split at {split}");
+        }
+    }
+
+    #[test]
+    fn a_name_given_a_byte_at_a_time_is_counted() {
+        let mut counter = ElementCounter::of_name(b"sheet");
+        for byte in b"<sheets><sheet/><x:sheet/></sheets>" {
+            counter.count_in(&[*byte]);
+        }
+        assert_eq!(counter.num_elements, 3);
+    }
 
     #[test]
     fn a_count_is_written_with_a_comma_between_groups_of_three_digits() {

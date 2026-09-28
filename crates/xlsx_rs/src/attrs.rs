@@ -22,8 +22,8 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //! The attributes of an element read as calamine 0.36.1 reads them, with a
-//! copy of its `RawAttrIter`, `local_name_matches` and the rule of its
-//! macro `get_attrs!` (`src/attrs.rs` of calamine), so that xlsx_rs and
+//! copy of its `RawAttrIter` and the rule of its macro `get_attrs!`
+//! (`src/attrs.rs` of calamine), so that xlsx_rs and
 //! calamine find the same attributes in a tag ("What xlsx_rs reads before
 //! calamine" of `docs/specs/read.md`). quick-xml's own reader of attributes
 //! splits a tag another way: it keeps a form feed, the byte `0C`, in the
@@ -117,15 +117,6 @@ impl<'tag> Iterator for RawAttrIter<'tag> {
     }
 }
 
-/// Whether `key`, the name of an attribute, is `local_name` with or without
-/// a prefix, `id` or `r:id` for `id`. calamine's `local_name_matches`.
-pub(crate) fn local_name_matches(key: &[u8], local_name: &[u8]) -> bool {
-    key == local_name
-        || key
-            .strip_suffix(local_name)
-            .is_some_and(|prefix| prefix.last() == Some(&b':'))
-}
-
 /// The values of the attributes of `element` named `keys`, in their order,
 /// read as calamine's macro `get_attrs!` reads them: each attribute whose
 /// name is one of `keys` is counted as found and takes the place of any
@@ -178,7 +169,7 @@ mod tests {
     use quick_xml::events::BytesStart;
     use quick_xml::events::attributes::AttrError;
 
-    use crate::attrs::{RawAttrIter, attribute_of, attributes_of, local_name_matches};
+    use crate::attrs::{RawAttrIter, attribute_of, attributes_of};
 
     /// An attribute read, its name and its value, or the error of one.
     type AttributeRead = Result<(Vec<u8>, Vec<u8>), AttrError>;
@@ -232,15 +223,6 @@ mod tests {
             attributes_of_raw(" key="),
             [Err(AttrError::UnquotedValue(5))]
         );
-    }
-
-    #[test]
-    fn a_local_name_matches_with_or_without_a_prefix() {
-        assert!(local_name_matches(b"id", b"id"));
-        assert!(local_name_matches(b"r:id", b"id"));
-        assert!(local_name_matches(b":id", b"id"));
-        assert!(!local_name_matches(b"xmlid", b"id"));
-        assert!(!local_name_matches(b"rid", b"id"));
     }
 
     #[test]

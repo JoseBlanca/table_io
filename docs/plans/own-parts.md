@@ -4,7 +4,7 @@ Written on 28 September 2026. It builds "What xlsx_rs reads before
 calamine" of `docs/specs/read.md`: xlsx_rs opens the zip itself, checks
 every part's checksum, takes the date system from the workbook, and
 bounds what calamine would otherwise read whole, before it gives the
-bytes to calamine. State: under way; approved by the owner on 28 September 2026. Branch
+bytes to calamine. State: done on 28 September 2026; approved by the owner on 28 September 2026. Branch
 `plan/own-parts`, report `docs/reports/own-parts.md`. It comes before the
 first release, `js-v0.1.0-dev.1`, since without it every date of a
 workbook of the 1904 system saved by Excel 365 is four years and a day
@@ -85,7 +85,12 @@ the first cell, which ends popnei_web's light worker.
    4: the settings parts past 10,000,000 bytes, the table of texts past
    400,000,000 bytes through a small bound and past 10,000,000 texts,
    `uniqueCount` larger than its texts, a missing `uniqueCount` let be,
-   more merged ranges than `max_cells`.
+   more merged ranges than `max_cells`. Changed with the spec after the
+   review of the work package, 28 September 2026: the settings parts
+   past 50,000,000 bytes, a `uniqueCount` past 10,000,000 refused and one
+   larger than its texts read, and each bound tested at its real value
+   (`docs/reports/own-parts.md`, "The review of work packages 1 and 2,
+   and the fix").
 2. `npm test`: the owner's 1904 file read with its dates, and
    `tests/data/unique_count.xlsx`, the file of 6 KB that trapped the
    package, refused and not a trap.

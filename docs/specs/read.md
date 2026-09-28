@@ -677,8 +677,11 @@ files arrive, and a release made before that says in its notes that
 
 The same test compares the declarations wasm-bindgen generated,
 `wasm/xlsx_rs.d.ts`, with `js/xlsx_rs/test/xlsx_rs.d.ts`, kept in git:
-the lines of "The Rust interface" above as wasm-bindgen writes them,
-without the comments added there. A difference fails the test, so that a
+the whole file wasm-bindgen writes: the lines of "The Rust interface"
+above, the doc comments of the binding crate, which it copies as
+comments of JavaScript, and the types and the function `initSync` it
+always adds, which the spec does not show. A difference fails the test,
+so that a
 change of the contract with popnei_web is made in that file, and seen,
 before it is released (added on 28 September 2026 by the owner's
 decision).

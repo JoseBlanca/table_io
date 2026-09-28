@@ -8,10 +8,41 @@ writes a plan.
 
 ## State
 
-Under way. Work packages 1 to 3 are done; work package 4 is being built.
-The owner is asked whether xlsx_rs may read the zip's checksums and the
-merged ranges itself, with the `zip` and `quick-xml` crates calamine
-brings, as direct dependencies (below, work packages 1 and 2).
+Done on 28 September 2026, on the branch `plan/read`, 50 commits after
+`main`; not merged, not pushed. Every task is ticked, every deliverable
+checked, and the plan's final check passes.
+
+What exists now: the library `crates/xlsx_rs`, which reads the first
+visible sheet of an xlsx into its cells as the spec gives them; the
+binding `crates/xlsx_rs_js`; and the package `js/xlsx_rs`, which `npm
+pack` builds, tests and packs as `xlsx_rs-0.1.0.tgz`, 291,672 bytes, whose
+`.wasm` is 517,781 bytes and 284,870 gzipped with `gzip -9`, against the
+295,475 of the spec's trial. 102 tests pass under `cargo test`, and 14
+are ignored: the 8 of the owner's files, which wait for them, and the 6
+that write the committed test files, run by hand. Under node 9 tests
+pass and 2 are skipped until `excel_en.xlsx` and `encrypted.xlsx` exist.
+No browser ran the package in this plan beyond what one reviewer tried
+in Chromium 153 and WebKit 26.6 (work package 1): popnei_web's tests do
+that.
+
+Asked of the owner:
+
+1. The merge of `plan/read` into `main`.
+2. Whether xlsx_rs may read three parts of the file itself, with the
+   `zip` and `quick-xml` crates that calamine already brings, at the
+   same versions, as direct dependencies: the checksums of the zip,
+   which calamine does not check, so that a damaged file is refused and
+   not read with cells missing (10 of 7,120 copies with one byte changed
+   were, in work package 1); the merged ranges, and the table of texts,
+   which calamine reads whole with no bound, so that a file written for
+   it cannot trap popnei_web's light worker (a file of 6 KB did, in work
+   package 4). Meanwhile the spec says what is not bounded.
+3. The eight files of the spec's "Made by the owner". Their tests fail
+   until the owner's cells are written into them, so that none can pass
+   by being switched on without them.
+4. The repository on GitHub, and the order for the first release,
+   `js-v0.1.0-dev.1`, which popnei_web's work package 9 of stage 4 waits
+   for.
 
 ## Work package 1: the whole path
 
@@ -163,3 +194,84 @@ workbook's date system, and with it forced to 1900 a Mac workbook of the
 1904 system gave every date 4 years and a day early; now a workbook
 written with `date1904="1"` is read through `read_first_sheet`. Three
 rules and the cap on days had no test; they have.
+
+## Work package 4: the checks for any cell
+
+- 4.1, 9e9faff: no file panics. 4.2, f9ffa7a: `individuals_10000.xlsx`,
+  932,051 bytes, a header and 10,000 rows of 20 columns, read in 0.86 s
+  in the test build, with the same bytes from two runs of its writer.
+  4.3, b8f3d4a: the tests of the owner's eight files.
+
+Deliverables, on 55375a7:
+
+1. `cargo test -p xlsx_rs --test no_panic`: 8 passed, 19,635 reads in
+   2.5 to 3.7 s; none panicked. A `panic!` put in the reader for one
+   length, and one put where calamine reports broken XML, each failed it.
+2. `npm test`: every cell of `written.xlsx` with its type.
+3. `individuals_10000.xlsx` committed and read by `data_files.rs`.
+4. `cargo test -p xlsx_rs --test owner_files -- --list --ignored`: 8
+   tests; 2 node tests skipped with the name of their file.
+
+The review, one reviewer over tests and spec. What mattered, fixed in
+e34776f for the spec and 098b593 and 55375a7 for the code:
+
+- The test of damaged files reached little of calamine: a zip keeps its
+  directory at its end, so every copy cut short stopped in the reader of
+  the zip, and most flipped bytes at a checksum. It now also builds the
+  file from its parts, uncompressed, and damages the XML of each part
+  xlsx_rs reads.
+- A file of 6 KB whose table of texts says it holds 400,000,000 texts
+  trapped the package under node: calamine reserves room for them
+  first. It is in the spec among what xlsx_rs does not bound, and in the
+  owner's question 2.
+- The tests of the owner's files looked for one right cell in a column
+  and would have passed a height read as text beside it; they now check
+  every cell of a column, and fail until the owner's cells are in them.
+
+## At the end
+
+`npm pack` in `js/xlsx_rs` built, tested and packed `xlsx_rs-0.1.0.tgz`,
+291,672 bytes, 7 files: `LICENSE`, `README.md`, `package.json`, and in
+`wasm/` the `.wasm`, its JavaScript and two files of declarations.
+Unpacked into `tmp/` and imported by its path under node 26.8.2, it read
+`written.xlsx` as `Individuos`, from row 1 and column 1, 5 × 5, its first
+cells `"Individuo"`, `"Población"`, `"Altura"`, `"Fecha"`, `"Afectado"`,
+`"ind1"`, `"Andalucía"`, `1.75`, `"2024-05-13"`, `true`. The `.wasm` holds
+no path of the owner's folders. The `.tgz` was not committed.
+
+Issues to open once the repository is on GitHub, all of calamine 0.36.1:
+its reader of compound files panics on a file cut short (`cfb.rs`, lines
+306, 330 and 346) and its loop over the DIFAT may not end (`cfb.rs:114`);
+it reserves room for the texts by the count a file gives
+(`xlsx/mod.rs:352`); it subtracts and adds row numbers with plain
+operators (`xlsx/mod.rs:2792` and `:2853`), which panic in a debug build
+and wrap in a release one, a row past 2^32 putting its value in another
+cell.
+
+## For whoever next revises a skill or writes a plan
+
+The owner can stop here. This section is for the next session that
+revises a skill of xlsx_rs or writes one of its plans.
+
+- The reviews found what the tasks did not, every time: 4 reviews, 15
+  reviewers, and each work package had at least one finding of a file
+  that could end popnei_web's worker or of a test that could not fail.
+  What made them find it was running the case: writing the damaged file,
+  building the package and reading it under node, breaking a line. The
+  subagents that wrote the code had tested what the spec's table listed
+  and nothing beside it. A task prompt that asks, besides the spec's
+  cases, for the files a program could write to break the reader would
+  have found some of these before the review.
+- `isolation: "worktree"` made the reviewers' trees in popnei_web, the
+  repository the session started in, so two reviewers of work package 1
+  found no xlsx_rs; the code-review skill now has the orchestrator make
+  them (fe5592f).
+- The cost, in the tokens of the subagents as the tool reported them:
+  the tasks about 640,000, the reviews about 1,020,000, the fixes about
+  470,000. The reviews cost more than the building, and found what the
+  building missed; the review of work package 3, the smallest, cost
+  123,000 and found the untested 1904 system.
+- Spec changes came from every review, 11 commits of the spec in all, each
+  before the code as the skill asks. Most were cases calamine handles in
+  a way the spec had not said: the ends of a text, merged ranges written
+  backwards, the year kept in 16 bits.

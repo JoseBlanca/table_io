@@ -11,7 +11,7 @@ use std::io::Cursor;
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
 use crate::cell::cell_of_value;
-use crate::rectangle::{LayoutError, Rectangle};
+use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
 /// by then, as "Each cell" of `docs/specs/read.md` gives them.
@@ -147,6 +147,17 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
             sheet: sheet_name,
         }));
     };
+    // Read once the cells are, so that a sheet refused as it is read is not
+    // read a second time for its merged ranges.
+    let merged_ranges: Vec<MergedRange> = workbook
+        .merge_cells_by_sheet_name(&sheet_name)
+        .map_err(read_error_of)?
+        .into_iter()
+        .map(|calamine_range| MergedRange {
+            first: calamine_range.start,
+            last: calamine_range.end,
+        })
+        .collect();
     let sheet_error =
         |cause: String| ReadError::Unreadable(format!("the sheet {sheet_name} {cause}"));
     let first_row = rectangle.excel_first_row().ok_or_else(|| {
@@ -164,7 +175,7 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         sheet_error("has 4,294,967,296 columns, more than a u32 holds".to_owned())
     })?;
     let cells = rectangle
-        .laid_out(kept_cells)
+        .laid_out(kept_cells, &merged_ranges)
         .map_err(|layout_error| match layout_error {
             LayoutError::TooManyCells { num_cells } => sheet_error(format!(
                 "has a rectangle of {num_cells} cells, more than the memory can hold"

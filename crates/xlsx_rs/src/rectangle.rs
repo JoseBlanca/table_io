@@ -6,6 +6,16 @@ use crate::SheetCell;
 /// A position as calamine gives it: the row and the column, both from 0.
 pub(crate) type Position = (u32, u32);
 
+/// A range of merged cells, from its first cell, at its top left, to its
+/// last, at its bottom right, both included.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MergedRange {
+    /// The position of the first cell, which holds the value of the range.
+    pub(crate) first: Position,
+    /// The position of the last cell.
+    pub(crate) last: Position,
+}
+
 /// The smallest rectangle that holds every position seen, its rows and
 /// columns counted from 0 as calamine counts them, the last ones included.
 #[derive(Debug, Clone, Copy)]
@@ -94,7 +104,10 @@ impl Rectangle {
 
     /// The cells of the rectangle, row after row: those of `kept_cells` at
     /// their positions, a later one over an earlier one at the same
-    /// position, and the others empty.
+    /// position, and the others empty; then every cell of each of
+    /// `merged_ranges` inside the rectangle with the value of the range's
+    /// first cell, which is empty when that cell is outside the rectangle,
+    /// since every value is inside it.
     ///
     /// # Errors
     ///
@@ -104,6 +117,7 @@ impl Rectangle {
     pub(crate) fn laid_out(
         &self,
         kept_cells: Vec<(Position, SheetCell)>,
+        merged_ranges: &[MergedRange],
     ) -> Result<Vec<SheetCell>, LayoutError> {
         let num_cells = self.num_cells();
         let too_many_cells = || LayoutError::TooManyCells { num_cells };
@@ -123,9 +137,39 @@ impl Rectangle {
                     .ok_or(LayoutError::PositionOutside { position })?;
                 *slot = cell;
             }
+            for merged_range in merged_ranges {
+                self.fill_merged_range(&mut cells, *merged_range);
+            }
             cells
         };
         Ok(cells)
+    }
+
+    /// Gives every cell of `merged_range` inside the rectangle, among
+    /// `cells` laid out row after row, the value of the range's first cell.
+    fn fill_merged_range(&self, cells: &mut [SheetCell], merged_range: MergedRange) {
+        let MergedRange {
+            first: (first_row, first_column),
+            last: (last_row, last_column),
+        } = merged_range;
+        let first_value = self
+            .index_of(merged_range.first)
+            .and_then(|index| cells.get(index))
+            .cloned()
+            .unwrap_or(SheetCell::Empty);
+        let rows_inside = first_row.max(self.first_row)..=last_row.min(self.last_row);
+        let columns_inside =
+            first_column.max(self.first_column)..=last_column.min(self.last_column);
+        for row in rows_inside {
+            for column in columns_inside.clone() {
+                if let Some(slot) = self
+                    .index_of((row, column))
+                    .and_then(|index| cells.get_mut(index))
+                {
+                    slot.clone_from(&first_value);
+                }
+            }
+        }
     }
 }
 
@@ -147,7 +191,8 @@ pub(crate) enum LayoutError {
 
 #[cfg(test)]
 mod tests {
-    use crate::rectangle::{LayoutError, Rectangle};
+    use crate::SheetCell;
+    use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
     #[test]
     fn a_rectangle_of_more_cells_than_memory_holds_is_an_error() {
@@ -156,7 +201,7 @@ mod tests {
         let rectangle = Rectangle::of_position((0, 0)).extended_to((u32::MAX - 1, u32::MAX - 1));
 
         assert_eq!(
-            rectangle.laid_out(Vec::new()),
+            rectangle.laid_out(Vec::new(), &[]),
             Err(LayoutError::TooManyCells {
                 num_cells: 18_446_744_065_119_617_025
             })
@@ -166,11 +211,37 @@ mod tests {
     #[test]
     fn a_cell_outside_the_rectangle_is_an_error() {
         let rectangle = Rectangle::of_position((1, 1));
-        let kept_cells = vec![((0, 0), crate::SheetCell::Bool(true))];
+        let kept_cells = vec![((0, 0), SheetCell::Bool(true))];
 
         assert_eq!(
-            rectangle.laid_out(kept_cells),
+            rectangle.laid_out(kept_cells, &[]),
             Err(LayoutError::PositionOutside { position: (0, 0) })
+        );
+    }
+
+    #[test]
+    fn a_merged_range_whose_first_cell_is_outside_the_rectangle_empties_its_cells_inside() {
+        // The first cell of a range holds its value, and every value is
+        // inside the rectangle, so a first cell outside it has none. A file
+        // Excel writes has nothing in the other cells; this one does.
+        let rectangle = Rectangle::of_position((1, 1)).extended_to((2, 2));
+        let kept_cells = vec![
+            ((1, 1), SheetCell::Bool(true)),
+            ((2, 2), SheetCell::Number(7.0)),
+        ];
+        let merged_range = MergedRange {
+            first: (0, 0),
+            last: (1, 1),
+        };
+
+        assert_eq!(
+            rectangle.laid_out(kept_cells, &[merged_range]),
+            Ok(vec![
+                SheetCell::Empty,
+                SheetCell::Empty,
+                SheetCell::Empty,
+                SheetCell::Number(7.0),
+            ])
         );
     }
 }

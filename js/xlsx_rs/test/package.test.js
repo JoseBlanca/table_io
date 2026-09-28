@@ -85,21 +85,21 @@ test("written.xlsx is read with every cell and its type", async () => {
         [fields.firstRow, fields.firstColumn, fields.numRows, fields.numColumns],
         [1, 1, 5, 5],
     );
-    // Two kinds of cell are not final: task 3.2 of docs/plans/read.md makes
-    // the dates of the column Fecha the texts "2024-05-13" to "2024-05-16",
-    // and task 2.2 gives B3, in the population merged over B2 and B3,
-    // "Andalucía". This test is to fail then, and be changed with them.
+    // B3, in the population merged over B2 and B3, is "Andalucía". The
+    // dates are not final: task 3.2 of docs/plans/read.md makes those of
+    // the column Fecha the texts "2024-05-13" to "2024-05-16". This test is
+    // to fail then, and be changed with it.
     assert.deepEqual(fields.cells, [
         "Individuo", "Población", "Altura", "Fecha", "Afectado",
         "ind1", "Andalucía", 1.75, 45425, true,
-        "ind2", null, 1.62, 45426, false,
+        "ind2", "Andalucía", 1.62, 45426, false,
         "ind3", "Murcia", null, 45427, true,
         "ind4", "Murcia", 1.55, 45428, false,
     ]);
     assert.deepEqual(fields.cells.map(typeOfCell), [
         "string", "string", "string", "string", "string",
         "string", "string", "number", "number", "boolean",
-        "string", "null", "number", "number", "boolean",
+        "string", "string", "number", "number", "boolean",
         "string", "string", "null", "number", "boolean",
         "string", "string", "number", "number", "boolean",
     ]);

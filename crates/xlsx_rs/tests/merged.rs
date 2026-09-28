@@ -1,0 +1,115 @@
+//! Every cell of a merged range with the value of its first cell, within
+//! the rectangle of the values ("Merged cells" of `docs/specs/read.md`).
+
+use rust_xlsxwriter::{Format, Workbook};
+use xlsx_rs::{Sheet, SheetCell, read_first_sheet};
+
+/// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
+const MAX_SHEET_CELLS: u32 = 2_000_000;
+
+/// A text cell of `cell_text`.
+fn text(cell_text: &str) -> SheetCell {
+    SheetCell::Text(cell_text.to_owned())
+}
+
+#[test]
+fn a_population_merged_over_rows_2_to_4_is_the_population_of_the_three() {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 0, "Individuo").unwrap();
+    worksheet.write_string(0, 1, "Población").unwrap();
+    for (row, individual) in (1u32..).zip(["ind1", "ind2", "ind3", "ind4"]) {
+        worksheet.write_string(row, 0, individual).unwrap();
+    }
+    worksheet
+        .merge_range(1, 1, 3, 1, "Andalucía", &Format::new())
+        .unwrap();
+    worksheet.write_string(4, 1, "Murcia").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(
+        sheet.cells,
+        vec![
+            text("Individuo"),
+            text("Población"),
+            text("ind1"),
+            text("Andalucía"),
+            text("ind2"),
+            text("Andalucía"),
+            text("ind3"),
+            text("Andalucía"),
+            text("ind4"),
+            text("Murcia"),
+        ]
+    );
+}
+
+#[test]
+fn a_name_merged_over_two_columns_of_the_header_is_the_name_of_both() {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 0, "Individuo").unwrap();
+    worksheet
+        .merge_range(0, 1, 0, 2, "Origen", &Format::new())
+        .unwrap();
+    worksheet.write_string(1, 0, "ind1").unwrap();
+    worksheet.write_string(1, 1, "Andalucía").unwrap();
+    worksheet.write_string(1, 2, "Sevilla").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(
+        sheet.cells,
+        vec![
+            text("Individuo"),
+            text("Origen"),
+            text("Origen"),
+            text("ind1"),
+            text("Andalucía"),
+            text("Sevilla"),
+        ]
+    );
+}
+
+#[test]
+fn a_merged_range_reaching_past_the_values_fills_only_the_rectangle() {
+    // The name is merged over B2 to E3, and the values reach no further
+    // than row 4 and column C, so D and E are not in the rectangle and the
+    // rectangle does not grow to hold them.
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(1, 0, "Individuo").unwrap();
+    worksheet
+        .merge_range(1, 1, 2, 4, "Origen", &Format::new())
+        .unwrap();
+    worksheet.write_string(3, 0, "ind1").unwrap();
+    worksheet.write_string(3, 2, "Sevilla").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            name: "Sheet1".to_owned(),
+            first_row: 2,
+            first_column: 1,
+            num_rows: 3,
+            num_columns: 3,
+            cells: vec![
+                text("Individuo"),
+                text("Origen"),
+                text("Origen"),
+                SheetCell::Empty,
+                text("Origen"),
+                text("Origen"),
+                text("ind1"),
+                SheetCell::Empty,
+                text("Sevilla"),
+            ],
+        }
+    );
+}

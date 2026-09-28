@@ -334,6 +334,137 @@ fn a_workbook_in_the_folder_its_relationship_gives_is_found_there() {
     );
 }
 
+/// The relationship of `_rels/.rels` of type `officeDocument` whose
+/// target is `target`, with the attributes `type_attributes` in the place
+/// of its `Type`.
+fn office_document_relationship(id: &str, type_attributes: &str, target: &str) -> String {
+    format!(r#"<Relationship Id="{id}" {type_attributes} Target="{target}"/>"#)
+}
+
+/// The attribute `Type` of a relationship of type `officeDocument`.
+const OFFICE_DOCUMENT_TYPE: &str =
+    r#"Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument""#;
+
+/// The date of [`read_of_1904_date`] with a copy of its workbook, of the
+/// system of 1900, in the folder `data/`, and `_rels/.rels` holding
+/// `relationships` inside its element `Relationships` and `after_end` after
+/// its end: the date is 2024-05-13 when the workbook of `xl/` is taken,
+/// and 2020-05-12 when the copy is.
+fn read_of_1904_date_with_package_relationships(
+    relationships: &str,
+    after_end: &str,
+) -> Result<Sheet, ReadError> {
+    read_of_1904_date(|parts| {
+        let copies: Vec<(String, String)> = parts
+            .iter()
+            .filter_map(|(name, xml)| {
+                let name_in_folder = name.strip_prefix("xl/")?;
+                Some((
+                    format!("data/{name_in_folder}"),
+                    xml.replace(r#"<workbookPr date1904="1"/>"#, "<workbookPr/>"),
+                ))
+            })
+            .collect();
+        parts.extend(copies);
+        for (name, xml) in parts.iter_mut() {
+            if name == "_rels/.rels" {
+                let head = xml
+                    .split_once("<Relationship ")
+                    .map_or("", |(head, _)| head)
+                    .to_owned();
+                assert!(head.ends_with('>'), "no relationship in {xml}");
+                *xml = format!("{head}{relationships}</Relationships>{after_end}");
+            }
+        }
+    })
+}
+
+#[test]
+fn the_last_office_document_relationship_gives_the_workbook() {
+    let read = read_of_1904_date_with_package_relationships(
+        &[
+            office_document_relationship("rId1", OFFICE_DOCUMENT_TYPE, "data/workbook.xml"),
+            office_document_relationship("rId2", OFFICE_DOCUMENT_TYPE, "xl/workbook.xml"),
+        ]
+        .concat(),
+        "",
+    );
+
+    assert_eq!(
+        read.unwrap().cells,
+        [SheetCell::Text("2024-05-13".to_owned())]
+    );
+}
+
+// calamine's macro get_attrs! stops once it has found as many attributes
+// as it looks for, a name written twice counted twice: this relationship
+// has the type "x" and no target.
+#[test]
+fn a_relationship_with_its_type_written_twice_is_not_the_workbook() {
+    let read = read_of_1904_date_with_package_relationships(
+        &[
+            office_document_relationship("rId1", OFFICE_DOCUMENT_TYPE, "xl/workbook.xml"),
+            office_document_relationship(
+                "rId2",
+                &format!(r#"{OFFICE_DOCUMENT_TYPE} Type="x""#),
+                "data/workbook.xml",
+            ),
+        ]
+        .concat(),
+        "",
+    );
+
+    assert_eq!(
+        read.unwrap().cells,
+        [SheetCell::Text("2024-05-13".to_owned())]
+    );
+}
+
+#[test]
+fn a_relationship_after_the_end_of_relationships_is_not_read() {
+    let read = read_of_1904_date_with_package_relationships(
+        &office_document_relationship("rId1", OFFICE_DOCUMENT_TYPE, "xl/workbook.xml"),
+        &office_document_relationship("rId2", OFFICE_DOCUMENT_TYPE, "data/workbook.xml"),
+    );
+
+    assert_eq!(
+        read.unwrap().cells,
+        [SheetCell::Text("2024-05-13".to_owned())]
+    );
+}
+
+#[test]
+fn a_file_whose_package_relationships_name_no_workbook_is_unreadable() {
+    let other_type = r#"Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties""#;
+    for relationships in [
+        String::new(),
+        office_document_relationship("rId1", other_type, "xl/workbook.xml"),
+        format!(r#"<Relationship Id="rId1" {OFFICE_DOCUMENT_TYPE}/>"#),
+    ] {
+        let read = read_of_1904_date_with_package_relationships(&relationships, "");
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "the file names no workbook".to_owned()
+            )),
+            "{relationships}"
+        );
+    }
+}
+
+#[test]
+fn a_file_with_no_package_relationships_is_unreadable() {
+    let read = read_of_1904_date(|parts| parts.retain(|(name, _)| name != "_rels/.rels"));
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "the file names no workbook".to_owned()
+        ))
+    );
+}
+
 /// `xml` with spaces after its declaration, `<?xml ... ?>`, up to
 /// `num_bytes` bytes, which XML reads as it read `xml`; `None` when `xml`
 /// has no declaration or more bytes than that.

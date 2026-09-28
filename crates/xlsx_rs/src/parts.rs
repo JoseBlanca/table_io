@@ -48,9 +48,8 @@ pub(crate) struct PartsRead<'bytes> {
     archive: Archive<'bytes>,
     /// The names of its parts.
     part_names: PartNames,
-    /// The workbook, or `None` when the package relationships do not name
-    /// one, a file calamine refuses.
-    workbook: Option<WorkbookRead>,
+    /// The workbook the package relationships name.
+    workbook: WorkbookRead,
 }
 
 /// What xlsx_rs reads of the workbook for the part of a sheet.
@@ -95,9 +94,7 @@ impl PartsRead<'_> {
         sheet_name: &str,
         max_merged_ranges: u32,
     ) -> Result<(), ReadError> {
-        let Some(workbook) = &self.workbook else {
-            return Ok(());
-        };
+        let workbook = &self.workbook;
         let Some(sheet) = workbook
             .sheets
             .iter()
@@ -163,16 +160,16 @@ impl PartsRead<'_> {
 /// when it opens the file, and the number of texts of its table of texts;
 /// and reads the date system of its workbook and the sheets it lists.
 ///
-/// A file with no workbook where calamine looks for one, or whose package
-/// relationships do not name it, is given the system of 1900 and is not
-/// checked further: calamine then refuses the file, or finds no sheet in
-/// it.
+/// A workbook named by the package relationships but missing is given the
+/// system of 1900; calamine then finds no sheet.
 ///
 /// # Errors
 ///
 /// [`ReadError::Unreadable`] with the zip crate's message for any error of
 /// the zip, "Invalid checksum" for a part whose bytes are not those it was
-/// saved with; "the file unzips to more than … bytes" when the parts hold
+/// saved with; "the file names no workbook" when the package
+/// relationships, `_rels/.rels`, are missing or name no workbook, which
+/// calamine refuses too; "the file unzips to more than … bytes" when the parts hold
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text", "too many texts" and "the table of
 /// texts says it holds more texts than it does", for the bounds of the
@@ -194,12 +191,9 @@ pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'
         return Err(too_large_part());
     }
     let Some(workbook_folder) = workbook_folder_of(&mut archive, &part_names)? else {
-        return Ok(PartsRead {
-            date_system: DateSystem::Excel1900,
-            archive,
-            part_names,
-            workbook: None,
-        });
+        return Err(ReadError::Unreadable(
+            "the file names no workbook".to_owned(),
+        ));
     };
     let workbook_path = format!("{workbook_folder}workbook.xml");
     let text_table_path = format!("{workbook_folder}sharedStrings.xml");
@@ -226,10 +220,10 @@ pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'
         date_system,
         archive,
         part_names,
-        workbook: Some(WorkbookRead {
+        workbook: WorkbookRead {
             folder: workbook_folder,
             sheets,
-        }),
+        },
     })
 }
 
@@ -343,10 +337,14 @@ fn xml_reader_of<'archive>(
 }
 
 /// The folder of the workbook, such as `xl/`, as calamine's
-/// `read_package_relationships` finds it: from the target of the last
-/// relationship of type `officeDocument` in `_rels/.rels`, up to its last
-/// `/`, with no `/` at its start. `None` when there is no such part or
-/// relationship, a file calamine refuses.
+/// `read_package_relationships` finds it ("What xlsx_rs reads before
+/// calamine" of `docs/specs/read.md`, point 2): the elements of local name
+/// `Relationship` after the first start of `Relationships` and before the
+/// next end of an element of that local name; in each, `Type` and `Target`
+/// read as calamine's `get_attrs!` reads them; and the target, its entities
+/// read, of the last whose type ends in `/relationships/officeDocument` and
+/// that has a target, up to its last `/`, with no `/` at its start. `None`
+/// when there is no such part or relationship.
 fn workbook_folder_of(
     archive: &mut Archive<'_>,
     part_names: &PartNames,
@@ -391,7 +389,7 @@ fn workbook_folder_of(
                 }
             }
             Ok(Event::End(element)) if element.local_name().as_ref() == b"Relationships" => break,
-            Ok(Event::Eof) => return Ok(None),
+            Ok(Event::Eof) => break,
             Err(xml_error) => return Err(unreadable(&xml_error)),
             Ok(_) => {}
         }

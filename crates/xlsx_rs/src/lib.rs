@@ -162,6 +162,8 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// - the zip crate's, for a file that is not a zip past its first bytes, a
 ///   file cut short among them, and for a part of the zip whose bytes are
 ///   not those it was saved with, "Invalid checksum";
+/// - "the file names no workbook", for a file whose package relationships,
+///   `_rels/.rels`, are missing or name no workbook;
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a part calamine reads whole

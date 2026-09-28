@@ -72,5 +72,10 @@ wasm-bindgen 0.2.128, the version the crate pins:
 ```
 npm run build   # the crate in release, then wasm-bindgen into wasm/
 npm test        # node's own test runner; no npm dependency
-npm pack        # xlsx_rs-0.1.0.tgz, with LICENSE copied from the root
+npm pack        # builds, tests, copies LICENSE from the root, then xlsx_rs-0.1.0.tgz
 ```
+
+The build writes the paths of the home folder into the `.wasm` as `~`
+(`--remap-path-prefix`, in the script's `RUSTFLAGS`), so that the paths of
+the sources of the dependencies, which the `.wasm` keeps for its messages,
+do not carry the name of the account that built it.

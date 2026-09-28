@@ -17,8 +17,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepack": "cp ../../LICENSE LICENSE",
-    "build": "cargo build -p xlsx_rs_js --release --target wasm32-unknown-unknown && wasm-bindgen --target web --remove-name-section --out-dir wasm --out-name xlsx_rs ../../target/wasm32-unknown-unknown/release/xlsx_rs_js.wasm",
+    "prepack": "npm run build && npm test && cp ../../LICENSE LICENSE",
+    "build": "RUSTFLAGS=\"--remap-path-prefix=$HOME=~\" cargo build -p xlsx_rs_js --release --target wasm32-unknown-unknown && wasm-bindgen --target web --remove-name-section --out-dir wasm --out-name xlsx_rs ../../target/wasm32-unknown-unknown/release/xlsx_rs_js.wasm",
     "test": "node --test test/"
   }
 }

@@ -1,6 +1,7 @@
 //! Every cell of a merged range with the value of its first cell, within
 //! the rectangle of the values ("Merged cells" of `docs/specs/read.md`).
 
+#[cfg(test)]
 #[expect(dead_code, reason = "no workbook here is of the 1904 system")]
 mod hand_written;
 

@@ -4,6 +4,8 @@
 #![forbid(unsafe_code)]
 
 mod attrs;
+#[cfg(test)]
+mod bounds_tests;
 mod cell;
 mod date;
 mod parts;
@@ -242,54 +244,8 @@ const PART_BOUNDS: PartBounds = PartBounds {
     max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
 };
 
-/// Reads as [`read_first_sheet`] does, with `max_unzipped_bytes` in the
-/// place of [`MAX_UNZIPPED_BYTES`], so that a test can pass the bound with
-/// a file of a few KB instead of unzipping a GB.
-///
-/// # Errors
-///
-/// Those of [`read_first_sheet`], the bound of the unzipped bytes being
-/// `max_unzipped_bytes`: "the file unzips to more than … bytes", with
-/// `max_unzipped_bytes`.
-pub fn read_first_sheet_within_unzipped_bytes(
-    bytes: &[u8],
-    max_cells: u32,
-    max_unzipped_bytes: u64,
-) -> Result<Sheet, ReadError> {
-    let bounds = PartBounds {
-        max_unzipped_bytes,
-        max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
-        max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
-        max_texts: MAX_TEXTS,
-        max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
-    };
-    read_first_sheet_within(bytes, max_cells, bounds)
-}
-
-/// Reads as [`read_first_sheet`] does, with `max_text_table_bytes` in the
-/// place of [`MAX_TEXT_TABLE_BYTES`], so that a test can pass the bound
-/// with a file of a few KB instead of 400 MB of text.
-///
-/// # Errors
-///
-/// Those of [`read_first_sheet`], the bound of the bytes of the table of
-/// texts being `max_text_table_bytes`.
-pub fn read_first_sheet_within_text_table_bytes(
-    bytes: &[u8],
-    max_cells: u32,
-    max_text_table_bytes: u64,
-) -> Result<Sheet, ReadError> {
-    let bounds = PartBounds {
-        max_unzipped_bytes: MAX_UNZIPPED_BYTES,
-        max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
-        max_text_table_bytes,
-        max_texts: MAX_TEXTS,
-        max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
-    };
-    read_first_sheet_within(bytes, max_cells, bounds)
-}
-
-/// Reads as [`read_first_sheet`] does, within `bounds`.
+/// Reads as [`read_first_sheet`] does, within `bounds`, which the tests of
+/// the crate lower so as to pass them with a file of a few KB.
 fn read_first_sheet_within(
     bytes: &[u8],
     max_cells: u32,

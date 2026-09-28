@@ -6,6 +6,7 @@
 //! cargo test -p xlsx_rs --test write_fixtures -- --ignored
 //! ```
 
+#[cfg(test)]
 #[expect(
     dead_code,
     reason = "only the workbook of a table of texts is written from its parts here"

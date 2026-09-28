@@ -5,6 +5,7 @@
 //! is a direct child of the root of the workbook; and the bounds of the
 //! parts calamine reads whole when it opens the file.
 
+#[cfg(test)]
 #[expect(
     dead_code,
     reason = "the texts here are in a table of texts, not written in the cells by hand"
@@ -16,11 +17,7 @@ use std::io::{Cursor, Write};
 use std::ops::Range;
 
 use rust_xlsxwriter::{Workbook, XlsxError};
-use xlsx_rs::{
-    ReadError, Sheet, SheetCell, read_first_sheet, read_first_sheet_within_text_table_bytes,
-    read_first_sheet_within_unzipped_bytes,
-};
-use zip::result::ZipError;
+use xlsx_rs::{ReadError, Sheet, SheetCell, read_first_sheet};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -63,18 +60,6 @@ fn compressed_data_of(bytes: &[u8], part_name: &str) -> Result<Range<usize>, Box
         .checked_add(length)
         .ok_or("the data ends past a usize")?;
     Ok(start..end)
-}
-
-/// The number of bytes the parts of `bytes`, an xlsx, hold unzipped, as
-/// the zip's directory gives them.
-fn unzipped_size_of(bytes: &[u8]) -> Result<u64, ZipError> {
-    let mut archive = ZipArchive::new(Cursor::new(bytes))?;
-    let mut unzipped_size: u64 = 0;
-    for part_index in 0..archive.len() {
-        let part_size = archive.by_index(part_index)?.size();
-        unzipped_size = unzipped_size.saturating_add(part_size);
-    }
-    Ok(unzipped_size)
 }
 
 /// The messages of the zip crate for a part whose compressed bytes are
@@ -141,40 +126,6 @@ fn the_first_500_bytes_of_an_xlsx_are_unreadable_with_the_zip_crates_message() {
             "invalid Zip archive: Could not find EOCD".to_owned()
         ))
     );
-}
-
-#[test]
-fn a_file_that_unzips_to_more_bytes_than_the_bound_is_unreadable() {
-    let bytes = xlsx_of_individuals().unwrap();
-    assert!(unzipped_size_of(&bytes).unwrap() > 4_000);
-
-    let read = read_first_sheet_within_unzipped_bytes(&bytes, MAX_SHEET_CELLS, 4_000);
-
-    assert_eq!(
-        read,
-        Err(ReadError::Unreadable(
-            "the file unzips to more than 4,000 bytes".to_owned()
-        ))
-    );
-}
-
-#[test]
-fn a_file_that_unzips_to_as_many_bytes_as_the_bound_is_read() {
-    let bytes = xlsx_of_individuals().unwrap();
-    let unzipped_size = unzipped_size_of(&bytes).unwrap();
-
-    let bounded_read =
-        read_first_sheet_within_unzipped_bytes(&bytes, MAX_SHEET_CELLS, unzipped_size);
-    let one_byte_less = read_first_sheet_within_unzipped_bytes(
-        &bytes,
-        MAX_SHEET_CELLS,
-        unzipped_size.checked_sub(1).unwrap(),
-    );
-
-    let sheet = bounded_read.unwrap();
-    assert_eq!(sheet.cells[0], SheetCell::Text("id".to_owned()));
-    assert_eq!(sheet.num_rows, 201);
-    assert!(matches!(one_byte_less, Err(ReadError::Unreadable(_))));
 }
 
 /// The sheet of one cell, A1, 43963 with the format `dd/mm/yyyy`, in a
@@ -598,26 +549,6 @@ fn the_two_texts() -> Vec<SheetCell> {
     ]
 }
 
-#[test]
-fn a_table_of_texts_past_the_bound_of_its_bytes_is_too_much_text() {
-    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
-    let num_bytes = u64::try_from(shared_strings_xml.len()).unwrap();
-    let bytes = xlsx_of_parts(&parts_with_texts(shared_strings_xml));
-
-    let past_bound = read_first_sheet_within_text_table_bytes(
-        &bytes,
-        MAX_SHEET_CELLS,
-        num_bytes.checked_sub(1).unwrap(),
-    );
-    let at_bound = read_first_sheet_within_text_table_bytes(&bytes, MAX_SHEET_CELLS, num_bytes);
-
-    assert_eq!(
-        past_bound,
-        Err(ReadError::Unreadable("too much text".to_owned()))
-    );
-    assert_eq!(at_bound.unwrap().cells, the_two_texts());
-}
-
 /// A table of texts of `num_texts` texts, the first two `id` and `pop` and
 /// the others empty, `<si/>`, with no `uniqueCount`.
 fn shared_strings_of_num_texts(num_texts: usize) -> String {
@@ -761,22 +692,6 @@ fn a_table_of_texts_whose_unique_count_is_within_10_000_000_missing_or_not_a_num
 
         assert_eq!(read.unwrap().cells, the_two_texts(), "{sst_attributes}");
     }
-}
-
-#[test]
-fn a_table_of_texts_in_another_folder_is_held_to_the_bound_of_its_bytes() {
-    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
-    let num_bytes = u64::try_from(shared_strings_xml.len()).unwrap();
-    let mut parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
-    parts.push((
-        "data/sharedStrings.xml".to_owned(),
-        format!("{shared_strings_xml} "),
-    ));
-    let bytes = xlsx_of_parts(&parts);
-
-    let read = read_first_sheet_within_text_table_bytes(&bytes, MAX_SHEET_CELLS, num_bytes);
-
-    assert_eq!(read, Err(ReadError::Unreadable("too much text".to_owned())));
 }
 
 // calamine finds the table of texts by its name ignoring case, and so does

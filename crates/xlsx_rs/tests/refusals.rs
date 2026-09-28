@@ -3,6 +3,7 @@
 //! does not know, and the sheet too large ("The refusals" of
 //! `docs/specs/read.md`, points 1 to 6).
 
+#[cfg(test)]
 #[expect(dead_code, reason = "no workbook here is of the 1904 system")]
 mod hand_written;
 

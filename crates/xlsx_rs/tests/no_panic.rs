@@ -21,6 +21,7 @@
 //! styles, is cut short and flipped in the same way, alone, before the
 //! parts are zipped again.
 
+#[cfg(test)]
 #[expect(
     dead_code,
     reason = "only the zip of the parts is used here, not the workbooks of one sheet"

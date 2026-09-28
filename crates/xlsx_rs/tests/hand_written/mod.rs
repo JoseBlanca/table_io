@@ -16,12 +16,11 @@
 //! parts of a workbook with their names or their XML changed, or with a
 //! table of shared texts added, `xl/sharedStrings.xml`, which calamine too
 //! finds by that name; `tests/write_fixtures.rs` writes one such file into
-//! `tests/data/`.
-
-#![expect(
-    clippy::unwrap_used,
-    reason = "a size of a test's file past u16 or u32 is a mistake of the test, which the panic reports"
-)]
+//! `tests/data/`, and `src/bounds_tests.rs` takes it by its path.
+//!
+//! Each module that takes it is declared `#[cfg(test)]`, so that clippy
+//! reads its `unwrap`s as those of a test: a size of a test's file past a
+//! `u16` or a `u32` is a mistake of the test, which the panic reports.
 
 /// The xlsx of one worksheet, `Sheet1`, whose element `<worksheet>` holds
 /// `worksheet_body`: its `<sheetData>`, and its `<mergeCells>` when it has

@@ -3,6 +3,7 @@
 //! system of 1904, which rust_xlsxwriter does not write ("Each cell" of
 //! `docs/specs/read.md`).
 
+#[cfg(test)]
 #[expect(
     dead_code,
     reason = "the dates are numbers, and no cell here is a text written by hand"

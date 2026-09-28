@@ -1,0 +1,26 @@
+[package]
+name = "xlsx_rs_js"
+description = "The wasm-bindgen binding of xlsx_rs, which exports readXlsx."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+# The functions wasm-bindgen generates are stubs that panic natively; what
+# this crate adds is tested under node, in js/xlsx_rs.
+test = false
+doctest = false
+
+[dependencies]
+xlsx_rs = { path = "../xlsx_rs" }
+# Pinned to the command line of wasm-bindgen, which refuses a crate of
+# another version; the version popnei pins, so that the one command line on
+# the owner's Mac builds both.
+wasm-bindgen = "=0.2.128"
+
+[lints]
+workspace = true

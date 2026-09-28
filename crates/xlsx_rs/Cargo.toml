@@ -1,0 +1,23 @@
+[package]
+name = "xlsx_rs"
+description = "Reads the first visible sheet of an xlsx into its cells."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The version popnei_web's docs/technology.md measured. Its default features
+# are none; chrono, for dates as chrono's types, and picture, for the images
+# of a workbook, are left off: xlsx_rs writes a date from calamine's own
+# parts of it.
+calamine = { version = "=0.36.1", default-features = false }
+
+[dev-dependencies]
+# The xlsx files of the tests are written in memory; the library the writer
+# of popnei_web's stage 6 will write with, in the tests only until then.
+rust_xlsxwriter = { version = "=0.99.1", default-features = false }
+
+[lints]
+workspace = true

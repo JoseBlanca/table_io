@@ -1,0 +1,48 @@
+[workspace]
+resolver = "3"
+members = ["crates/xlsx_rs", "crates/xlsx_rs_js"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+repository = "https://github.com/JoseBlanca/xlsx_rs"
+
+# The lint table of .claude/skills/coding/lints.toml, where each lint has its
+# reason; each crate takes it with `[lints] workspace = true`.
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[workspace.lints.clippy]
+arithmetic_side_effects = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+cast_lossless = "deny"
+fallible_impl_from = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+indexing_slicing = "deny"
+float_cmp = "deny"
+wildcard_enum_match_arm = "deny"
+fn_params_excessive_bools = "deny"
+match_same_arms = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+allow_attributes_without_reason = "deny"
+
+[profile.release]
+# As measured in popnei_web's docs/technology.md, section 2.
+opt-level = 3
+lto = true
+codegen-units = 1

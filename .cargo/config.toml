@@ -1,0 +1,13 @@
+[alias]
+# Compiles both crates, their tests included, for the target of the package,
+# with every warning an error: nothing else builds them for wasm before the
+# package is built.
+wasm-check = [
+    "check",
+    "--workspace",
+    "--all-targets",
+    "--target",
+    "wasm32-unknown-unknown",
+    "--config",
+    "build.rustflags=[\"-D\", \"warnings\"]",
+]

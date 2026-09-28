@@ -1,0 +1,7 @@
+# The lints that deny panics hold outside the tests only
+# (.claude/skills/coding/lints.toml).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true

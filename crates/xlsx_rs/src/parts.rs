@@ -24,6 +24,7 @@ use zip::ZipArchive;
 use zip::result::ZipError;
 
 use crate::ReadError;
+use crate::attrs::{RawAttrIter, attribute_of, attributes_of, local_name_matches};
 use crate::date::DateSystem;
 
 /// The bounds of the parts of a read, which a test lowers so as to pass
@@ -415,32 +416,12 @@ struct RawRelationship {
 }
 
 /// The attributes `Type` and `Target` of `element`, a relationship, read
-/// as calamine's `get_attrs!` reads them: up to the attribute that makes
-/// both found.
+/// as calamine's `get_attrs!` reads them.
 fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, AttrError> {
-    let mut raw_type = None;
-    let mut raw_target = None;
-    let mut num_found: u8 = 0;
-    for attribute in element.attributes().with_checks(false) {
-        let attribute = attribute?;
-        match attribute.key.as_ref() {
-            b"Type" => {
-                raw_type = Some(attribute.value.into_owned());
-                num_found = num_found.saturating_add(1);
-            }
-            b"Target" => {
-                raw_target = Some(attribute.value.into_owned());
-                num_found = num_found.saturating_add(1);
-            }
-            _ => {}
-        }
-        if num_found == 2 {
-            break;
-        }
-    }
+    let [raw_type, raw_target] = attributes_of(element, [b"Type", b"Target"])?;
     Ok(RawRelationship {
-        raw_type,
-        raw_target,
+        raw_type: raw_type.map(<[u8]>::to_vec),
+        raw_target: raw_target.map(<[u8]>::to_vec),
     })
 }
 
@@ -521,19 +502,15 @@ fn check_text_table(
 /// when it is written in digits alone, any zeros first among them, and
 /// `None` when it is missing, holds anything else, or passes a `u64`.
 fn unique_count_of(sst: &BytesStart<'_>) -> Result<Option<u64>, AttrError> {
-    for attribute in sst.attributes().with_checks(false) {
-        let attribute = attribute?;
-        if attribute.key.as_ref() == b"uniqueCount" {
-            let digits = attribute.value.as_ref();
-            if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
-                return Ok(None);
-            }
-            return Ok(std::str::from_utf8(digits)
-                .ok()
-                .and_then(|digits| digits.parse::<u64>().ok()));
-        }
+    let Some(digits) = attribute_of(sst, b"uniqueCount")? else {
+        return Ok(None);
+    };
+    if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+        return Ok(None);
     }
-    Ok(None)
+    Ok(std::str::from_utf8(digits)
+        .ok()
+        .and_then(|digits| digits.parse::<u64>().ok()))
 }
 
 /// The date system of the workbook `path`, and the sheets it lists.
@@ -618,17 +595,12 @@ fn read_workbook(
 fn raw_sheet_of(sheet: &BytesStart<'_>) -> Result<(Vec<u8>, Vec<u8>), AttrError> {
     let mut raw_name = Vec::new();
     let mut raw_relationship_id = Vec::new();
-    for attribute in sheet.attributes().with_checks(false) {
-        let attribute = attribute?;
-        let key = attribute.key.as_ref();
+    for attribute in RawAttrIter::of_element(sheet) {
+        let (key, value) = attribute?;
         if key == b"name" {
-            raw_name = attribute.value.into_owned();
-        } else if key == b"id"
-            || key
-                .strip_suffix(b"id")
-                .is_some_and(|prefix| prefix.last() == Some(&b':'))
-        {
-            raw_relationship_id = attribute.value.into_owned();
+            raw_name = value.to_vec();
+        } else if local_name_matches(key, b"id") {
+            raw_relationship_id = value.to_vec();
         }
     }
     Ok((raw_name, raw_relationship_id))
@@ -686,51 +658,30 @@ struct RawWorkbookRelationship {
 }
 
 /// The attributes `Id` and `Target` of `element`, a relationship of the
-/// workbook, read as calamine's `get_attrs!` reads them with `Type`: up to
-/// the attribute that makes the three found.
+/// workbook, read as calamine's `get_attrs!` reads them with `Type`.
 fn raw_workbook_relationship_of(
     element: &BytesStart<'_>,
 ) -> Result<RawWorkbookRelationship, AttrError> {
-    let mut raw_id = None;
-    let mut raw_target = None;
-    let mut num_found: u8 = 0;
-    for attribute in element.attributes().with_checks(false) {
-        let attribute = attribute?;
-        match attribute.key.as_ref() {
-            b"Id" => {
-                raw_id = Some(attribute.value.into_owned());
-                num_found = num_found.saturating_add(1);
-            }
-            b"Type" => num_found = num_found.saturating_add(1),
-            b"Target" => {
-                raw_target = Some(attribute.value.into_owned());
-                num_found = num_found.saturating_add(1);
-            }
-            _ => {}
-        }
-        if num_found == 3 {
-            break;
-        }
-    }
-    Ok(RawWorkbookRelationship { raw_id, raw_target })
+    let [raw_id, _, raw_target] = attributes_of(element, [b"Id", b"Type", b"Target"])?;
+    Ok(RawWorkbookRelationship {
+        raw_id: raw_id.map(<[u8]>::to_vec),
+        raw_target: raw_target.map(<[u8]>::to_vec),
+    })
 }
 
 /// The date system `workbook_pr`, an element `workbookPr`, gives: 1904 when
 /// its attribute `date1904` is `1` or `true`, read as calamine reads it, up
 /// to the first attribute of that name.
 fn date_system_of_element(workbook_pr: &BytesStart<'_>) -> Result<DateSystem, AttrError> {
-    for attribute in workbook_pr.attributes().with_checks(false) {
-        let attribute = attribute?;
-        if attribute.key.as_ref() == b"date1904" {
-            let is_1904 = matches!(attribute.value.as_ref(), b"1" | b"true");
-            return Ok(if is_1904 {
-                DateSystem::Excel1904
-            } else {
-                DateSystem::Excel1900
-            });
-        }
-    }
-    Ok(DateSystem::Excel1900)
+    let is_1904 = matches!(
+        attribute_of(workbook_pr, b"date1904")?,
+        Some(b"1" | b"true")
+    );
+    Ok(if is_1904 {
+        DateSystem::Excel1904
+    } else {
+        DateSystem::Excel1900
+    })
 }
 
 /// The error of a part whose XML cannot be read, with `cause`.

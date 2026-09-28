@@ -12,7 +12,7 @@
 mod hand_written;
 
 use std::error::Error;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::ops::Range;
 
 use rust_xlsxwriter::{Workbook, XlsxError};
@@ -20,8 +20,9 @@ use xlsx_rs::{
     ReadError, Sheet, SheetCell, read_first_sheet, read_first_sheet_within_text_table_bytes,
     read_first_sheet_within_unzipped_bytes,
 };
-use zip::ZipArchive;
 use zip::result::ZipError;
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::hand_written::{
     parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
@@ -565,4 +566,160 @@ fn a_sheet_with_as_many_merged_ranges_as_the_limit_of_cells_is_read() {
             "{relationship_target}"
         );
     }
+}
+
+/// A part of a zip, a name and its bytes, given as `head`, then `middle`
+/// written `num_middles` times, then `tail`, so that a part of hundreds of
+/// MB is deflated without being held whole.
+struct RepeatedPart<'part> {
+    name: &'part str,
+    head: &'part str,
+    middle: &'part str,
+    num_middles: u64,
+    tail: &'part str,
+}
+
+/// A zip of `parts`, each deflated, the compression Excel uses.
+fn deflated_zip(parts: &[RepeatedPart<'_>]) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .large_file(true);
+    for part in parts {
+        writer.start_file(part.name, options)?;
+        writer.write_all(part.head.as_bytes())?;
+        // The middle written 4,096 times at once, so that the writer is not
+        // called once for each of millions of elements.
+        let middles_of_a_chunk = part.middle.repeat(4_096);
+        let num_chunks = part.num_middles / 4_096;
+        for _ in 0..num_chunks {
+            writer.write_all(middles_of_a_chunk.as_bytes())?;
+        }
+        for _ in 0..part.num_middles % 4_096 {
+            writer.write_all(part.middle.as_bytes())?;
+        }
+        writer.write_all(part.tail.as_bytes())?;
+    }
+    Ok(writer.finish()?.into_inner())
+}
+
+/// The parts of [`parts_of_worksheet`] with the sheet of one cell, A1, the
+/// number 7, as the [`RepeatedPart`]s of [`deflated_zip`], none repeated.
+fn parts_of_one_number() -> Vec<(String, String)> {
+    parts_of_worksheet(r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData>"#)
+}
+
+/// `parts` as [`RepeatedPart`]s that repeat nothing.
+fn unrepeated(parts: &[(String, String)]) -> Vec<RepeatedPart<'_>> {
+    parts
+        .iter()
+        .map(|(name, xml)| RepeatedPart {
+            name,
+            head: xml,
+            middle: "",
+            num_middles: 0,
+            tail: "",
+        })
+        .collect()
+}
+
+/// A form feed, the byte `0C`, which calamine's reader of attributes takes
+/// for a space before the name of an attribute, and quick-xml's for part
+/// of the name.
+const FORM_FEED: &str = "\x0C";
+
+// The three files of the review of 28 September 2026 that trapped the
+// package, each with a form feed before the name of an attribute, which
+// calamine read and xlsx_rs, reading the attributes with quick-xml, did not.
+#[test]
+fn a_unique_count_after_a_form_feed_is_read_as_calamine_reads_it() {
+    let mut parts = parts_with_texts(shared_strings(
+        &format!(r#"count="2" {FORM_FEED}uniqueCount="400000000""#),
+        &["id", "pop"],
+    ));
+    parts.sort_by_key(|(name, _)| name == "xl/sharedStrings.xml");
+    let bytes = deflated_zip(&unrepeated(&parts)).unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "the table of texts says it holds more texts than it does".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_type_of_the_package_relationships_after_a_form_feed_is_read_as_calamine_reads_it() {
+    let mut parts = parts_with_texts(shared_strings(
+        r#"count="2" uniqueCount="400000000""#,
+        &["id", "pop"],
+    ));
+    let package_relationships = xml_of(&mut parts, "_rels/.rels").unwrap();
+    *package_relationships =
+        package_relationships.replace(r#" Type="#, &format!(r#" {FORM_FEED}Type="#));
+    assert!(package_relationships.contains(FORM_FEED));
+    let bytes = deflated_zip(&unrepeated(&parts)).unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "the table of texts says it holds more texts than it does".to_owned()
+        ))
+    );
+}
+
+/// The xlsx of [`parts_of_one_number`] whose sheet has a form feed before
+/// the attribute `name` in the workbook, and `num_merged_ranges` merged
+/// ranges, each `D1:E1`, outside its rectangle, deflated.
+fn xlsx_of_form_feed_name(num_merged_ranges: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut parts = parts_of_one_number();
+    let workbook = xml_of(&mut parts, "xl/workbook.xml").ok_or("no workbook")?;
+    *workbook = workbook.replace(r#" name="#, &format!(r#" {FORM_FEED}name="#));
+    let sheet = xml_of(&mut parts, "xl/worksheets/sheet1.xml").ok_or("no sheet")?;
+    let (sheet_head, sheet_tail) = sheet
+        .split_once("</worksheet>")
+        .ok_or("no end of the sheet")?;
+    let sheet_head = format!("{sheet_head}<mergeCells>");
+    let sheet_tail = format!("</mergeCells></worksheet>{sheet_tail}");
+    let mut repeated_parts = unrepeated(&parts);
+    let merged_part = repeated_parts
+        .iter_mut()
+        .find(|part| part.name == "xl/worksheets/sheet1.xml")
+        .ok_or("no sheet")?;
+    merged_part.head = &sheet_head;
+    merged_part.middle = r#"<mergeCell ref="D1:E1"/>"#;
+    merged_part.num_middles = num_merged_ranges;
+    merged_part.tail = &sheet_tail;
+    deflated_zip(&repeated_parts)
+}
+
+#[test]
+fn a_name_of_the_sheet_after_a_form_feed_is_read_as_calamine_reads_it() {
+    let bytes = xlsx_of_form_feed_name(50).unwrap();
+
+    let read = read_first_sheet(&bytes, 10);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
+}
+
+// The file of the review held 36,000,000 merged ranges, which calamine
+// held in 583 MB natively.
+#[test]
+#[ignore = "takes 15 s in cargo test, past 10 s; run before each release"]
+fn a_name_of_the_sheet_after_a_form_feed_with_36_000_000_merged_ranges_is_unreadable() {
+    let bytes = xlsx_of_form_feed_name(36_000_000).unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many merged ranges".to_owned()))
+    );
 }

@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+mod attrs;
 mod cell;
 mod date;
 mod parts;

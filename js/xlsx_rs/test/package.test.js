@@ -181,12 +181,12 @@ test("a table at C2 of 5 columns read with a limit of 16 cells is refused as she
     });
 });
 
-test("a file calamine cannot read throws an Error with its message", async () => {
+test("a file that is not a zip past its first bytes throws an Error with the message of the zip", async () => {
     const bytes = await readFile(new URL("written.xlsx", dataDir));
 
     assert.throws(() => readXlsx(bytes.subarray(0, 500), MAX_SHEET_CELLS), {
         name: "Error",
-        message: "Zip error: invalid Zip archive: Could not find EOCD",
+        message: "invalid Zip archive: Could not find EOCD",
     });
 });
 

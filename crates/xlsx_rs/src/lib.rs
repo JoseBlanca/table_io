@@ -5,6 +5,7 @@
 
 mod cell;
 mod date;
+mod parts;
 mod rectangle;
 
 use std::io::Cursor;
@@ -89,13 +90,14 @@ pub enum Refusal {
 pub enum ReadError {
     /// A file refused, with what its words need.
     Refused(Refusal),
-    /// A file xlsx_rs cannot read, with a message for the console:
-    /// calamine's, for a file it cannot read as a workbook or whose sheet
-    /// it cannot read; or xlsx_rs's, for a workbook with no worksheet that
-    /// is not hidden, a sheet whose cells cannot be laid out, two merged
-    /// ranges that overlap, and a file that passes one of the two bounds
-    /// of "The refusals" of `docs/specs/read.md`, as
-    /// [`read_first_sheet`] lists them.
+    /// A file xlsx_rs cannot read, with a message for the console: the zip
+    /// crate's, for a file that is not a zip past its first bytes or a part
+    /// damaged; calamine's, for a zip it cannot read as a workbook or whose
+    /// sheet it cannot read; or xlsx_rs's, for a workbook with no worksheet
+    /// that is not hidden, a sheet whose cells cannot be laid out, two
+    /// merged ranges that overlap, and a file that passes one of the bounds
+    /// of "The refusals" and "What xlsx_rs reads before calamine" of
+    /// `docs/specs/read.md`, as [`read_first_sheet`] lists them.
     Unreadable(String),
 }
 
@@ -109,6 +111,16 @@ pub enum ReadError {
 /// holds about 20 MB of text.
 pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 
+/// The most bytes the parts of a file may hold together once unzipped,
+/// 1,000,000,000: past it the read is [`ReadError::Unreadable`], "the file
+/// unzips to more than 1,000,000,000 bytes".
+///
+/// The value is that of "What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`: `individuals_10000.xlsx` unzips to 6.6 times its
+/// size, so a zip of 20 MB, popnei_web's limit, of the same kind unzips to
+/// about 133 MB, while a zip can be written to unzip to many GB.
+pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
+
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
 /// refusing it at the first cell that makes the rectangle of the values
 /// larger than `max_cells` cells.
@@ -120,8 +132,13 @@ pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 ///
 /// [`ReadError::Unreadable`] with one of these messages:
 ///
-/// - calamine's, for a file it cannot read as a workbook, or whose sheet
-///   it cannot read, a file cut short among them;
+/// - the zip crate's, for a file that is not a zip past its first bytes, a
+///   file cut short among them, and for a part of the zip whose bytes are
+///   not those it was saved with, "Invalid checksum";
+/// - "the file unzips to more than 1,000,000,000 bytes", for parts that
+///   hold more than [`MAX_UNZIPPED_BYTES`] together;
+/// - calamine's, for a zip it cannot read as a workbook, or whose sheet it
+///   cannot read;
 /// - "no visible worksheet", for a workbook whose worksheets are all
 ///   hidden;
 /// - "the sheet … has a rectangle of … cells, more than the memory can
@@ -137,12 +154,30 @@ pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 ///   with a value than `max_cells`, a cell written again counted again;
 /// - "too much text", for texts of the cells past [`MAX_TEXT_BYTES`].
 pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError> {
+    read_first_sheet_within_unzipped_bytes(bytes, max_cells, MAX_UNZIPPED_BYTES)
+}
+
+/// Reads as [`read_first_sheet`] does, with `max_unzipped_bytes` in the
+/// place of [`MAX_UNZIPPED_BYTES`], so that a test can pass the bound with
+/// a file of a few KB instead of unzipping a GB.
+///
+/// # Errors
+///
+/// Those of [`read_first_sheet`], the bound of the unzipped bytes being
+/// `max_unzipped_bytes`: "the file unzips to more than … bytes", with
+/// `max_unzipped_bytes`.
+pub fn read_first_sheet_within_unzipped_bytes(
+    bytes: &[u8],
+    max_cells: u32,
+    max_unzipped_bytes: u64,
+) -> Result<Sheet, ReadError> {
     if bytes.starts_with(&COMPOUND_FILE_MARK) {
         return Err(ReadError::Refused(refusal_of_compound_file(bytes)));
     }
     if !bytes.starts_with(&ZIP_MARK) {
         return Err(ReadError::Refused(Refusal::NotXlsx));
     }
+    parts::read_every_part(bytes, max_unzipped_bytes)?;
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;
     let date_system = if workbook.has_1904_epoch() {
         DateSystem::Excel1904

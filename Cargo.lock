@@ -315,7 +315,9 @@ name = "xlsx_rs"
 version = "0.1.0"
 dependencies = [
  "calamine",
+ "quick-xml",
  "rust_xlsxwriter",
+ "zip",
 ]
 
 [[package]]

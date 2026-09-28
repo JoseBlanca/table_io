@@ -44,7 +44,7 @@ fn an_empty_zip_is_refused_as_not_an_xlsx() {
 }
 
 #[test]
-fn the_first_500_bytes_of_an_xlsx_are_unreadable_with_calamines_message() {
+fn the_first_500_bytes_of_an_xlsx_are_unreadable_with_the_zip_crates_message() {
     let mut workbook = Workbook::new();
     workbook.add_worksheet().write_string(0, 0, "id").unwrap();
     let bytes = workbook.save_to_buffer().unwrap();
@@ -55,7 +55,7 @@ fn the_first_500_bytes_of_an_xlsx_are_unreadable_with_calamines_message() {
     assert_eq!(
         read,
         Err(ReadError::Unreadable(
-            "Zip error: invalid Zip archive: Could not find EOCD".to_owned()
+            "invalid Zip archive: Could not find EOCD".to_owned()
         ))
     );
 }

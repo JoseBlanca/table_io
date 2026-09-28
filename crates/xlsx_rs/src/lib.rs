@@ -165,11 +165,22 @@ const COMPOUND_FILE_MARK: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0
 /// The four bytes every zip starts with, `PK` and the bytes 3 and 4.
 const ZIP_MARK: [u8; 4] = [b'P', b'K', 3, 4];
 
-/// The refusal of a compound file of Office: `Encrypted` when calamine
-/// finds in it the encrypted package of an xlsx saved with a password, and
-/// `OldExcel` for any other.
+/// The name of the part an xlsx saved with a password holds its workbook
+/// in, `EncryptedPackage`, as a compound file writes the names of its
+/// parts: in UTF-16, little-endian.
+const ENCRYPTED_PACKAGE_NAME: &[u8; 32] = b"E\0n\0c\0r\0y\0p\0t\0e\0d\0P\0a\0c\0k\0a\0g\0e\0";
+
+/// The refusal of a compound file of Office: `Encrypted` when its bytes
+/// hold the name [`ENCRYPTED_PACKAGE_NAME`], and `OldExcel` for any other.
+///
+/// calamine is not asked, since its reader of compound files panics on one
+/// cut short, which in the wasm ends the worker (refusal 1 of
+/// `docs/specs/read.md`).
 fn refusal_of_compound_file(bytes: &[u8]) -> Refusal {
-    if let Err(XlsxError::Password) = Xlsx::new(Cursor::new(bytes)) {
+    let holds_encrypted_package = bytes
+        .windows(ENCRYPTED_PACKAGE_NAME.len())
+        .any(|window| window == ENCRYPTED_PACKAGE_NAME);
+    if holds_encrypted_package {
         Refusal::Encrypted
     } else {
         Refusal::OldExcel

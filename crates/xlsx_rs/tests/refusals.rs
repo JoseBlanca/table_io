@@ -52,6 +52,55 @@ fn a_compound_file_with_no_encrypted_package_is_old_excel() {
     assert_eq!(read, Err(ReadError::Refused(Refusal::OldExcel)));
 }
 
+/// A compound file as an xlsx saved with a password is, as far as xlsx_rs
+/// looks: the mark, zeros, and the name of the part `EncryptedPackage` in
+/// UTF-16 little-endian at byte 600, as a compound file writes its names,
+/// then zeros up to 1,024 bytes.
+fn encrypted_compound_file() -> Vec<u8> {
+    let mut bytes = COMPOUND_FILE_MARK.to_vec();
+    bytes.resize(600, 0);
+    bytes.extend("EncryptedPackage".encode_utf16().flat_map(u16::to_le_bytes));
+    bytes.resize(1024, 0);
+    bytes
+}
+
+#[test]
+fn a_compound_file_with_an_encrypted_package_is_encrypted() {
+    let read = read_first_sheet(&encrypted_compound_file(), MAX_SHEET_CELLS);
+
+    assert_eq!(read, Err(ReadError::Refused(Refusal::Encrypted)));
+}
+
+#[test]
+fn a_compound_file_with_an_encrypted_package_cut_short_is_encrypted() {
+    // calamine's reader of compound files panicked on such files cut short,
+    // which in the wasm is a trap; 632 is the byte just after the name.
+    let bytes = encrypted_compound_file();
+    for length in [632, 700, 1000, 1023] {
+        let read = read_first_sheet(&bytes[..length], MAX_SHEET_CELLS);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Refused(Refusal::Encrypted)),
+            "cut at {length} bytes"
+        );
+    }
+}
+
+#[test]
+fn a_compound_file_cut_before_the_name_is_old_excel() {
+    let bytes = encrypted_compound_file();
+    for length in [8, 512, 631] {
+        let read = read_first_sheet(&bytes[..length], MAX_SHEET_CELLS);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Refused(Refusal::OldExcel)),
+            "cut at {length} bytes"
+        );
+    }
+}
+
 #[test]
 fn a_workbook_whose_only_worksheet_is_hidden_is_unreadable() {
     // rust_xlsxwriter shows the active sheet whatever it was told, so the

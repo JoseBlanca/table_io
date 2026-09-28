@@ -7,8 +7,7 @@ the first spec of xlsx_rs, `specs/read.md`, which popnei_web wrote before
 this repository existed and which moved here whole. This document gives
 the parts of xlsx_rs, what a read goes through, the invariants the code
 keeps, the interface with popnei_web, and how a release is made. What
-xlsx_rs is for is in `objectives.md`. What is still to be decided is in
-section 9.
+xlsx_rs is for is in `objectives.md`. The license is in section 9.
 
 ## 1. Three layers
 
@@ -135,7 +134,10 @@ line, "The Rust interface": that file is the contract.
   is a new release here and, in the same piece of work, a change of the
   code of popnei_web that reads them and a new URL in its `package.json`.
   popnei_web checks at build time that the struct still has the fields it
-  reads, so a release that drops one fails its type check.
+  reads, so a release that drops one fails its type check. Here the
+  declarations are kept in git as `js/xlsx_rs/test/xlsx_rs.d.ts`, and the
+  test of the package fails when what wasm-bindgen generates differs from
+  them, so a change of the contract is never made unseen.
 - A change inside, a cell read differently, is a new release too, and
   popnei_web takes it when it changes the URL. What a user sees change
   goes into the notes of the release.
@@ -230,7 +232,9 @@ At three levels, each named in the spec with the cases it holds.
   the files the owner makes in Excel, LibreOffice and Google Sheets, in
   `tests/data/`, whose tests assert what the owner says each file shows
   in Excel. A test of a file that is not there yet is marked `#[ignore]`
-  with the name of the file it waits for.
+  with the name of the file it waits for. And one test that no file
+  panics: a small xlsx cut short at every length and with each of its
+  bytes changed in turn, each copy giving a sheet, a refusal or an error.
 - **The package under node**, as it is released: its `init` given the
   bytes of the `.wasm`, and `readXlsx` over two of the owner's files, the
   cells and a refusal. It is what checks a release before it is tagged.
@@ -253,12 +257,10 @@ At three levels, each named in the spec with the cases it holds.
   point 14).
 - **A workflow that makes the releases**, shared with popnei.
 
-## 9. Open points
+## 9. The license
 
-1. **The license.** The package's `files` hold the license, and the
-   repository is public. popnei is under the MIT license, which the owner
-   chose for it on 20 September 2026. calamine is under MIT, and
-   rust_xlsxwriter, used by the tests only and not shipped, under MIT or
-   Apache 2.0. The recommendation is MIT, as popnei; meanwhile the
-   repository has no LICENSE, and the package cannot be released without
-   one.
+xlsx_rs is under the MIT license, as popnei is, which the owner decided on
+28 September 2026; the text is `LICENSE` at the root, and the package
+copies it before it is packed. calamine is under MIT too, and
+rust_xlsxwriter, used by the tests only and not shipped, under MIT or
+Apache 2.0.

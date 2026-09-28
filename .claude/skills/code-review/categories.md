@@ -3,7 +3,9 @@
 A reviewer reads the section for its category and the parts of
 `.claude/skills/coding/SKILL.md` it names. The rules are there with their
 reasons and are not repeated here. What is here is what to look for and
-how to look. Adapted on 28 September 2026 from popnei's.
+how to look. Adapted on 28 September 2026 from popnei's, with rules of
+pop_var_caller's `rust-code-review` checklists, reliability, naming,
+refactor safety and errors, that fit a small library.
 
 ## spec
 
@@ -39,7 +41,13 @@ Can each test fail, and are the numbers the change claims true?
   and the column. A test that still passes guards nothing, and that is a
   finding. Before reporting one, show that your change did alter the
   behaviour on some input, because a change that alters nothing proves
-  nothing about the test.
+  nothing about the test. Report three numbers: the changes made, those
+  no test caught, and those that changed no behaviour; only the second
+  are findings.
+- For every test that exists, name what in its file makes the failure it
+  asserts reachable, and ask which wrong implementations also pass it. In
+  pop_var_caller, ten of sixteen rounds of review had a blocking finding
+  that was a test unable to fail, not wrong code.
 - The ways a fixture hides a defect: a rectangle that starts at A1, so a
   row counted from 0 and one counted from 1 cannot be told apart; a date
   with no time; a sheet with no merged range; a limit no fixture reaches.
@@ -52,7 +60,10 @@ Can each test fail, and are the numbers the change claims true?
   gives about this change, a count of cells, a size in bytes, the row at
   which a limit is passed, is computed again, not read again. Report each
   as right or as wrong with the right value.
-- Restore the code after each experiment and end with `git status` clean.
+- Restore the code after each experiment, and check the restore by the
+  content of `git diff`, not by its count of lines: in pop_var_caller two
+  changes of a script of experiments reached a commit whose message quoted
+  a suite that had passed on the clean tree.
 
 ## numbers
 
@@ -84,6 +95,10 @@ The section "Errors, and no panics" of the coding skill.
   calamine's message; never a sheet with fewer cells.
 - An error of calamine turned into a refusal or a sheet, an error dropped,
   a type of calamine in the public interface.
+- A test of a malformed input that asserts only that it fails, and not
+  which refusal or error it gives. The test that cuts short and changes
+  each byte of a file: does it run, and over a file with every kind of
+  cell?
 
 ## api
 
@@ -91,11 +106,18 @@ The section "Types, names and defaults" of the coding skill, and the doc
 comments as `.claude/skills/writing/SKILL.md` asks for them.
 
 - Read every new name as someone who has not seen the code: does it say
-  what the value is? Is the same thing called the same in the library, in
+  what the value is? A generic noun alone, `data`, `value`, `result`, an
+  adjective without its noun, `last`, a function that is not a verb, a
+  `bool` that is not a question. Is the same thing called the same in the library, in
   the binding and in the declarations, and as the spec calls it?
 - Signatures and fields against the spec, the declarations above all.
-- `bool` parameters, strings for a finite set inside Rust, a `_` arm on
-  an enum, a `pub` that could be `pub(crate)`.
+- `bool` parameters, two `bool` fields whose truth table has rows that
+  mean nothing, two `u32` of different meaning that can be swapped in one
+  call, strings for a finite set inside Rust, a `_` arm on an enum, a
+  `pub` that could be `pub(crate)`.
+- What the compiler would not flag when the code next changes: a struct
+  literal with `..Default::default()`, a destructure with `..` in a trait
+  impl, a slice checked for its length and then indexed.
 - Doc comments: what the item is, in the words of the spec, the units
   and the numbering, from 0 or from 1, and `# Errors`.
 - A function longer than a screen or with many branches, the same logic

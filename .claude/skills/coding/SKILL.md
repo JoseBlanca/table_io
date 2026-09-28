@@ -6,7 +6,9 @@ description: How code is written in xlsx_rs, in the Rust library crate, in the w
 # Coding
 
 Adapted on 28 September 2026 from the coding skill of popnei, whose lints
-and rules xlsx_rs takes. xlsx_rs has three layers, and
+and rules xlsx_rs takes, with the rules of Rust of pop_var_caller's
+`rust-feature-implementation` and `rust-code-review` skills
+(`/Users/jose/devel/pop_var_caller/ai/skills/`) that fit a small library. xlsx_rs has three layers, and
 `docs/architecture.md`, section 1, describes them: the library crate
 `crates/xlsx_rs`, plain Rust with no wasm-bindgen, where everything the
 read does is; the binding crate `crates/xlsx_rs_js`, which exports one
@@ -130,13 +132,23 @@ tests. Slices are walked with iterators and `get`.
 ## Types, names and defaults
 
 - A name says what the value is: `first_row`, `max_cells`, never `n`,
-  `data`, `tmp`, `val`. The names of the things are those of the spec, a
+  `data`, `tmp`, `val`, `item`, `value`, `result`, nor an adjective alone,
+  `current`, `last`, `next`, which needs its noun: `last_row`. A function
+  is a verb, `read_first_sheet`, `cell_of_date`; a type is a noun of the
+  domain, `Sheet`, `Refusal`. A `bool` reads as a question, `is_hidden`.
+  A binding that holds a value of calamine before xlsx_rs has turned it
+  into its own is named for calamine, `calamine_cell`, so that the layer
+  shows at the use. The names of the things are those of the spec, a
   sheet, a cell, the rectangle, a refusal, and one thing has one name in
   the Rust, the binding and the declarations, the last in camelCase.
 - Where the spec gives a signature, a field or a code of refusal, that is
   it. When it looks wrong, that is a point for the owner and not a silent
   change: the declarations are the contract with popnei_web.
-- No `bool` parameters, an enum with two named variants. No value of a
+- Illegal states are not representable. No `bool` parameters, an enum
+  with two named variants; two `bool` fields of which some combinations
+  mean nothing are an enum of the combinations that do; a row and a
+  column, or a number of rows and one of columns, that meet in one
+  signature get newtypes when they could be swapped unseen. No value of a
   finite set passed as a string inside Rust; the codes of refusal are
   strings only in the struct the binding crate returns, made in one
   `match`.
@@ -154,6 +166,33 @@ tests. Slices are walked with iterators and `get`.
   binding crate has none of its own.
 - A lint is silenced with `#[expect(lint, reason = "...")]` on the
   smallest item, never with a bare `#[allow]`.
+
+## Rust that the compiler can check
+
+Taken from pop_var_caller, where each rule was paid for:
+
+- A struct literal names every field, never `..Default::default()`, so
+  that a field added later stops the build at every place that has to
+  think about it; a destructure in a trait impl names every field too,
+  with no `..`.
+- A slice of a known length is matched, `[first, second] => ...`, and not
+  checked for its length and then indexed.
+- `mut` lives only while a value is built: `let rectangle = { let mut
+  ... ; ... };`.
+- Borrow before cloning. A clone is questioned where it runs once for
+  each cell of a sheet; one at the end of a read, or in a test, is left
+  alone.
+- Paths more than one module up are written from the crate,
+  `crate::cell::Cell`, not `super::super::`. A module is one file,
+  `src/date.rs`, until it has modules of its own. A file is renamed with
+  `git mv`.
+- A type or field's doc comment says first what the value is, its shape
+  and its numbering, and then why only when that would surprise.
+- A number of a cell goes through no function whose rounding depends on
+  the platform, `ln`, `exp`, `powf` and their kin, which the operating
+  system's library computes and which macOS and Linux were measured to
+  round differently in pop_var_caller. xlsx_rs needs none: `round`, the
+  four operations and the conversions to integers are exact everywhere.
 
 ## What the architecture asks of the code
 
@@ -181,10 +220,11 @@ where `cargo test` reaches it.
   false`: the functions wasm-bindgen generates are stubs that panic
   natively, and what it adds is tested under node.
 - The package is what wasm-bindgen generates, with no TypeScript of its
-  own. After a change of the binding crate, `npm run build` and compare
-  `wasm/xlsx_rs.d.ts` with the declarations of the spec, line by line. A
-  difference is a change of the contract: the spec first, then a new
-  release, and popnei_web told what it changes.
+  own. The declarations it generates, `wasm/xlsx_rs.d.ts`, are also kept
+  in git as `js/xlsx_rs/test/xlsx_rs.d.ts`, the lines the spec gives, and
+  `npm test` fails when the two differ. So a change of the contract cannot
+  pass unseen: it is the spec first, then that file, then a new release,
+  and popnei_web told what it changes.
 
 ## Dependencies
 
@@ -213,7 +253,18 @@ spec corrected where calamine changed.
 - A test has to be able to fail. When in doubt, break the code on purpose
   and see the test fail.
 - The malformed inputs are cases of their own: no bytes, a CSV, a zip cut
-  short, a compound file of the old Office.
+  short, a compound file of the old Office, each asserting the refusal or
+  the error it gives and not only that it fails.
+- No file makes the library panic. One test takes a small xlsx written by
+  rust_xlsxwriter, cuts it short at every length and changes each of its
+  bytes in turn, and asserts, with `std::panic::catch_unwind`, that every
+  one gives a sheet, a refusal or an error. It needs no dependency, and it
+  is how popnei found, by the same means, a damaged file its reader of VCF
+  took for an empty one. A panic it finds inside calamine is a finding for
+  the spec and an issue for calamine.
+- Every kind of text the user types is in some test: accents, `Población`,
+  a character outside the first plane of Unicode, an emoji, and a line
+  break.
 - The name of a test says the behaviour and the outcome:
   `a_date_a_hundredth_of_a_millisecond_before_midnight_is_the_next_day`.
 
@@ -223,13 +274,15 @@ spec corrected where calamine changed.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo wasm-check
 cd js/xlsx_rs && npm run build && npm test
 ```
 
-The four cargo commands run for every change, and the last line from the
-moment the package exists. `cargo test` prints how many tests were
-ignored: the report says which files they wait for. `cargo wasm-check`,
+The five cargo commands run for every change, and the last line from the
+moment the package exists. `cargo doc` fails on a broken link or a
+malformed doc comment, which clippy does not read. `cargo test` prints how
+many tests were ignored: the report says which files they wait for. `cargo wasm-check`,
 an alias of `.cargo/config.toml`, compiles both crates for
 `wasm32-unknown-unknown` with the warnings denied, since nothing else
 builds them for wasm before the package is built. A layer that does not

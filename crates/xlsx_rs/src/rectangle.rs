@@ -12,9 +12,9 @@ pub(crate) type Position = (u32, u32);
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MergedRange {
     /// The position of the first cell, which holds the value of the range.
-    first: Position,
+    first_cell: Position,
     /// The position of the last cell.
-    last: Position,
+    last_cell: Position,
 }
 
 impl MergedRange {
@@ -26,11 +26,11 @@ impl MergedRange {
         let (corner_row, corner_column) = corner;
         let (opposite_row, opposite_column) = opposite_corner;
         Self {
-            first: (
+            first_cell: (
                 corner_row.min(opposite_row),
                 corner_column.min(opposite_column),
             ),
-            last: (
+            last_cell: (
                 corner_row.max(opposite_row),
                 corner_column.max(opposite_column),
             ),
@@ -201,11 +201,11 @@ impl Rectangle {
         merged_range: MergedRange,
     ) -> Result<(), LayoutError> {
         let MergedRange {
-            first: (first_row, first_column),
-            last: (last_row, last_column),
+            first_cell: (first_row, first_column),
+            last_cell: (last_row, last_column),
         } = merged_range;
         let first_value = self
-            .index_of(merged_range.first)
+            .index_of(merged_range.first_cell)
             .and_then(|index| cells.get(index))
             .cloned()
             .unwrap_or(SheetCell::Empty);
@@ -223,7 +223,7 @@ impl Rectangle {
                     }
                     *mark = true;
                 }
-                if (row, column) != merged_range.first {
+                if (row, column) != merged_range.first_cell {
                     text_count
                         .count(&first_value)
                         .map_err(|_| LayoutError::TooMuchText)?;
@@ -265,8 +265,9 @@ mod tests {
 
     #[test]
     fn a_rectangle_of_more_cells_than_memory_holds_is_an_error() {
-        // (2^32 - 1)^2 cells of 16 bytes: past what any memory can address,
-        // so nothing is allocated before the error.
+        // (2^32 - 1)^2 cells, of 16 bytes each in wasm32 and 24 natively:
+        // past what any memory can address, so nothing is allocated before
+        // the error.
         let rectangle = Rectangle::of_position((0, 0)).extended_to((u32::MAX - 1, u32::MAX - 1));
 
         assert_eq!(

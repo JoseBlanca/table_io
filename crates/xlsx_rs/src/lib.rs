@@ -87,9 +87,13 @@ pub enum Refusal {
 pub enum ReadError {
     /// A file refused, with what its words need.
     Refused(Refusal),
-    /// A file calamine cannot read as a workbook, or whose sheet it cannot
-    /// read, with calamine's message, for the console; or a workbook with
-    /// no worksheet that is not hidden, "no visible worksheet".
+    /// A file xlsx_rs cannot read, with a message for the console:
+    /// calamine's, for a file it cannot read as a workbook or whose sheet
+    /// it cannot read; or xlsx_rs's, for a workbook with no worksheet that
+    /// is not hidden, a sheet whose cells cannot be laid out, two merged
+    /// ranges that overlap, and a file that passes one of the two bounds
+    /// of "The refusals" of `docs/specs/read.md`, as
+    /// [`read_first_sheet`] lists them.
     Unreadable(String),
 }
 
@@ -110,8 +114,26 @@ pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 /// # Errors
 ///
 /// [`ReadError::Refused`] for a file of the refusals of
-/// `docs/specs/read.md`, and [`ReadError::Unreadable`] for one calamine
-/// cannot read.
+/// `docs/specs/read.md`, with what the words of the refusal need.
+///
+/// [`ReadError::Unreadable`] with one of these messages:
+///
+/// - calamine's, for a file it cannot read as a workbook, or whose sheet
+///   it cannot read, a file cut short among them;
+/// - "no visible worksheet", for a workbook whose worksheets are all
+///   hidden;
+/// - "the sheet … has a rectangle of … cells, more than the memory can
+///   hold", when the cells of a rectangle within `max_cells` cannot be
+///   allocated;
+/// - "the sheet … has a cell at row … and column …, counted from 0,
+///   outside its rectangle", and the four messages of a first row or
+///   column, or a number of rows or columns, past what a `u32` holds,
+///   which no file calamine reads can give and which are there so that
+///   the read has no panic;
+/// - "overlapping merged ranges", for two merged ranges that share a cell;
+/// - "cells written more than once", for a file that gives more cells
+///   with a value than `max_cells`, a cell written again counted again;
+/// - "too much text", for texts of the cells past [`MAX_TEXT_BYTES`].
 pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError> {
     if bytes.starts_with(&COMPOUND_FILE_MARK) {
         return Err(ReadError::Refused(refusal_of_compound_file(bytes)));
@@ -142,18 +164,18 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
             let position = calamine_cell.get_position();
             let extended_rectangle = match rectangle {
                 None => Rectangle::of_position(position),
-                Some(so_far) => so_far.extended_to(position),
+                Some(rectangle_so_far) => rectangle_so_far.extended_to(position),
             };
             // Checked at each cell, so that the read stops at the first cell
             // past the limit and never holds more cells than it.
             if extended_rectangle.num_cells() > u64::from(max_cells) {
-                let bounds = excel_bounds_of(&extended_rectangle, &sheet_name)?;
+                let excel_rectangle = excel_rectangle_of(&extended_rectangle, &sheet_name)?;
                 return Err(ReadError::Refused(Refusal::SheetTooLarge {
                     sheet: sheet_name.clone(),
-                    first_row: bounds.first_row,
-                    first_column: bounds.first_column,
-                    num_rows: bounds.num_rows,
-                    num_columns: bounds.num_columns,
+                    first_row: excel_rectangle.first_row,
+                    first_column: excel_rectangle.first_column,
+                    num_rows: excel_rectangle.num_rows,
+                    num_columns: excel_rectangle.num_columns,
                 }));
             }
             // A cell written again is kept again, so a file that writes one
@@ -185,17 +207,17 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         .into_iter()
         .map(|calamine_range| MergedRange::of_corners(calamine_range.start, calamine_range.end))
         .collect();
-    let bounds = excel_bounds_of(&rectangle, &sheet_name)?;
+    let excel_rectangle = excel_rectangle_of(&rectangle, &sheet_name)?;
     let cells = rectangle
         .laid_out(kept_cells, &merged_ranges, &mut text_count)
         .map_err(|layout_error| match layout_error {
-            LayoutError::TooManyCells { num_cells } => unreadable_sheet(
+            LayoutError::TooManyCells { num_cells } => unreadable_error_of(
                 &sheet_name,
                 &format!("has a rectangle of {num_cells} cells, more than the memory can hold"),
             ),
             LayoutError::PositionOutside {
                 position: (row, column),
-            } => unreadable_sheet(
+            } => unreadable_error_of(
                 &sheet_name,
                 &format!(
                     "has a cell at row {row} and column {column}, counted from 0, outside its rectangle"
@@ -208,49 +230,54 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         })?;
     Ok(Sheet {
         name: sheet_name,
-        first_row: bounds.first_row,
-        first_column: bounds.first_column,
-        num_rows: bounds.num_rows,
-        num_columns: bounds.num_columns,
+        first_row: excel_rectangle.first_row,
+        first_column: excel_rectangle.first_column,
+        num_rows: excel_rectangle.num_rows,
+        num_columns: excel_rectangle.num_columns,
         cells,
     })
 }
 
-/// The first row and column of a rectangle as Excel numbers them, from 1,
-/// and its numbers of rows and columns, as [`Sheet`] and
-/// [`Refusal::SheetTooLarge`] give them.
-struct ExcelBounds {
+/// The rectangle of the values, from the first row and column that hold a
+/// value to the last ones ("The sheet read" of `docs/specs/read.md`), in
+/// the numbers [`Sheet`] and [`Refusal::SheetTooLarge`] give: its first row
+/// and column as Excel numbers them, from 1, and its numbers of rows and
+/// columns.
+struct ExcelRectangle {
     first_row: u32,
     first_column: u32,
     num_rows: u32,
     num_columns: u32,
 }
 
-/// The [`ExcelBounds`] of `rectangle`, or [`ReadError::Unreadable`] when
+/// The [`ExcelRectangle`] of `rectangle`, or [`ReadError::Unreadable`] when
 /// one of them does not fit in a `u32`.
-fn excel_bounds_of(rectangle: &Rectangle, sheet_name: &str) -> Result<ExcelBounds, ReadError> {
+fn excel_rectangle_of(
+    rectangle: &Rectangle,
+    sheet_name: &str,
+) -> Result<ExcelRectangle, ReadError> {
     let first_row = rectangle.excel_first_row().ok_or_else(|| {
-        unreadable_sheet(
+        unreadable_error_of(
             sheet_name,
             "has its first row past row 4,294,967,295, the last a u32 holds",
         )
     })?;
     let first_column = rectangle.excel_first_column().ok_or_else(|| {
-        unreadable_sheet(
+        unreadable_error_of(
             sheet_name,
             "has its first column past column 4,294,967,295, the last a u32 holds",
         )
     })?;
     let num_rows = rectangle.num_rows().ok_or_else(|| {
-        unreadable_sheet(sheet_name, "has 4,294,967,296 rows, more than a u32 holds")
+        unreadable_error_of(sheet_name, "has 4,294,967,296 rows, more than a u32 holds")
     })?;
     let num_columns = rectangle.num_columns().ok_or_else(|| {
-        unreadable_sheet(
+        unreadable_error_of(
             sheet_name,
             "has 4,294,967,296 columns, more than a u32 holds",
         )
     })?;
-    Ok(ExcelBounds {
+    Ok(ExcelRectangle {
         first_row,
         first_column,
         num_rows,
@@ -264,7 +291,7 @@ fn too_much_text() -> ReadError {
 }
 
 /// The error of a sheet xlsx_rs cannot give, with `cause` after its name.
-fn unreadable_sheet(sheet_name: &str, cause: &str) -> ReadError {
+fn unreadable_error_of(sheet_name: &str, cause: &str) -> ReadError {
     ReadError::Unreadable(format!("the sheet {sheet_name} {cause}"))
 }
 

@@ -29,7 +29,11 @@ the specs of popnei_web's stage 4; it moved here, whole, on 28 September
 same day the owner added to "How it is verified" the test that no file
 makes it panic and the declarations kept in git, and decided that the
 test of the package reads a file written by the tests until the owner's
-own exist. There is no code of it yet.
+own exist. Revised again the same day, after the review of the code
+built from "What xlsx_rs reads before calamine": its bounds count at
+least what calamine could hold, in every part it could read, instead of
+reading the parts as calamine reads them. The code built from it is in
+`crates/`.
 
 This spec gives the Rust library that reads the first sheet of an xlsx,
 the file Excel saves by default, into its cells, and the wasm package
@@ -384,20 +388,52 @@ four things of its parts with the `quick-xml` crate, a reader of XML,
 both at the versions calamine uses; then it gives the same bytes to
 calamine, which reads the sheet as the sections above say. Each failure
 is `ReadError::Unreadable` with xlsx_rs's message, which popnei_web shows
-as a file that could not be read and may be damaged.
+as a file that could not be read and may be damaged. Revised the same
+day, after the review of the code built from it, as the next paragraphs
+but one say.
 
 An xlsx is a zip of parts, each an XML file: the workbook,
 `workbook.xml`, which lists the sheets and holds the settings of the
 file; a part of relationships beside it, which gives the part of each
 sheet; the table of texts, `sharedStrings.xml`, which holds once each
 text the cells hold; the styles, `styles.xml`, where the formats of the
-numbers are; and a part for each sheet. xlsx_rs finds each part as
-calamine finds it, and never by a fixed name: the folder of the workbook
-from the relationship of type `officeDocument` in `_rels/.rels`, and a
-name matched as calamine matches it, ignoring case and reading `\` as
-`/`. A part xlsx_rs finds by another rule than calamine's would let a
-file pass its checks and still reach calamine, as a table of texts named
-in capitals would.
+numbers are; and a part for each sheet. calamine finds the folder of the
+workbook from the relationship of type `officeDocument` in the package's
+own relationships, `_rels/.rels`, and each other part by a name made of
+that folder and the part's usual name, matched ignoring case and reading
+`\` as `/` (`build_zip_path_cache` and `cached_zip_path` of its
+`utils.rs`).
+
+The first version of this section had xlsx_rs find each part as calamine
+finds it and read it as calamine reads it, and the review of 28
+September 2026 found that every small difference between the two
+readings let a file past a bound: files of about 2.5 KB, written by
+hand, trapped the package under node. Three differences did it:
+
+- **An attribute split another way.** calamine reads the attributes of
+  an element with a function of its own, `RawAttrIter` of its
+  `attrs.rs`, which takes a form feed, the byte `0C`, for a space before
+  a name and trims it after one; quick-xml's reader of attributes, which
+  xlsx_rs used, keeps it in the name. With `\x0CuniqueCount=` calamine
+  reserved room for the texts and xlsx_rs saw no count; with `\x0CType=`
+  in `_rels/.rels` xlsx_rs found no workbook and checked nothing.
+- **A part cut short.** xlsx_rs stopped at the end of a table of texts
+  with no `</sst>` before it compared its count, after calamine had
+  already reserved room for 400,000,000 texts.
+- **The sheets listed by another rule.** calamine reads what is inside a
+  defined name, the element `definedName`, as text, and reads the
+  workbook up to the end tag named `workbook`; xlsx_rs listed a `sheet`
+  inside a `definedName` and stopped when a stray end tag closed its
+  count of open elements, and so counted the merged ranges of a part
+  calamine did not read: 50 merged ranges were read with `max_cells` 10.
+
+So the bounds no longer copy calamine's reading. Each counts, in every
+part calamine could read for it and to the end of that part, at least
+what calamine could hold; the attributes xlsx_rs reads are read by a
+copy of calamine's `RawAttrIter`, under calamine's MIT license, with
+calamine's copyright kept above it; and the one part xlsx_rs still has
+to find as calamine finds it, the workbook, for its date system, is
+refused when xlsx_rs cannot find it.
 
 1. **Every part read to its end.** Each part of a zip carries a checksum
    of its bytes, which the zip crate checks when the part has been read
@@ -406,16 +442,20 @@ in capitals would.
    cells wrong or missing and no error: 145 of 4,072 copies of a file
    written by rust_xlsxwriter, with one byte of its sheet's compressed
    data changed, in the spec's review of 28 September 2026. xlsx_rs reads
-   every part to its end and discards the bytes, and any error of the zip
-   crate refuses the file with the zip crate's message, "Invalid
-   checksum" for those 145, all of them caught. So a file that is not a
-   zip past its first bytes, the first 500 bytes of an xlsx among them,
-   is refused with the zip crate's message and no longer calamine's. The
-   bytes read so are counted, and past 1,000,000,000, `MAX_UNZIPPED_BYTES`,
-   the file is refused, "the file unzips to more than 1,000,000,000
-   bytes": `individuals_10000.xlsx` unzips to 6.6 times its size, so a
-   zip of 20 MB, popnei_web's limit, of the same kind is about 133 MB,
-   and a zip can be written to unzip to many GB.
+   every part to its end, and any error of the zip crate refuses the file
+   with the zip crate's message, "Invalid checksum" for those 145, all of
+   them caught. So a file that is not a zip past its first bytes, the
+   first 500 bytes of an xlsx among them, is refused with the zip crate's
+   message and no longer calamine's. The bytes read so are counted, and
+   past 1,000,000,000, `MAX_UNZIPPED_BYTES`, the file is refused, "the
+   file unzips to more than 1,000,000,000 bytes": `individuals_10000.xlsx`
+   unzips to 6.6 times its size, so a zip of 20 MB, popnei_web's limit,
+   of the same kind is about 133 MB, and a zip can be written to unzip to
+   many GB. The same reading counts the merged ranges of each part, point
+   4, and xlsx_rs lets go of its zip before calamine opens the file, so
+   that the list of the parts is not held twice: held twice, a zip of
+   20 MB of 220,000 empty parts took 261 MB natively, where calamine
+   alone takes 166 MB (review of 28 September 2026).
 2. **The date system.** An xlsx says it counts its dates from 1904 in
    the attribute `date1904` of the element `workbookPr` of the workbook.
    Excel 365 also writes, inside the element `extLst` of the same part,
@@ -425,12 +465,26 @@ in capitals would.
    count from 1900: the owner's `excel_1904.xlsx`, saved by Excel for Mac
    on 28 September 2026, gave 13 May 2024 as `2020-05-12`, four years and
    a day early, and so would every date of every workbook of the 1904
-   system that Excel saves. xlsx_rs takes the date system from the
+   system that Excel saves. xlsx_rs takes the date system from the last
    `workbookPr` that is a direct child of the root element of the
-   workbook, whatever its namespace, so that a file Excel saves as
-   "Strict Open XML", whose namespace is another, is read the same;
-   `date1904` `1` or `true` means 1904, as calamine reads it. It does not
-   use calamine's `Xlsx::has_1904_epoch`.
+   workbook, whatever the namespace of either, so that a file Excel saves
+   as "Strict Open XML", whose namespace is another, is read the same;
+   `date1904` `1` or `true` means 1904, as calamine reads it, the first
+   attribute of that name. It does not use calamine's
+   `Xlsx::has_1904_epoch`.
+   The workbook is `workbook.xml` in the folder of the last relationship
+   of `_rels/.rels` whose type ends in `/relationships/officeDocument`,
+   up to the last `/` of its target, as calamine's
+   `read_package_relationships` finds it. A file whose `_rels/.rels` is
+   missing or names no workbook so is refused, "the file names no
+   workbook": calamine refuses it too, unless its reading and xlsx_rs's
+   came apart, and then xlsx_rs could take the
+   date system from another part than calamine's. A workbook named but
+   missing gives the system of 1900, and calamine then finds no sheet. The
+   workbook is read up to the end of its root element, found by counting
+   the elements open, so a file whose end tags do not match its start
+   tags, which no program a user saves with writes, may have its date
+   system taken from another element; no bound depends on it.
 3. **The parts calamine holds whole.** calamine reads four parts whole
    into memory when it opens the file, before the first cell: the
    workbook, with every sheet and every defined name it lists; the
@@ -439,57 +493,131 @@ in capitals would.
    attribute `uniqueCount`. In the review, a table of texts of 6 KB
    saying 400,000,000 trapped the package; one of 80,000,000 empty texts,
    1.9 MB zipped, took 1.93 GB natively; a workbook listing 20,000,000
-   defined names, 3.2 MB zipped, 1.61 GB. So:
-   - the workbook, the relationships, those of the package in
-     `_rels/.rels` among them, and the styles are each refused
-     past 10,000,000 bytes unzipped, `MAX_SETTINGS_PART_BYTES`, "a part
-     of the file is too large", where a real one is a few KB;
-   - the table of texts is refused past 400,000,000 bytes unzipped,
-     `MAX_TEXT_TABLE_BYTES`, twice `MAX_TEXT_BYTES`, "too much text", and past 10,000,000 texts,
-     `MAX_TEXTS`, "too many texts", 120 MB of calamine's room for them in
-     the wasm, where a table of individuals has at most as many texts as
-     cells, 2,000,000;
-   - a table of texts whose `uniqueCount` is larger than the texts it
-     holds, the elements `si`, is refused, "the table of texts says it
-     holds more texts than it does": the nine files of `tests/data/` from
-     Excel, Google Sheets and rust_xlsxwriter give the count they hold,
-     LibreOffice's is not checked; a `uniqueCount` that is missing or is
-     not a number is let be, as calamine does. The texts, and the merged
-     ranges of point 4, are counted as calamine counts them.
-4. **The merged ranges of the sheet read.** calamine reads every merged
-   range of the sheet, each an element `mergeCell`, into memory, 16 bytes
-   each, before xlsx_rs sees one: 40,000,000 in a zip of 5.1 MB held 650
-   MB, in the review of work package 2. After calamine has opened the
-   file and xlsx_rs has chosen the sheet, xlsx_rs finds its part, by the
-   relationship the workbook gives the sheet, and counts its merged
-   ranges; more than `max_cells` of them refuse the file, "too many
-   merged ranges". The bound is generous, not a law: ranges that do not
-   overlap inside the rectangle cannot be more than its cells, but ranges
-   outside it are let be; 2,000,000 of them hold 32 MB.
+   defined names, 3.2 MB zipped, 1.61 GB. xlsx_rs bounds every part whose
+   name ends as one of these, `\` read as `/` and ignoring case, in any
+   folder: the part calamine reads is always one of them, since its name
+   is the folder calamine found followed by the usual name. So:
+   - each part named `_rels/.rels`, or ending in `workbook.xml`,
+     `workbook.xml.rels` or `styles.xml`, is refused past 10,000,000
+     bytes unzipped, `MAX_SETTINGS_PART_BYTES`, "a part of the file is
+     too large", where a real one is a few KB;
+   - each part ending in `sharedStrings.xml`, a table of texts, is refused
+     past 400,000,000 bytes unzipped, `MAX_TEXT_TABLE_BYTES`, twice
+     `MAX_TEXT_BYTES`, "too much text";
+   - in each table of texts, xlsx_rs reads the XML, with quick-xml
+     configured as calamine's `xml_reader` configures its own, so that
+     the two meet the same elements, to the end of the part or to its
+     first error of XML. It counts every element whose local name, the
+     name after any prefix, is `si`, each a text, those inside another
+     `si` and those outside the root counted too, and refuses the file at
+     the first past 10,000,000, `MAX_TEXTS`, "too many texts": 120 MB of
+     calamine's room for them in the wasm, where a table of individuals
+     has at most as many texts as cells, 2,000,000. It reads the
+     attributes `uniqueCount` of every element of local name `sst`, each
+     up to the first attribute `RawAttrIter` cannot read; when the part
+     ends, or at its first error, the largest of them larger than the
+     texts counted refuses the file, "the table of texts says it holds
+     more texts than it does". calamine counts fewer: the `si` of the
+     first `sst`, not those inside another, up to `</sst>`; and reserves
+     room for the first `uniqueCount` of the first `sst`, before it reads
+     the rest. An error of XML is not a refusal of xlsx_rs here: calamine
+     refuses the file at an error before `</sst>`, and never reads one
+     after it;
+   - a `uniqueCount` is a number when it is one or more digits and
+     nothing else, as calamine's call of `atoi_simd::parse`, which takes
+     any zeros first and no sign, reads it, and xlsx_rs compares it
+     whatever its size. One that is missing or is not a number, `+2`
+     among them, is let be, since calamine reserves nothing for it. The
+     nine files of `tests/data/` from Excel, Google Sheets and
+     rust_xlsxwriter give the count they hold; LibreOffice's is not
+     checked.
+
+   xlsx_rs holds one element of the XML at a time, as calamine does, so
+   reading a table of texts takes at most the memory calamine's reading
+   of it takes after.
+4. **The merged ranges.** calamine reads every merged range of the sheet,
+   each an element `mergeCell`, into memory, 16 bytes each, before xlsx_rs
+   sees one: 40,000,000 in a zip of 5.1 MB held 650 MB, in the review of
+   work package 2. The part of the sheet is the one the relationships of
+   the workbook give it, which may name any part of the zip, so xlsx_rs
+   does not look for it. As it reads each part to its end, point 1, it
+   counts the times the nine bytes `mergeCell` appear in it, and more than
+   `max_cells` in one part refuse the file, "too many merged ranges". An
+   element `mergeCell`, with a prefix or without, has those bytes in its
+   name, since quick-xml reads the bytes of a part as they are and does
+   not decode another encoding into them, so the count is at least what
+   calamine can hold; it is more by the element `mergeCells` around the
+   ranges and by the word written anywhere else. The bytes are counted as
+   they pass, and none is held. The bound is generous, not a law: ranges
+   that do not overlap inside the rectangle cannot be more than its
+   cells, but ranges outside it are let be; 2,000,000 of them hold 32 MB.
+
+Where xlsx_rs refuses what calamine would read, accepted on 28 September
+2026 after the review, since no program a user saves with writes such a
+file:
+
+- a part in a compression the zip crate does not read, even one calamine
+  never opens;
+- a workbook whose other sheets, not read, hold more merged ranges than
+  `max_cells`, 2,000,000 in popnei_web; and a sheet read with a few
+  ranges fewer, when the element `mergeCells`, a `mergeCell` with no
+  attribute `ref`, which calamine skips, or the word in a text brings
+  the count past it;
+- a `uniqueCount` past 4,294,967,295, the largest number a `usize` of the
+  wasm holds, which calamine there does not read as a number and reserves
+  nothing for, and xlsx_rs compares with the texts;
+- a part named as one of point 3 in a folder calamine does not read,
+  held to the same bound.
 
 What it costs. Every part is unzipped twice, once by xlsx_rs and once by
-calamine, the workbook, the table of texts and the sheet parsed once
-more; not measured. The plan measures under node 26.8.2 on the owner's
-Mac the read of `individuals_10000.xlsx`, and of a sheet of 2,000,000
-cells, which took 874 ms there before, and the owner is told if either
-more than doubles. The two crates are already in the package through
-calamine; what xlsx_rs's own code adds to its size is measured with the
-plan and given there. Two direct dependencies more, `zip` and
-`quick-xml`, pinned to calamine's versions and upgraded with it.
+calamine, the package relationships, the workbook and the tables of
+texts parsed once more, and every part searched for `mergeCell`. The
+plan measures under node 26.8.2 on the owner's Mac the read of
+`individuals_10000.xlsx`, and of a sheet of 2,000,000 cells, which took
+874 ms there before, and the owner is told if either more than doubles;
+the numbers are in the report of the plan, `docs/reports/own-parts.md`.
+The two crates are already in the package through calamine; what
+xlsx_rs's own code adds to its size is measured with the plan and given
+there. Two direct dependencies more, `zip` and `quick-xml`, pinned to
+calamine's versions and upgraded with it.
 
-The tests, at `read_first_sheet`: the owner's `excel_1904.xlsx`, which
-gives `2024-05-13` and `14:30:00`; a file written by rust_xlsxwriter,
-each byte of its sheet's compressed data changed in turn, no copy giving
-cells other than the file's; the bounds of point 3, each with a file
-written by the test that passes it, and those of 1,000,000,000 and
-400,000,000 bytes through a function of the crate that takes the bound
-as an argument, with a small one, so that the test does not unzip a GB;
-a table of texts whose `uniqueCount` is 400,000,000 with two texts; a
-file whose table of texts is named in capitals, `XL/SHAREDSTRINGS.XML`,
-checked as the other; a Strict file of the 1904 system; a sheet with more
-merged ranges than `max_cells`. Under node, the owner's 1904 file, and
-a file of 2.6 KB whose `uniqueCount` of 400,000,000 trapped the package,
-written by the test helper of hand-made files and committed as
+The tests, at `read_first_sheet`, each with a file written by the test
+unless it is named:
+
+- the owner's `excel_1904.xlsx`, which gives `2024-05-13` and
+  `14:30:00`; a Strict file of the 1904 system; the rules of point 2,
+  each in a file: a `workbookPr` with a prefix, `date1904="0"`, two
+  `workbookPr` children of the root, of which the last is taken, the last
+  of two `officeDocument` relationships, and a `_rels/.rels` that names
+  no workbook, "the file names no workbook";
+- a file written by rust_xlsxwriter, each byte of its sheet's compressed
+  data changed in turn, no copy giving cells other than the file's;
+- each bound of points 1 and 3 at its value, a file that reaches it
+  read and one a byte or a text past it refused: 1,000,000,000 bytes
+  unzipped, 10,000,000 bytes of each of the four settings parts, 400,000,000
+  bytes of a table of texts and 10,000,000 texts. A test that takes more
+  than 10 s in `cargo test` on the owner's Mac is marked `#[ignore]`,
+  with that reason, and run before each release; the messages of these
+  refusals are also tested with small files, through a function private
+  to the crate that takes the bounds as arguments, by tests inside the
+  crate;
+- a table of texts whose `uniqueCount` is 400,000,000 with two texts;
+  the same cut short before `</sst>`; a `uniqueCount` of `0002` with one
+  text, refused, and of `+2`, read;
+- a table of texts named in capitals, `XL/SHAREDSTRINGS.XML`, checked
+  as the other, and a workbook in a folder `data/`, whose table of texts,
+  settings parts and merged ranges are checked as those of `xl/`;
+- a sheet with more merged ranges than `max_cells`; the same in a
+  workbook that lists a decoy sheet inside a `definedName` before it,
+  and in one with a stray end tag `</x>` before its sheets: each refused;
+- the three files of the review that trapped the package, each with a
+  form feed before the name of an attribute, `\x0CuniqueCount=` in the
+  table of texts, `\x0CType=` in `_rels/.rels` and `\x0Cname=` on the
+  sheet read, each holding what it held in the review: each refused.
+
+Under node, the owner's 1904 file, and a file of 2.6 KB whose
+`uniqueCount` of 400,000,000 trapped the package, written by the test
+helper of hand-made files and committed as
 `tests/data/unique_count.xlsx`, now refused.
 
 ## The Rust interface

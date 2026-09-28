@@ -159,3 +159,105 @@ fn write_wide_table_at_c2_xlsx() {
 
     save(&mut workbook, "wide_table_at_c2.xlsx").unwrap();
 }
+
+/// The populations of `individuals_10000.xlsx`, the individual `i` in the
+/// one at `i % 5`.
+const POPULATIONS: [&str; 5] = ["Andalucía", "Murcia", "Castilla", "Galicia", "Canarias"];
+
+/// `individuals_10000.xlsx`, the sheet of 10,000 rows and 20 columns that
+/// popnei_web's test of the Individuals step reads ("In popnei_web" of
+/// `docs/specs/read.md`): a header and the individuals `ind00001` to
+/// `ind10000`, with a population, texts, whole numbers and decimals, a
+/// negative longitude, a date of sampling, two booleans, a weight missing
+/// for every 50th individual and an observation for every 97th. Each value
+/// is worked out from the number of the individual, `i`, the decimals as a
+/// whole number divided by 10 or 100, which gives the float of the decimal
+/// written with those digits.
+#[test]
+#[ignore = "writes tests/data/individuals_10000.xlsx; run by hand"]
+fn write_individuals_10000_xlsx() {
+    let mut workbook = workbook_of_fixed_date().unwrap();
+    let worksheet = workbook.add_worksheet().set_name("Individuos").unwrap();
+    let date_format = Format::new().set_num_format("dd/mm/yyyy");
+
+    let header = [
+        "Individuo",
+        "Población",
+        "Localidad",
+        "Sexo",
+        "Edad",
+        "Altura",
+        "Peso",
+        "Latitud",
+        "Longitud",
+        "Altitud",
+        "Fecha de muestreo",
+        "Afectado",
+        "Tratado",
+        "Hijos",
+        "Presión sistólica",
+        "Presión diastólica",
+        "Colesterol",
+        "Glucosa",
+        "Lote",
+        "Observaciones",
+    ];
+    for (column, name) in (0u16..).zip(header) {
+        worksheet.write_string(0, column, name).unwrap();
+    }
+    for i in 1u32..=10_000 {
+        let population = POPULATIONS[usize::try_from(i % 5).unwrap()];
+        let sex = if i % 2 == 0 { "H" } else { "M" };
+        worksheet.write_string(i, 0, format!("ind{i:05}")).unwrap();
+        worksheet.write_string(i, 1, population).unwrap();
+        worksheet
+            .write_string(i, 2, format!("Localidad {}", i % 40 + 1))
+            .unwrap();
+        worksheet.write_string(i, 3, sex).unwrap();
+        worksheet
+            .write_number(i, 4, f64::from(18 + i % 60))
+            .unwrap();
+        worksheet
+            .write_number(i, 5, f64::from(150 + i % 50) / 100.0)
+            .unwrap();
+        if i % 50 != 0 {
+            worksheet
+                .write_number(i, 6, f64::from(500 + i % 400) / 10.0)
+                .unwrap();
+        }
+        worksheet
+            .write_number(i, 7, f64::from(3600 + i % 700) / 100.0)
+            .unwrap();
+        worksheet
+            .write_number(i, 8, (f64::from(i % 1200) - 900.0) / 100.0)
+            .unwrap();
+        worksheet.write_number(i, 9, f64::from(i % 2000)).unwrap();
+        // 45292 is 1 January 2024 in Excel's system of 1900.
+        worksheet
+            .write_number_with_format(i, 10, f64::from(45292 + i % 366), &date_format)
+            .unwrap();
+        worksheet.write_boolean(i, 11, i % 3 == 0).unwrap();
+        worksheet.write_boolean(i, 12, i % 7 == 0).unwrap();
+        worksheet.write_number(i, 13, f64::from(i % 5)).unwrap();
+        worksheet
+            .write_number(i, 14, f64::from(100 + i % 60))
+            .unwrap();
+        worksheet
+            .write_number(i, 15, f64::from(60 + i % 40))
+            .unwrap();
+        worksheet
+            .write_number(i, 16, f64::from(1500 + i % 1000) / 10.0)
+            .unwrap();
+        worksheet
+            .write_number(i, 17, f64::from(700 + i % 600) / 10.0)
+            .unwrap();
+        worksheet
+            .write_string(i, 18, format!("L{:03}", i % 250 + 1))
+            .unwrap();
+        if i % 97 == 0 {
+            worksheet.write_string(i, 19, "revisar la muestra").unwrap();
+        }
+    }
+
+    save(&mut workbook, "individuals_10000.xlsx").unwrap();
+}

@@ -93,7 +93,7 @@ calamine cannot open and a first sheet with no value.
 
 **Tasks:**
 
-- [ ] 1.1 The workspace: `Cargo.toml` with the two crates, the lints of
+- [x] 1.1 The workspace: `Cargo.toml` with the two crates, the lints of
   `.claude/skills/coding/lints.toml` and the release profile of the spec,
   "Its dependencies"; `clippy.toml`; `rust-toolchain.toml`;
   `.cargo/config.toml` with the alias `wasm-check`, which checks both
@@ -101,7 +101,7 @@ calamine cannot open and a first sheet with no value.
   manifests of `crates/xlsx_rs` and `crates/xlsx_rs_js` with the pinned
   dependencies; `Cargo.lock`. The crates hold only what makes them build.
   Serves 1.
-- [ ] 1.2 The library crate: the types of "The Rust interface",
+- [x] 1.2 The library crate: the types of "The Rust interface",
   `read_first_sheet`, and the parts of "What it does" that deliverables 2
   and 3 test: "The sheet read" but its limit, the empty, text, number and
   boolean cells of "Each cell", and the refusals 1 to 4 and 7 of "The

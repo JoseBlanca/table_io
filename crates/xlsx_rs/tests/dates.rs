@@ -160,3 +160,36 @@ fn a_workbook_of_the_1904_system_gives_its_dates_in_that_system() {
         ]
     );
 }
+
+#[test]
+fn a_quarter_of_a_day_shown_as_hours_and_minutes_is_six_oclock() {
+    assert_eq!(
+        cell_of_number_with_format(0.25, "hh:mm").unwrap(),
+        text("06:00:00")
+    );
+}
+
+#[test]
+fn a_date_a_little_below_0_is_midnight() {
+    assert_eq!(
+        cell_of_number_with_format(-1e-10, "dd/mm/yyyy").unwrap(),
+        text("00:00:00")
+    );
+}
+
+#[test]
+fn a_duration_a_little_below_0_is_no_time_and_no_minus() {
+    assert_eq!(
+        cell_of_number_with_format(-1e-10, "[h]:mm:ss").unwrap(),
+        text("0:00:00")
+    );
+}
+
+#[test]
+fn a_time_that_rounds_to_a_whole_day_is_the_date_of_day_1() {
+    // Excel shows 00:00:00; calamine gives no format, and 1 day is a date.
+    assert_eq!(
+        cell_of_number_with_format(0.999_999_999_99, "hh:mm:ss").unwrap(),
+        text("1900-01-01")
+    );
+}

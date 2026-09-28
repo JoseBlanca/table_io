@@ -202,7 +202,8 @@ millisecond before midnight, is then 14 May 2024 at 0:00, where
 calamine's parts of the number as it is give 13 May at hour 24, as the
 second trial saw. The parts of the day come from calamine, an
 `ExcelDateTime::new` of the days in the date system of the workbook,
-`Xlsx::has_1904_epoch`, and its `to_ymd_hms_milli`, with no library of
+which xlsx_rs reads itself (below, "What xlsx_rs reads before
+calamine"), and its `to_ymd_hms_milli`, with no library of
 dates: xlsx_rs takes calamine without its feature `chrono`. The date
 system is the 1900 one or the 1904 one of old Excel for Mac, so the same
 date shown in Excel gives the same text in both, and calamine reproduces
@@ -314,9 +315,11 @@ and the light worker makes the refusal of it. In the order it looks:
    known: Excel may save them as `#VALUE!`, with the real error in a
    part of the file calamine does not read, and then the cell is the
    text `#VALUE!`, which popnei_web reads as missing, and nothing is
-   refused. So the refusal of `#SPILL!` in
-   this spec is unconfirmed until the owner's `spill.xlsx` is read
-   (below, "Made by the owner").
+   refused. The owner's `spill.xlsx`, saved by Excel for Mac on 28
+   September 2026 with `=SEQUENCE(3)` blocked by a value under it, is so:
+   its cell is the text `#VALUE!`. `#SPILL!` does not reach calamine, and
+   this refusal is left for an error Excel stores as itself that calamine
+   does not know.
 6. **A sheet too large**: `sheetTooLarge`, with the name of the sheet and
    the last row and column the rectangle had reached, above. It and a
    cell of point 5 come as the cells are read, so the one met first in
@@ -366,9 +369,87 @@ table of texts, for which calamine reserves room for as many texts as
 the file says it holds, `uniqueCount`, before it reads them: a file of
 6 KB saying 400,000,000 trapped the package under node in the review of
 work package 4, and one saying 150,000,000 left the wasm holding 1.8 GB.
-A file written for it can still trap the worker.
-Whether xlsx_rs reads those parts itself, with the crates of zip and XML
-calamine brings, is the owner's to decide.
+xlsx_rs reads both itself before calamine does, and bounds them, as the
+next section says.
+
+### What xlsx_rs reads before calamine
+
+Decided on 28 September 2026, when the owner left the question to the
+writer, after the reviews of the plan of the reading and the owner's own
+files had found four things calamine 0.36.1 gets wrong or reads with no
+bound. xlsx_rs opens the zip itself, with the `zip` crate at the version
+calamine uses, and reads four things with the `quick-xml` crate, also at
+calamine's version, before it gives the bytes to calamine as before. Each
+failure is `ReadError::Unreadable` with xlsx_rs's message, which
+popnei_web shows as a file that could not be read and may be damaged.
+
+1. **Every part to its end.** An xlsx is a zip, each of whose parts
+   carries a checksum of its bytes that the zip crate checks when the part
+   has been read to its end. calamine stops reading a sheet at its last
+   cell, so a sheet damaged inside its compressed bytes was read with
+   cells wrong or missing and no error: 10 of 7,120 copies of a file with
+   one byte changed, in the review of work package 1. xlsx_rs reads every
+   part to its end and discards the bytes; a checksum that does not match
+   refuses the file, with the zip crate's message, "Invalid checksum".
+   The bytes read so, the parts unzipped, are counted, and past
+   1,000,000,000, `MAX_UNZIPPED_BYTES`, the file is refused, "the file
+   unzips to more than 1,000,000,000 bytes": a zip of 20 MB, popnei_web's
+   limit, can unzip to many GB, and a real workbook of that size to a few
+   hundred MB, an estimate.
+2. **The date system.** An xlsx says it counts its dates from 1904 in the
+   attribute `date1904` of the element `workbookPr` of `xl/workbook.xml`.
+   Excel 365 also writes, inside the element `extLst` of the same part,
+   an element of another namespace with the same local name,
+   `<x15:workbookPr chartTrackingRefBase="1"/>`, and calamine, which
+   matches by the local name alone, reads that one last and takes the
+   file to count from 1900: the owner's `excel_1904.xlsx`, saved by Excel
+   for Mac on 28 September 2026, gave 13 May 2024 as `2020-05-12`, four
+   years and a day early, and so would every date of every workbook of
+   the 1904 system saved by that Excel. xlsx_rs takes the date system from
+   the `workbookPr` that is a child of `workbook` in the namespace of the
+   spreadsheet, `http://schemas.openxmlformats.org/spreadsheetml/2006/main`,
+   `date1904` `1` or `true` meaning 1904, as calamine reads the value; it
+   does not use `Xlsx::has_1904_epoch`.
+3. **The table of texts.** calamine reserves room for as many texts as
+   `xl/sharedStrings.xml` says it holds, its attribute `uniqueCount`,
+   before it reads them: a file of 6 KB saying 400,000,000 trapped the
+   package, in the review of work package 4. xlsx_rs counts the texts,
+   the elements `si`, and refuses a file whose `uniqueCount` is larger
+   than that count, "the table of texts says it holds more texts than it
+   does"; a workbook Excel, LibreOffice or Google Sheets saves gives the
+   count it holds. calamine holds the whole table in memory, so the part
+   unzipped is also bounded, by 400,000,000 bytes, twice `MAX_TEXT_BYTES`,
+   past which the file is refused, "too much text".
+4. **The merged ranges of the sheet read.** calamine reads every
+   `mergeCell` of the sheet into memory before xlsx_rs sees one, 16 bytes
+   each: 40,000,000 in a zip of 5.1 MB held 650 MB, in the review of work
+   package 2. xlsx_rs counts them in the part of the first visible
+   worksheet, found as calamine finds it, by the relationship its
+   `sheet` gives in `xl/_rels/workbook.xml.rels`, and refuses a sheet with
+   more than `max_cells` of them, "too many merged ranges": ranges that do
+   not overlap inside the rectangle cannot be more than its cells, and an
+   overlap inside it is refused already.
+
+What it costs. Every part is unzipped twice, once by xlsx_rs and once by
+calamine, the table of texts parsed once more, and the sheet parsed once
+more for its merged ranges; not measured. The plan measures the read of
+`individuals_10000.xlsx` and of a sheet of 2,000,000 cells under node
+before and after, and the owner is told if it more than doubles, 874 ms
+for the second before. The two crates are already in the package through
+calamine; what the code of xlsx_rs adds to its size is measured. Two
+direct dependencies more, `zip` and `quick-xml`, pinned to calamine's
+versions and upgraded with it.
+
+The tests: at `read_first_sheet`, the owner's `excel_1904.xlsx`, which
+gives `2024-05-13` and `14:30:00`; a file whose sheet has one byte of its
+compressed data changed where the review's copy read wrong cells, refused;
+a table of texts with `uniqueCount` 400,000,000 and two texts, refused; a
+table of texts over 400,000,000 bytes, refused, through a function with a
+smaller bound as the text limit's test does; a sheet with more merged
+ranges than `max_cells`, refused; a file unzipping past the bound, through
+a smaller one; and the node test reads the owner's 1904 file and the
+copy of 6 KB that trapped the package, which is refused.
+
 
 ## The Rust interface
 
@@ -578,6 +659,12 @@ wasm-bindgen = "=0.2.128"
 # workbook, are left off: xlsx_rs writes a date from calamine's own
 # parts of it. The library crate.
 calamine = { version = "=0.36.1", default-features = false }
+# The zip and the XML xlsx_rs reads itself before calamine ("What xlsx_rs
+# reads before calamine"), at the versions and with the features calamine
+# takes them, so that the package holds one copy of each. Upgraded with
+# calamine.
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+quick-xml = { version = "=0.41.0" }
 
 [dev-dependencies]
 # The xlsx files of the tests are written in memory; the library the
@@ -715,13 +802,21 @@ five rows, typed by hand as a user would:
    a code `7` with the format `000`; a cell of `=NOD()`, the Spanish
    `NA()`, and one of `=1/0`; a population merged over two rows; a blank
    row in the middle.
-2. `excel_en.xlsx`, the same in Excel in English, with `=NA()`.
+2. `excel_en.xlsx`, the same in Excel in English, with `=NA()`. The file
+   committed is a copy of `excel_es.xlsx`, decided on 28 September 2026:
+   the owner's English file had been made by pasting the values of the
+   Spanish one, without its formulas and its merged range, and an xlsx
+   stores its formulas and its errors in English whatever the language
+   of Excel, as `excel_es.xlsx` shows, `1/0` and `#DIV/0!`.
 3. `libreoffice.xlsx`, the same in LibreOffice Calc, saved as "Excel
-   2007-365 (.xlsx)".
+   2007-365 (.xlsx)". Not made yet: LibreOffice is not on the owner's
+   Mac; its test waits for it.
 4. `excel_1904.xlsx`, the date of the first file in a workbook set to
    the date system of 1904 (in Excel for Windows, File › Options ›
    Advanced; in Excel for Mac, Preferences › Calculation): the same text,
-   `2024-05-13`.
+   `2024-05-13`. The owner's file gave `2020-05-12` through calamine,
+   whose reading of the date system is wrong for it ("What xlsx_rs reads
+   before calamine", point 2); its test waits for xlsx_rs to read it.
 5. `encrypted.xlsx`, any table saved with a password to open it:
    `Encrypted`.
 6. `excel97.xls`, any table saved as "Excel 97-2003 Workbook":
@@ -732,7 +827,11 @@ five rows, typed by hand as a user would:
    it gives settles the words of `cellError`, and the spec is corrected
    to it.
 8. `google_sheets.xlsx`, the first file downloaded from Google Sheets as
-   .xlsx, if the owner uses it.
+   .xlsx, if the owner uses it. The owner's was made from the pasted
+   English file, so it holds no formula and no merged range, `001` as the
+   number 1 and the Spanish text `#¡DIV/0!`; it checks Google's writer on
+   values alone, every one given back as it was. A copy made from
+   `excel_es.xlsx` would check it on the rest.
 
 Until they arrive, their tests are written and marked `#[ignore]` with
 the name of the file they wait for, and the report of the plan says

@@ -191,6 +191,24 @@ mod tests {
     }
 
     #[test]
+    fn a_day_far_past_9999_is_the_number() {
+        // calamine's year of 16 bits would give the parts of a day of 4811.
+        let date_time = ExcelDateTime::new(25_000_000.0, ExcelDateTimeType::DateTime, false);
+        assert_eq!(
+            cell_of_date(&date_time, DateSystem::Excel1900),
+            SheetCell::Number(25_000_000.0)
+        );
+    }
+
+    #[test]
+    fn a_day_far_past_9999_in_the_1904_system_is_the_number() {
+        assert_eq!(
+            cell_of_1904_date(25_000_000.0),
+            SheetCell::Number(25_000_000.0)
+        );
+    }
+
+    #[test]
     fn a_date_below_0_in_the_1904_system_is_the_number() {
         assert_eq!(cell_of_1904_date(-3.0), SheetCell::Number(-3.0));
     }

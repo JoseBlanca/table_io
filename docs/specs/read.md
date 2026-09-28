@@ -412,7 +412,8 @@ hand, trapped the package under node. Three differences did it:
 
 - **An attribute split another way.** calamine reads the attributes of
   an element with a function of its own, `RawAttrIter` of its
-  `attrs.rs`, which takes a form feed, the byte `0C`, for a space before
+  `attrs.rs`, which splits the text of a tag into names and values and
+  which takes a form feed, the byte `0C`, for a space before
   a name and trims it after one; quick-xml's reader of attributes, which
   xlsx_rs used, keeps it in the name. With `\x0CuniqueCount=` calamine
   reserved room for the texts and xlsx_rs saw no count; with `\x0CType=`
@@ -468,17 +469,29 @@ refused when xlsx_rs cannot find it.
    system that Excel saves. xlsx_rs takes the date system from the last
    `workbookPr` that is a direct child of the root element of the
    workbook, whatever the namespace of either, so that a file Excel saves
-   as "Strict Open XML", whose namespace is another, is read the same;
+   as "Strict Open XML", a choice of its Save As, is read the same: the
+   namespace, a URL at the root of the part that says which vocabulary
+   its elements are of, is another there;
    `date1904` `1` or `true` means 1904, as calamine reads it, the first
    attribute of that name. It does not use calamine's
    `Xlsx::has_1904_epoch`.
-   The workbook is `workbook.xml` in the folder of the last relationship
-   of `_rels/.rels` whose type ends in `/relationships/officeDocument`,
-   up to the last `/` of its target, as calamine's
-   `read_package_relationships` finds it. A file whose `_rels/.rels` is
-   missing or names no workbook so is refused, "the file names no
-   workbook": calamine refuses it too, unless its reading and xlsx_rs's
-   came apart, and then xlsx_rs could take the
+   The workbook is `workbook.xml` in the folder calamine's
+   `read_package_relationships` finds in `_rels/.rels`, and xlsx_rs reads
+   that part as it does: the elements of local name `Relationship` that
+   start after the first start of `Relationships` and before the next
+   end of an element of that local name; in each, the attributes `Type`
+   and `Target` as calamine's macro `get_attrs!` reads them, with
+   `RawAttrIter`, one found at each attribute of either name, a repeated
+   one counted again and taking the place of the first, up to two found
+   or to an attribute it cannot read, which refuses the file; and the
+   target of the last relationship whose type ends in
+   `/relationships/officeDocument` and that has a target, its entities
+   read, up to its last `/`, with no `/` first. So
+   `Type="…/officeDocument" Type="x" Target="…"` is a relationship of
+   type `x` with no target, and one after `</Relationships>` is not read.
+   A file whose `_rels/.rels` is missing or names no workbook so is
+   refused, "the file names no workbook": calamine refuses it too, unless
+   its reading and xlsx_rs's came apart, and then xlsx_rs could take the
    date system from another part than calamine's. A workbook named but
    missing gives the system of 1900, and calamine then finds no sheet. The
    workbook is read up to the end of its root element, found by counting
@@ -498,9 +511,31 @@ refused when xlsx_rs cannot find it.
    folder: the part calamine reads is always one of them, since its name
    is the folder calamine found followed by the usual name. So:
    - each part named `_rels/.rels`, or ending in `workbook.xml`,
-     `workbook.xml.rels` or `styles.xml`, is refused past 10,000,000
+     `workbook.xml.rels` or `styles.xml`, is refused past 50,000,000
      bytes unzipped, `MAX_SETTINGS_PART_BYTES`, "a part of the file is
-     too large", where a real one is a few KB;
+     too large". One Excel saves is a few KB, but Excel lets a workbook
+     gather tens of thousands of styles or of defined names no longer
+     used, and such a part can pass 10 MB, the bound of the first version
+     of this section, which the spec's review of 28 September 2026 found
+     too close; no such file has been measured. calamine holds of the
+     styles little more than a byte for each, and of a workbook of 50 MB
+     of defined names about 100 MB, estimated from the 1.61 GB it held
+     for 20,000,000 names;
+   - calamine keeps, for each sheet the workbook lists, the path of its
+     part, the folder of the workbook followed by the target of the
+     sheet's relationship, and every sheet may name the same
+     relationship: 2,000 sheets naming one target of 500 KB, a zip of
+     8,586 bytes, took 1.0 GB natively in the spec's review. xlsx_rs
+     counts, in each part ending in `workbook.xml`, the bytes `sheet`
+     that come right after `<` or `:`, as every element `sheet` has them
+     at the start of its name; and takes the longest tag, from `<` to
+     `>`, that quick-xml reads in each part ending in `workbook.xml.rels`
+     and in `_rels/.rels`, since a target and the folder calamine takes
+     from them are inside one tag. When the largest count times the sum
+     of the two longest tags passes 100,000,000 bytes,
+     `MAX_SHEET_PATH_BYTES`, the file is refused, "the workbook lists too
+     many sheets". A workbook of 1,000 sheets as Excel writes it counts
+     1,001, with tags of about 150 bytes: 300 KB;
    - each part ending in `sharedStrings.xml`, a table of texts, is refused
      past 400,000,000 bytes unzipped, `MAX_TEXT_TABLE_BYTES`, twice
      `MAX_TEXT_BYTES`, "too much text";
@@ -510,45 +545,55 @@ refused when xlsx_rs cannot find it.
      first error of XML. It counts every element whose local name, the
      name after any prefix, is `si`, each a text, those inside another
      `si` and those outside the root counted too, and refuses the file at
-     the first past 10,000,000, `MAX_TEXTS`, "too many texts": 120 MB of
-     calamine's room for them in the wasm, where a table of individuals
-     has at most as many texts as cells, 2,000,000. It reads the
-     attributes `uniqueCount` of every element of local name `sst`, each
-     up to the first attribute `RawAttrIter` cannot read; when the part
-     ends, or at its first error, the largest of them larger than the
-     texts counted refuses the file, "the table of texts says it holds
-     more texts than it does". calamine counts fewer: the `si` of the
-     first `sst`, not those inside another, up to `</sst>`; and reserves
-     room for the first `uniqueCount` of the first `sst`, before it reads
-     the rest. An error of XML is not a refusal of xlsx_rs here: calamine
+     the first past 10,000,000, `MAX_TEXTS`, "too many texts", where a
+     table of individuals has at most as many texts as cells, 2,000,000.
+     It reads the attributes `uniqueCount` of every element of local name
+     `sst`, each up to the first attribute `RawAttrIter` cannot read, and
+     refuses the file at one past 10,000,000, "too many texts", since
+     calamine reserves that room as soon as it meets `<sst>`. calamine
+     counts fewer: the `si` of the first `sst`, not those inside another,
+     up to `</sst>`; and reserves room for the first `uniqueCount` of the
+     first `sst`. A `uniqueCount` larger than the texts, or a table cut
+     short, is otherwise let be: the first version of this section
+     refused a `uniqueCount` larger than the texts, a file calamine
+     reads, and the room calamine reserves for it is within the same
+     bound. At its largest calamine's list of texts takes about 302 MB
+     in the wasm: without a `uniqueCount` it grows by doubling to
+     16,777,216 texts of 12 bytes, 201 MB, while the list of 100 MB it
+     outgrew is still held (recomputed in the spec's review); with one,
+     120 MB. An error of XML is not a refusal of xlsx_rs here: calamine
      refuses the file at an error before `</sst>`, and never reads one
      after it;
    - a `uniqueCount` is a number when it is one or more digits and
-     nothing else, as calamine's call of `atoi_simd::parse`, which takes
-     any zeros first and no sign, reads it, and xlsx_rs compares it
-     whatever its size. One that is missing or is not a number, `+2`
-     among them, is let be, since calamine reserves nothing for it. The
-     nine files of `tests/data/` from Excel, Google Sheets and
-     rust_xlsxwriter give the count they hold; LibreOffice's is not
-     checked.
+     nothing else, as calamine reads it, with the function `parse` of
+     the crate `atoi_simd`, a reader of whole numbers, called so that it
+     takes any zeros first and no sign. xlsx_rs compares it with
+     10,000,000 whatever its size, so one past 4,294,967,295, which
+     calamine in the wasm cannot read and reserves nothing for, is
+     refused, below. One that is missing or is not a number, `+2` among
+     them, is let be, since calamine reserves nothing for it.
 
-   xlsx_rs holds one element of the XML at a time, as calamine does, so
-   reading a table of texts takes at most the memory calamine's reading
-   of it takes after.
+   xlsx_rs reads the XML of a part from the zip as it unzips it, in the
+   reading of point 1 that counts its bytes, and holds one element of it
+   at a time, as calamine does; it never holds a whole part. So reading a
+   table of texts takes at most the memory calamine's reading of it takes
+   after.
 4. **The merged ranges.** calamine reads every merged range of the sheet,
    each an element `mergeCell`, into memory, 16 bytes each, before xlsx_rs
    sees one: 40,000,000 in a zip of 5.1 MB held 650 MB, in the review of
    work package 2. The part of the sheet is the one the relationships of
    the workbook give it, which may name any part of the zip, so xlsx_rs
    does not look for it. As it reads each part to its end, point 1, it
-   counts the times the nine bytes `mergeCell` appear in it, and more than
-   `max_cells` in one part refuse the file, "too many merged ranges". An
-   element `mergeCell`, with a prefix or without, has those bytes in its
-   name, since quick-xml reads the bytes of a part as they are and does
-   not decode another encoding into them, so the count is at least what
-   calamine can hold; it is more by the element `mergeCells` around the
-   ranges and by the word written anywhere else. The bytes are counted as
-   they pass, and none is held. The bound is generous, not a law: ranges
+   counts the times the nine bytes `mergeCell` come right after `<` or
+   `:`, and more than `max_cells` in one part refuse the file, "too many
+   merged ranges". An element `mergeCell`, with a prefix or without, has
+   those bytes at the start of its name, since quick-xml reads the bytes
+   of a part as they are and does not decode another encoding into them,
+   so the count is at least what calamine can hold; it is more by one for
+   the start of `mergeCells` around the ranges, by the end tag of one
+   with a prefix, `</x:mergeCell>`, and by `<mergeCell` written as text
+   in a comment. The bytes are counted as they pass, a match split
+   between two reads of the zip counted too, and none is held. The bound is generous, not a law: ranges
    that do not overlap inside the rectangle cannot be more than its
    cells, but ranges outside it are let be; 2,000,000 of them hold 32 MB.
 
@@ -561,13 +606,21 @@ file:
 - a workbook whose other sheets, not read, hold more merged ranges than
   `max_cells`, 2,000,000 in popnei_web; and a sheet read with a few
   ranges fewer, when the element `mergeCells`, a `mergeCell` with no
-  attribute `ref`, which calamine skips, or the word in a text brings
+  attribute `ref`, which calamine skips, or the others of point 4 bring
   the count past it;
-- a `uniqueCount` past 4,294,967,295, the largest number a `usize` of the
-  wasm holds, which calamine there does not read as a number and reserves
-  nothing for, and xlsx_rs compares with the texts;
+- a `uniqueCount` past 10,000,000 in a table of fewer texts, for which
+  calamine would reserve the room, and one past 4,294,967,295, the
+  largest number a `usize` of the wasm holds, which calamine there does
+  not read as a number and reserves nothing for;
 - a part named as one of point 3 in a folder calamine does not read,
   held to the same bound.
+
+Not bounded: the time. calamine's `read_styles` reads the format of a
+style once for each style that uses it (`detect_custom_number_format`
+of its `formats.rs`), so a part of styles of 5 MB of one format and
+250,000 styles using it, within the bound, is about 1.25 × 10^12
+characters read, minutes or more in the worker; computed in the spec's
+review, not measured. It is slow and not a trap.
 
 What it costs. Every part is unzipped twice, once by xlsx_rs and once by
 calamine, the package relationships, the workbook and the tables of
@@ -585,25 +638,33 @@ The tests, at `read_first_sheet`, each with a file written by the test
 unless it is named:
 
 - the owner's `excel_1904.xlsx`, which gives `2024-05-13` and
-  `14:30:00`; a Strict file of the 1904 system; the rules of point 2,
+  `14:30:00`; a file written by the test in Strict Open XML, of the
+  1904 system; the rules of point 2,
   each in a file: a `workbookPr` with a prefix, `date1904="0"`, two
   `workbookPr` children of the root, of which the last is taken, the last
-  of two `officeDocument` relationships, and a `_rels/.rels` that names
-  no workbook, "the file names no workbook";
+  of two `officeDocument` relationships, one with its `Type` written
+  twice, which is not read, and one after `</Relationships>`, not read
+  either; and a `_rels/.rels` that names no workbook, "the file names no
+  workbook";
 - a file written by rust_xlsxwriter, each byte of its sheet's compressed
   data changed in turn, no copy giving cells other than the file's;
 - each bound of points 1 and 3 at its value, a file that reaches it
   read and one a byte or a text past it refused: 1,000,000,000 bytes
-  unzipped, 10,000,000 bytes of each of the four settings parts, 400,000,000
-  bytes of a table of texts and 10,000,000 texts. A test that takes more
+  unzipped, 50,000,000 bytes of each of the four settings parts,
+  400,000,000 bytes of a table of texts, 10,000,000 texts, a
+  `uniqueCount` of 10,000,000, and 100,000,000 bytes of the paths of the
+  sheets. A test that takes more
   than 10 s in `cargo test` on the owner's Mac is marked `#[ignore]`,
   with that reason, and run before each release; the messages of these
   refusals are also tested with small files, through a function private
   to the crate that takes the bounds as arguments, by tests inside the
   crate;
-- a table of texts whose `uniqueCount` is 400,000,000 with two texts;
-  the same cut short before `</sst>`; a `uniqueCount` of `0002` with one
-  text, refused, and of `+2`, read;
+- a table of texts whose `uniqueCount` is 400,000,000 with two texts,
+  refused; the same cut short before `</sst>`, refused; a `uniqueCount`
+  of 1,000 with two texts, read; one of `00010000001`, refused, and of
+  `+400000000`, read;
+- the file of the spec's review, 2,000 sheets naming one target of
+  500 KB: refused;
 - a table of texts named in capitals, `XL/SHAREDSTRINGS.XML`, checked
   as the other, and a workbook in a folder `data/`, whose table of texts,
   settings parts and merged ranges are checked as those of `xl/`;

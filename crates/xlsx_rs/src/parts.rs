@@ -102,7 +102,7 @@ type Archive<'bytes> = ZipArchive<Cursor<&'bytes [u8]>>;
 /// of the workbook.
 const PACKAGE_RELATIONSHIPS_PATH: &str = "_rels/.rels";
 
-/// What calamine may read a part as, told by the end of its name, `\\`
+/// What calamine may read a part as, told by the end of its name, `\`
 /// read as `/` and ignoring case, in any folder: the part calamine reads is
 /// always one of them, since its name is the folder of the workbook
 /// followed by the usual name ("What xlsx_rs reads before calamine" of

@@ -11,7 +11,7 @@ use std::io::Cursor;
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
 use crate::cell::cell_of_value;
-use crate::rectangle::Rectangle;
+use crate::rectangle::{LayoutError, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
 /// by then, as "Each cell" of `docs/specs/read.md` gives them.
@@ -147,14 +147,41 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
             sheet: sheet_name,
         }));
     };
-    let too_large = || ReadError::Unreadable(format!("the sheet {sheet_name} is too large"));
+    let sheet_error =
+        |cause: String| ReadError::Unreadable(format!("the sheet {sheet_name} {cause}"));
+    let first_row = rectangle.excel_first_row().ok_or_else(|| {
+        sheet_error("has its first row past row 4,294,967,295, the last a u32 holds".to_owned())
+    })?;
+    let first_column = rectangle.excel_first_column().ok_or_else(|| {
+        sheet_error(
+            "has its first column past column 4,294,967,295, the last a u32 holds".to_owned(),
+        )
+    })?;
+    let num_rows = rectangle
+        .num_rows()
+        .ok_or_else(|| sheet_error("has 4,294,967,296 rows, more than a u32 holds".to_owned()))?;
+    let num_columns = rectangle.num_columns().ok_or_else(|| {
+        sheet_error("has 4,294,967,296 columns, more than a u32 holds".to_owned())
+    })?;
+    let cells = rectangle
+        .laid_out(kept_cells)
+        .map_err(|layout_error| match layout_error {
+            LayoutError::TooManyCells { num_cells } => sheet_error(format!(
+                "has a rectangle of {num_cells} cells, more than the memory can hold"
+            )),
+            LayoutError::PositionOutside {
+                position: (row, column),
+            } => sheet_error(format!(
+                "has a cell at row {row} and column {column}, counted from 0, outside its rectangle"
+            )),
+        })?;
     Ok(Sheet {
-        first_row: rectangle.excel_first_row().ok_or_else(too_large)?,
-        first_column: rectangle.excel_first_column().ok_or_else(too_large)?,
-        num_rows: rectangle.num_rows().ok_or_else(too_large)?,
-        num_columns: rectangle.num_columns().ok_or_else(too_large)?,
-        cells: rectangle.laid_out(kept_cells).ok_or_else(too_large)?,
         name: sheet_name,
+        first_row,
+        first_column,
+        num_rows,
+        num_columns,
+        cells,
     })
 }
 

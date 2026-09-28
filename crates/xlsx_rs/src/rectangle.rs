@@ -62,10 +62,19 @@ impl Rectangle {
             .checked_add(1)
     }
 
-    /// The number of cells, rows times columns; `None` when the rows or the
-    /// columns are past `u32`.
-    fn num_cells(&self) -> Option<u64> {
-        u64::from(self.num_rows()?).checked_mul(u64::from(self.num_columns()?))
+    /// The number of cells, rows times columns, `u64::MAX` for the one
+    /// rectangle whose count does not fit in a `u64`, of 2^32 rows and 2^32
+    /// columns, which no memory holds either.
+    fn num_cells(&self) -> u64 {
+        // The last row and column are never before the first ones, as
+        // `of_position` and `extended_to` build them.
+        let rows = u64::from(self.last_row)
+            .saturating_sub(u64::from(self.first_row))
+            .saturating_add(1);
+        let columns = u64::from(self.last_column)
+            .saturating_sub(u64::from(self.first_column))
+            .saturating_add(1);
+        rows.saturating_mul(columns)
     }
 
     /// Where the cell at `position` is among the cells laid out row after
@@ -85,18 +94,83 @@ impl Rectangle {
 
     /// The cells of the rectangle, row after row: those of `kept_cells` at
     /// their positions, a later one over an earlier one at the same
-    /// position, and the others empty. `None` when the rectangle does not
-    /// fit in memory or a position is outside it.
+    /// position, and the others empty.
+    ///
+    /// # Errors
+    ///
+    /// [`LayoutError::TooManyCells`] when the memory cannot hold the cells
+    /// of the rectangle, and [`LayoutError::PositionOutside`] for a cell
+    /// of `kept_cells` outside it.
     pub(crate) fn laid_out(
         &self,
         kept_cells: Vec<(Position, SheetCell)>,
-    ) -> Option<Vec<SheetCell>> {
-        let num_cells = usize::try_from(self.num_cells()?).ok()?;
-        let mut cells = vec![SheetCell::Empty; num_cells];
-        for (position, cell) in kept_cells {
-            let slot = cells.get_mut(self.index_of(position)?)?;
-            *slot = cell;
-        }
-        Some(cells)
+    ) -> Result<Vec<SheetCell>, LayoutError> {
+        let num_cells = self.num_cells();
+        let too_many_cells = || LayoutError::TooManyCells { num_cells };
+        let cells = {
+            let mut cells = Vec::new();
+            let capacity = usize::try_from(num_cells).map_err(|_| too_many_cells())?;
+            // A failed allocation is an error here, where `vec!` would abort,
+            // which in the wasm is a trap.
+            cells
+                .try_reserve_exact(capacity)
+                .map_err(|_| too_many_cells())?;
+            cells.resize(capacity, SheetCell::Empty);
+            for (position, cell) in kept_cells {
+                let slot = self
+                    .index_of(position)
+                    .and_then(|index| cells.get_mut(index))
+                    .ok_or(LayoutError::PositionOutside { position })?;
+                *slot = cell;
+            }
+            cells
+        };
+        Ok(cells)
+    }
+}
+
+/// Why the cells of a rectangle could not be laid out.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LayoutError {
+    /// The memory cannot hold the cells of the rectangle, `num_cells` of
+    /// them.
+    TooManyCells {
+        /// The number of cells of the rectangle.
+        num_cells: u64,
+    },
+    /// A cell kept at a position outside the rectangle.
+    PositionOutside {
+        /// The position of the cell, as calamine gives it.
+        position: Position,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::rectangle::{LayoutError, Rectangle};
+
+    #[test]
+    fn a_rectangle_of_more_cells_than_memory_holds_is_an_error() {
+        // (2^32 - 1)^2 cells of 16 bytes: past what any memory can address,
+        // so nothing is allocated before the error.
+        let rectangle = Rectangle::of_position((0, 0)).extended_to((u32::MAX - 1, u32::MAX - 1));
+
+        assert_eq!(
+            rectangle.laid_out(Vec::new()),
+            Err(LayoutError::TooManyCells {
+                num_cells: 18_446_744_065_119_617_025
+            })
+        );
+    }
+
+    #[test]
+    fn a_cell_outside_the_rectangle_is_an_error() {
+        let rectangle = Rectangle::of_position((1, 1));
+        let kept_cells = vec![((0, 0), crate::SheetCell::Bool(true))];
+
+        assert_eq!(
+            rectangle.laid_out(kept_cells),
+            Err(LayoutError::PositionOutside { position: (0, 0) })
+        );
     }
 }

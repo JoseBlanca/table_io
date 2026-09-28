@@ -5,7 +5,8 @@
 //
 // The owner's excel_en.xlsx and encrypted.xlsx are read when they are in
 // tests/data/, and their tests are skipped with the name of the file while
-// they are not. The files of tests/data/ that
+// they are not; the one of excel_en.xlsx fails until the cells the owner
+// says it shows are added to it. The files of tests/data/ that
 // crates/xlsx_rs/tests/write_fixtures.rs writes, written.xlsx,
 // empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx and
 // wide_table_at_c2.xlsx, and a CSV, are read in any case.
@@ -221,9 +222,45 @@ function columnUnder(fields, header) {
     return cells;
 }
 
+/** Whether `cellText` is a string of the form `pattern`, where each `d` of
+ * the pattern is a digit from 0 to 9 and every other character is itself. */
+function hasForm(cellText, pattern) {
+    return (
+        typeof cellText === "string" &&
+        cellText.length === pattern.length &&
+        [...pattern].every((patternCharacter, position) =>
+            patternCharacter === "d"
+                ? /[0-9]/.test(cellText[position])
+                : cellText[position] === patternCharacter,
+        )
+    );
+}
+
+/**
+ * The cell of the sheet of `fields` at `reference`, such as "C3", as Excel
+ * names the cells; undefined when it is outside the rectangle or is not a
+ * reference.
+ */
+function cellAt(fields, reference) {
+    const match = /^([A-Z]+)([0-9]+)$/.exec(reference);
+    if (match === null) {
+        return undefined;
+    }
+    const column = [...match[1]].reduce(
+        (sum, letter) => sum * 26 + letter.charCodeAt(0) - 64,
+        0,
+    );
+    const rowOffset = Number(match[2]) - fields.firstRow;
+    const columnOffset = column - fields.firstColumn;
+    if (rowOffset < 0 || rowOffset >= fields.numRows || columnOffset < 0 || columnOffset >= fields.numColumns) {
+        return undefined;
+    }
+    return fields.cells[rowOffset * fields.numColumns + columnOffset];
+}
+
 // What "Made by the owner" of docs/specs/read.md says excel_en.xlsx holds,
-// as crates/xlsx_rs/tests/owner_files.rs asserts it; the cells the owner
-// says the file shows in Excel are to be added as literals when it arrives.
+// as crates/xlsx_rs/tests/owner_files.rs asserts it, with the cells the
+// owner says the file shows in Excel, without which the test fails.
 test("excel_en.xlsx gives the cells of English Excel", skippedUntilMade("excel_en.xlsx"), async () => {
     const bytes = await readFile(new URL("excel_en.xlsx", dataDir));
 
@@ -264,6 +301,38 @@ test("excel_en.xlsx gives the cells of English Excel", skippedUntilMade("excel_e
         rows.push(fields.cells.slice(row * fields.numColumns, (row + 1) * fields.numColumns));
     }
     assert.ok(rows.some((row) => row.every((cell) => cell === null)), "no blank row");
+    const kinds = [
+        ["Altura", "a number", (cell) => typeof cell === "number"],
+        ["Fecha", "a text dddd-dd-dd", (cell) => hasForm(cell, "dddd-dd-dd")],
+        ["Hora", "a text dd:dd:dd", (cell) => hasForm(cell, "dd:dd:dd")],
+        ["Afectado", "a boolean", (cell) => typeof cell === "boolean"],
+    ];
+    for (const [header, kind, isOfKind] of kinds) {
+        const otherCells = columnUnder(fields, header).filter((cell) => cell !== null && !isOfKind(cell));
+        assert.deepEqual(otherCells, [], `under ${header}, cells that are not ${kind}`);
+    }
+    const individuals = columnUnder(fields, "Individuo");
+    const rowsWithNoPopulation = individuals
+        .map((individual, row) => [individual, populations[row], row + 1])
+        .filter(([individual, population]) => individual !== null && population === null)
+        .map(([, , row]) => row);
+    assert.deepEqual(
+        rowsWithNoPopulation,
+        [],
+        "rows, from 0 for the header, with an Individuo and no Población, as a merged range lost leaves them",
+    );
+
+    // The cells the owner says excel_en.xlsx shows in Excel, each its
+    // reference and its cell, such as ["C3", 1.75].
+    const ownerCells = [];
+    assert.ok(
+        ownerCells.length > 0,
+        'the test has no cell of the file yet; add to its list, as ["C3", 1.75], ' +
+            "the cells the owner says the file shows, each with its reference, before the test can pass",
+    );
+    for (const [reference, cell] of ownerCells) {
+        assert.equal(cellAt(fields, reference), cell, `the cell at ${reference}`);
+    }
 });
 
 test("encrypted.xlsx is refused as encrypted", skippedUntilMade("encrypted.xlsx"), async () => {

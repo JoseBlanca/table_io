@@ -12,7 +12,8 @@
 //! of 1904 holds a sixth, `xl/styles.xml`, where the formats of its
 //! numbers are, which calamine finds by that name with no relationship to
 //! it. `tests/no_panic.rs` zips with [`stored_zip`] the parts of a
-//! workbook of its own, some of them damaged.
+//! workbook of its own, some of them damaged, and `tests/parts.rs` the
+//! parts of a workbook of 1904 with their names or their XML changed.
 
 #![expect(
     clippy::unwrap_used,
@@ -42,7 +43,22 @@ pub fn xlsx_of_worksheet(worksheet_body: &str) -> Vec<u8> {
 /// with `s="1"` has the first of them, `s="2"` the second, and so on, and
 /// a cell with no `s` has none.
 pub fn xlsx_of_1904_worksheet(worksheet_body: &str, number_formats: &[&str]) -> Vec<u8> {
-    let files = [
+    let parts = parts_of_1904_worksheet(worksheet_body, number_formats);
+    let files: Vec<(&str, &str)> = parts
+        .iter()
+        .map(|(name, xml)| (name.as_str(), xml.as_str()))
+        .collect();
+    stored_zip(&files)
+}
+
+/// The parts [`xlsx_of_1904_worksheet`] zips, each a name and its XML, in
+/// the order of the zip, for a test that changes their names or their XML
+/// before it zips them with [`stored_zip`].
+pub fn parts_of_1904_worksheet(
+    worksheet_body: &str,
+    number_formats: &[&str],
+) -> Vec<(String, String)> {
+    [
         ("[Content_Types].xml", CONTENT_TYPES.to_owned()),
         ("_rels/.rels", PACKAGE_RELATIONSHIPS.to_owned()),
         ("xl/workbook.xml", workbook(r#"<workbookPr date1904="1"/>"#)),
@@ -52,8 +68,10 @@ pub fn xlsx_of_1904_worksheet(worksheet_body: &str, number_formats: &[&str]) -> 
         ),
         ("xl/styles.xml", styles(number_formats)),
         ("xl/worksheets/sheet1.xml", worksheet(worksheet_body)),
-    ];
-    stored_zip(&files)
+    ]
+    .into_iter()
+    .map(|(name, xml)| (name.to_owned(), xml))
+    .collect()
 }
 
 /// The text of a cell of `reference`, such as `A1`, written in the cell.

@@ -13,7 +13,6 @@ use std::io::Cursor;
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
 use crate::cell::{TextCount, cell_of_value};
-use crate::date::DateSystem;
 use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
@@ -137,6 +136,9 @@ pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 ///   not those it was saved with, "Invalid checksum";
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
+/// - "the part … cannot be read as XML: …", with the message of quick-xml,
+///   for package relationships, `_rels/.rels`, or a workbook whose XML
+///   xlsx_rs cannot read for the date system;
 /// - calamine's, for a zip it cannot read as a workbook, or whose sheet it
 ///   cannot read;
 /// - "no visible worksheet", for a workbook whose worksheets are all
@@ -177,13 +179,11 @@ pub fn read_first_sheet_within_unzipped_bytes(
     if !bytes.starts_with(&ZIP_MARK) {
         return Err(ReadError::Refused(Refusal::NotXlsx));
     }
-    parts::read_every_part(bytes, max_unzipped_bytes)?;
+    // Read before calamine, which takes the date system from an element of
+    // another namespace in a workbook Excel 365 saves ("What xlsx_rs reads
+    // before calamine" of docs/specs/read.md, point 2).
+    let date_system = parts::read_parts(bytes, max_unzipped_bytes)?.date_system;
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;
-    let date_system = if workbook.has_1904_epoch() {
-        DateSystem::Excel1904
-    } else {
-        DateSystem::Excel1900
-    };
     let sheet_name = workbook
         .sheets_metadata()
         .iter()

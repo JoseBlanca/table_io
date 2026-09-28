@@ -13,7 +13,10 @@
 //! numbers are, which calamine finds by that name with no relationship to
 //! it. `tests/no_panic.rs` zips with [`stored_zip`] the parts of a
 //! workbook of its own, some of them damaged, and `tests/parts.rs` the
-//! parts of a workbook of 1904 with their names or their XML changed.
+//! parts of a workbook with their names or their XML changed, or with a
+//! table of shared texts added, `xl/sharedStrings.xml`, which calamine too
+//! finds by that name; `tests/write_fixtures.rs` writes one such file into
+//! `tests/data/`.
 
 #![expect(
     clippy::unwrap_used,
@@ -24,7 +27,14 @@
 /// `worksheet_body`: its `<sheetData>`, and its `<mergeCells>` when it has
 /// merged ranges.
 pub fn xlsx_of_worksheet(worksheet_body: &str) -> Vec<u8> {
-    let files = [
+    xlsx_of_parts(&parts_of_worksheet(worksheet_body))
+}
+
+/// The parts [`xlsx_of_worksheet`] zips, each a name and its XML, in the
+/// order of the zip, for a test that adds a part, or changes the names or
+/// the XML of the parts, before it zips them with [`xlsx_of_parts`].
+pub fn parts_of_worksheet(worksheet_body: &str) -> Vec<(String, String)> {
+    [
         ("[Content_Types].xml", CONTENT_TYPES.to_owned()),
         ("_rels/.rels", PACKAGE_RELATIONSHIPS.to_owned()),
         ("xl/workbook.xml", workbook("")),
@@ -33,8 +43,36 @@ pub fn xlsx_of_worksheet(worksheet_body: &str) -> Vec<u8> {
             WORKBOOK_RELATIONSHIPS.to_owned(),
         ),
         ("xl/worksheets/sheet1.xml", worksheet(worksheet_body)),
-    ];
+    ]
+    .into_iter()
+    .map(|(name, xml)| (name.to_owned(), xml))
+    .collect()
+}
+
+/// The zip of `parts`, each a name and its XML, as [`stored_zip`] writes
+/// it.
+pub fn xlsx_of_parts(parts: &[(String, String)]) -> Vec<u8> {
+    let files: Vec<(&str, &str)> = parts
+        .iter()
+        .map(|(name, xml)| (name.as_str(), xml.as_str()))
+        .collect();
     stored_zip(&files)
+}
+
+/// The XML of a table of texts, the part `xl/sharedStrings.xml`, which
+/// holds once each text the cells hold, a cell `t="s"` giving the place of
+/// its text there, from 0. `sst_attributes` are the attributes of its root
+/// element `<sst>`, such as `uniqueCount="2"`, the number of texts the
+/// table says it holds; each of `texts` is an element `<si>`.
+pub fn shared_strings(sst_attributes: &str, texts: &[&str]) -> String {
+    let text_elements: String = texts
+        .iter()
+        .map(|text| format!("<si><t>{text}</t></si>"))
+        .collect();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" {sst_attributes}>{text_elements}</sst>"#
+    )
 }
 
 /// The xlsx of one worksheet, as [`xlsx_of_worksheet`] gives it, in the
@@ -43,17 +81,12 @@ pub fn xlsx_of_worksheet(worksheet_body: &str) -> Vec<u8> {
 /// with `s="1"` has the first of them, `s="2"` the second, and so on, and
 /// a cell with no `s` has none.
 pub fn xlsx_of_1904_worksheet(worksheet_body: &str, number_formats: &[&str]) -> Vec<u8> {
-    let parts = parts_of_1904_worksheet(worksheet_body, number_formats);
-    let files: Vec<(&str, &str)> = parts
-        .iter()
-        .map(|(name, xml)| (name.as_str(), xml.as_str()))
-        .collect();
-    stored_zip(&files)
+    xlsx_of_parts(&parts_of_1904_worksheet(worksheet_body, number_formats))
 }
 
 /// The parts [`xlsx_of_1904_worksheet`] zips, each a name and its XML, in
 /// the order of the zip, for a test that changes their names or their XML
-/// before it zips them with [`stored_zip`].
+/// before it zips them with [`xlsx_of_parts`].
 pub fn parts_of_1904_worksheet(
     worksheet_body: &str,
     number_formats: &[&str],

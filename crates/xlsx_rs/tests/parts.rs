@@ -1,12 +1,13 @@
 //! The parts of the zip xlsx_rs reads itself before calamine ("What xlsx_rs
 //! reads before calamine" of `docs/specs/read.md`): every part read to its
 //! end, so that a part whose checksum fails refuses the file, and the bytes
-//! so read counted and bounded; and the date system, from the
-//! `workbookPr` that is a direct child of the root of the workbook.
+//! so read counted and bounded; the date system, from the `workbookPr` that
+//! is a direct child of the root of the workbook; and the bounds of the
+//! parts calamine reads whole when it opens the file.
 
 #[expect(
     dead_code,
-    reason = "the workbooks here are of the 1904 system, and their texts are not written by hand"
+    reason = "the texts here are in a table of texts, not written in the cells by hand"
 )]
 mod hand_written;
 
@@ -16,12 +17,15 @@ use std::ops::Range;
 
 use rust_xlsxwriter::{Workbook, XlsxError};
 use xlsx_rs::{
-    ReadError, Sheet, SheetCell, read_first_sheet, read_first_sheet_within_unzipped_bytes,
+    ReadError, Sheet, SheetCell, read_first_sheet, read_first_sheet_within_text_table_bytes,
+    read_first_sheet_within_unzipped_bytes,
 };
 use zip::ZipArchive;
 use zip::result::ZipError;
 
-use crate::hand_written::{parts_of_1904_worksheet, stored_zip};
+use crate::hand_written::{
+    parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
+};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
@@ -326,5 +330,181 @@ fn a_workbook_in_the_folder_its_relationship_gives_is_found_there() {
     assert_eq!(
         read.unwrap().cells,
         [SheetCell::Text("2024-05-13".to_owned())]
+    );
+}
+
+/// `xml` with spaces after its declaration, `<?xml ... ?>`, up to
+/// `num_bytes` bytes, which XML reads as it read `xml`; `None` when `xml`
+/// has no declaration or more bytes than that.
+fn padded(xml: &str, num_bytes: usize) -> Option<String> {
+    let declaration_end = xml.find("?>")?.checked_add(2)?;
+    let (declaration, rest) = xml.split_at(declaration_end);
+    let num_spaces = num_bytes.checked_sub(xml.len())?;
+    Some(format!("{declaration}{}{rest}", " ".repeat(num_spaces)))
+}
+
+/// The parts calamine reads whole when it opens a file, besides the table
+/// of texts: the package relationships, which give the folder of the
+/// workbook; the workbook; its relationships; and the styles.
+const SETTINGS_PARTS: [&str; 4] = [
+    "_rels/.rels",
+    "xl/workbook.xml",
+    "xl/_rels/workbook.xml.rels",
+    "xl/styles.xml",
+];
+
+/// The sheet of one cell, A1, the number 7, in a workbook of the 1904
+/// system whose part `part_name` is padded to `num_bytes` bytes;
+/// `None` when there is no such part, or it has more bytes than that.
+fn read_with_part_of(part_name: &str, num_bytes: usize) -> Option<Result<Sheet, ReadError>> {
+    let mut parts = parts_of_1904_worksheet(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData>"#,
+        &[],
+    );
+    let xml = xml_of(&mut parts, part_name)?;
+    *xml = padded(xml, num_bytes)?;
+    Some(read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS))
+}
+
+#[test]
+fn a_part_calamine_reads_whole_past_10_000_000_bytes_is_unreadable() {
+    for part_name in SETTINGS_PARTS {
+        let read = read_with_part_of(part_name, 10_000_001).unwrap();
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "a part of the file is too large".to_owned()
+            )),
+            "{part_name}"
+        );
+    }
+}
+
+#[test]
+fn a_part_calamine_reads_whole_of_10_000_000_bytes_is_read() {
+    for part_name in SETTINGS_PARTS {
+        let read = read_with_part_of(part_name, 10_000_000).unwrap();
+
+        assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)], "{part_name}");
+    }
+}
+
+/// The sheet whose A1 and B1 are the texts 0 and 1 of a table of texts,
+/// `xl/sharedStrings.xml` with `shared_strings_xml`, in the parts of
+/// [`parts_of_worksheet`].
+fn parts_with_texts(shared_strings_xml: String) -> Vec<(String, String)> {
+    let mut parts = parts_of_worksheet(
+        r#"<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row></sheetData>"#,
+    );
+    parts.push(("xl/sharedStrings.xml".to_owned(), shared_strings_xml));
+    parts
+}
+
+/// The sheet of [`parts_with_texts`], its table of texts `"id"` and
+/// `"pop"` with the attributes `sst_attributes`.
+fn read_with_texts(sst_attributes: &str) -> Result<Sheet, ReadError> {
+    let parts = parts_with_texts(shared_strings(sst_attributes, &["id", "pop"]));
+    read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS)
+}
+
+/// The cells of the sheet of [`read_with_texts`].
+fn the_two_texts() -> Vec<SheetCell> {
+    vec![
+        SheetCell::Text("id".to_owned()),
+        SheetCell::Text("pop".to_owned()),
+    ]
+}
+
+#[test]
+fn a_table_of_texts_past_the_bound_of_its_bytes_is_too_much_text() {
+    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
+    let num_bytes = u64::try_from(shared_strings_xml.len()).unwrap();
+    let bytes = xlsx_of_parts(&parts_with_texts(shared_strings_xml));
+
+    let past_bound = read_first_sheet_within_text_table_bytes(
+        &bytes,
+        MAX_SHEET_CELLS,
+        num_bytes.checked_sub(1).unwrap(),
+    );
+    let at_bound = read_first_sheet_within_text_table_bytes(&bytes, MAX_SHEET_CELLS, num_bytes);
+
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable("too much text".to_owned()))
+    );
+    assert_eq!(at_bound.unwrap().cells, the_two_texts());
+}
+
+#[test]
+fn a_table_of_more_than_10_000_000_texts_is_unreadable() {
+    let shared_strings_xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{}</sst>"#,
+        "<si/>".repeat(10_000_001)
+    );
+    let bytes = xlsx_of_parts(&parts_with_texts(shared_strings_xml));
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("too many texts".to_owned()))
+    );
+}
+
+#[test]
+fn a_table_of_texts_whose_unique_count_is_larger_than_its_texts_is_unreadable() {
+    for unique_count in ["3", "400000000"] {
+        let read = read_with_texts(&format!(r#"uniqueCount="{unique_count}""#));
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "the table of texts says it holds more texts than it does".to_owned()
+            )),
+            "uniqueCount {unique_count}"
+        );
+    }
+}
+
+#[test]
+fn a_table_of_texts_whose_unique_count_is_its_texts_missing_or_not_a_number_is_read() {
+    for sst_attributes in [
+        r#"count="5" uniqueCount="2""#,
+        r#"uniqueCount="1""#,
+        "",
+        r#"uniqueCount="many""#,
+        r#"uniqueCount="-3""#,
+    ] {
+        let read = read_with_texts(sst_attributes);
+
+        assert_eq!(read.unwrap().cells, the_two_texts(), "{sst_attributes}");
+    }
+}
+
+// calamine finds the table of texts by its name ignoring case, and so does
+// xlsx_rs: a table it did not find would reach calamine unchecked.
+#[test]
+fn a_table_of_texts_named_in_capitals_is_checked() {
+    let read_of_unique_count = |unique_count: &str| {
+        let mut parts = parts_with_texts(shared_strings(
+            &format!(r#"uniqueCount="{unique_count}""#),
+            &["id", "pop"],
+        ));
+        for (name, _) in &mut parts {
+            if name == "xl/sharedStrings.xml" {
+                *name = "XL/SHAREDSTRINGS.XML".to_owned();
+            }
+        }
+        read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS)
+    };
+
+    assert_eq!(read_of_unique_count("2").unwrap().cells, the_two_texts());
+    assert_eq!(
+        read_of_unique_count("3"),
+        Err(ReadError::Unreadable(
+            "the table of texts says it holds more texts than it does".to_owned()
+        ))
     );
 }

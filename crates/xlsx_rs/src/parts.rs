@@ -7,9 +7,12 @@
 //! sheets. Each part carries a checksum of its bytes, which the zip crate
 //! checks only once the part has been read to its end; calamine stops
 //! reading a sheet at its last cell, so xlsx_rs reads every part to its end
-//! first, and counts the bytes. A part is found as calamine 0.36.1 finds
-//! it (`xlsx/mod.rs` and `utils.rs`), so that no file passes these checks
-//! with a part calamine reads under another name.
+//! first, and counts the bytes. calamine also reads four parts whole when
+//! it opens the file, the workbook, its relationships, the styles and the
+//! table of texts, and reserves room for as many texts as the table says it
+//! holds, so xlsx_rs bounds their sizes and the texts. A part is found as
+//! calamine 0.36.1 finds it (`xlsx/mod.rs` and `utils.rs`), so that no file
+//! passes these checks with a part calamine reads under another name.
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Cursor, Read};
@@ -23,6 +26,18 @@ use zip::result::ZipError;
 use crate::ReadError;
 use crate::date::DateSystem;
 
+/// The bounds of the parts of a read, which a test lowers so as to pass
+/// them with a file of a few KB.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PartBounds {
+    /// The most bytes the parts may hold together once unzipped,
+    /// [`crate::MAX_UNZIPPED_BYTES`] outside the tests.
+    pub(crate) max_unzipped_bytes: u64,
+    /// The most bytes the table of texts may hold once unzipped,
+    /// [`crate::MAX_TEXT_TABLE_BYTES`] outside the tests.
+    pub(crate) max_text_table_bytes: u64,
+}
+
 /// What xlsx_rs reads of the parts before calamine opens the file.
 pub(crate) struct PartsRead {
     /// The date system of the workbook.
@@ -30,41 +45,97 @@ pub(crate) struct PartsRead {
 }
 
 /// Reads every part of the zip `bytes` to its end, so that the zip crate
-/// checks its checksum, and the date system of its workbook.
+/// checks its checksum; checks the size of the parts calamine reads whole
+/// when it opens the file, and the number of texts of its table of texts;
+/// and reads the date system of its workbook.
 ///
 /// A file with no workbook where calamine looks for one, or whose package
-/// relationships do not name it, is given the system of 1900: calamine
-/// then refuses the file, or finds no sheet in it.
+/// relationships do not name it, is given the system of 1900 and is not
+/// checked further: calamine then refuses the file, or finds no sheet in
+/// it.
 ///
 /// # Errors
 ///
 /// [`ReadError::Unreadable`] with the zip crate's message for any error of
 /// the zip, "Invalid checksum" for a part whose bytes are not those it was
 /// saved with; "the file unzips to more than … bytes" when the parts hold
-/// more than `max_unzipped_bytes` bytes together; and "the part … cannot be
-/// read as XML: …", with quick-xml's message, for package relationships or
-/// a workbook whose XML cannot be read up to what xlsx_rs takes of it.
-pub(crate) fn read_parts(bytes: &[u8], max_unzipped_bytes: u64) -> Result<PartsRead, ReadError> {
+/// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
+/// file is too large", "too much text", "too many texts" and "the table of
+/// texts says it holds more texts than it does", for the bounds of the
+/// parts calamine reads whole ("What xlsx_rs reads before calamine",
+/// point 3); and "the part … cannot be read as XML: …",
+/// with quick-xml's message, for package relationships, a table of texts
+/// or a workbook whose XML cannot be read up to what xlsx_rs takes of it.
+pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead, ReadError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
-    read_every_part(&mut archive, max_unzipped_bytes)?;
+    let part_sizes = read_every_part(&mut archive, bounds.max_unzipped_bytes)?;
     let part_names = PartNames::of_archive(&archive);
-    let date_system = match workbook_folder_of(&mut archive, &part_names)? {
-        Some(workbook_folder) => date_system_of(
-            &mut archive,
-            &part_names,
-            &format!("{workbook_folder}workbook.xml"),
-        )?,
-        None => DateSystem::Excel1900,
+    let part_size_of = |archive: &Archive<'_>, path: &str| {
+        archive
+            .index_for_name(part_names.zip_name_of(path))
+            .and_then(|part_index| part_sizes.get(part_index).copied())
     };
+    // Checked before it is read, as the other parts calamine reads whole.
+    if part_size_of(&archive, PACKAGE_RELATIONSHIPS_PATH).is_some_and(is_past_settings_part_bytes) {
+        return Err(too_large_part());
+    }
+    let Some(workbook_folder) = workbook_folder_of(&mut archive, &part_names)? else {
+        return Ok(PartsRead {
+            date_system: DateSystem::Excel1900,
+        });
+    };
+    let workbook_path = format!("{workbook_folder}workbook.xml");
+    let text_table_path = format!("{workbook_folder}sharedStrings.xml");
+    let settings_paths = [
+        workbook_path.clone(),
+        format!("{workbook_folder}_rels/workbook.xml.rels"),
+        format!("{workbook_folder}styles.xml"),
+    ];
+    if settings_paths
+        .iter()
+        .filter_map(|path| part_size_of(&archive, path))
+        .any(is_past_settings_part_bytes)
+    {
+        return Err(too_large_part());
+    }
+    if part_size_of(&archive, &text_table_path)
+        .is_some_and(|num_bytes| num_bytes > bounds.max_text_table_bytes)
+    {
+        return Err(ReadError::Unreadable("too much text".to_owned()));
+    }
+    check_text_table(&mut archive, &part_names, &text_table_path)?;
+    let date_system = date_system_of(&mut archive, &part_names, &workbook_path)?;
     Ok(PartsRead { date_system })
 }
 
 /// The zip of an xlsx held in memory.
 type Archive<'bytes> = ZipArchive<Cursor<&'bytes [u8]>>;
 
-/// Reads every part of `archive` to its end and discards what it reads.
-fn read_every_part(archive: &mut Archive<'_>, max_unzipped_bytes: u64) -> Result<(), ReadError> {
+/// The path of the package relationships, the part that gives the folder
+/// of the workbook.
+const PACKAGE_RELATIONSHIPS_PATH: &str = "_rels/.rels";
+
+/// Whether a part of `num_bytes` bytes unzipped, one calamine reads whole
+/// when it opens the file other than the table of texts, passes
+/// [`crate::MAX_SETTINGS_PART_BYTES`].
+fn is_past_settings_part_bytes(num_bytes: u64) -> bool {
+    num_bytes > crate::MAX_SETTINGS_PART_BYTES
+}
+
+/// The error of a part calamine reads whole that passes its bound.
+fn too_large_part() -> ReadError {
+    ReadError::Unreadable("a part of the file is too large".to_owned())
+}
+
+/// Reads every part of `archive` to its end and discards what it reads,
+/// and gives the number of bytes of each part unzipped, in the order of
+/// the zip.
+fn read_every_part(
+    archive: &mut Archive<'_>,
+    max_unzipped_bytes: u64,
+) -> Result<Vec<u64>, ReadError> {
     let mut unzipped_bytes: u64 = 0;
+    let mut part_sizes = Vec::with_capacity(archive.len());
     for part_index in 0..archive.len() {
         let mut part = archive
             .by_index(part_index)
@@ -84,8 +155,9 @@ fn read_every_part(archive: &mut Archive<'_>, max_unzipped_bytes: u64) -> Result
                 text_of_count(max_unzipped_bytes)
             )));
         }
+        part_sizes.push(part_bytes);
     }
-    Ok(())
+    Ok(part_sizes)
 }
 
 /// The names of the parts of a zip, as calamine matches a name it looks
@@ -154,11 +226,12 @@ fn workbook_folder_of(
     archive: &mut Archive<'_>,
     part_names: &PartNames,
 ) -> Result<Option<String>, ReadError> {
-    const PATH: &str = "_rels/.rels";
-    let Some(mut xml_reader) = xml_reader_of(archive, part_names, PATH)? else {
+    let Some(mut xml_reader) = xml_reader_of(archive, part_names, PACKAGE_RELATIONSHIPS_PATH)?
+    else {
         return Ok(None);
     };
-    let unreadable = |cause: &dyn std::fmt::Display| unreadable_xml_error_of(PATH, cause);
+    let unreadable =
+        |cause: &dyn std::fmt::Display| unreadable_xml_error_of(PACKAGE_RELATIONSHIPS_PATH, cause);
     let mut buffer = Vec::new();
     loop {
         buffer.clear();
@@ -245,6 +318,98 @@ fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, Attr
         raw_type,
         raw_target,
     })
+}
+
+/// Checks the table of texts `path` as calamine's `read_shared_strings`
+/// reads it: the elements `si` of its root `sst`, each a text, those
+/// inside another `si` not counted; and the attribute `uniqueCount` of
+/// `sst`, the number of texts it says it holds, for which calamine reserves
+/// room before it reads the first. A `uniqueCount` that is not a whole
+/// number written in digits is let be, as calamine does; a part with no
+/// root `sst`, or cut short, is let be too, for calamine to refuse.
+///
+/// # Errors
+///
+/// [`ReadError::Unreadable`]: "too many texts" past
+/// [`crate::MAX_TEXTS`], at the first `si` past it; "the table of texts
+/// says it holds more texts than it does" for a `uniqueCount` larger than
+/// the texts; and "the part … cannot be read as XML: …".
+fn check_text_table(
+    archive: &mut Archive<'_>,
+    part_names: &PartNames,
+    path: &str,
+) -> Result<(), ReadError> {
+    let Some(mut xml_reader) = xml_reader_of(archive, part_names, path)? else {
+        return Ok(());
+    };
+    let unreadable = |cause: &dyn std::fmt::Display| unreadable_xml_error_of(path, cause);
+    let mut buffer = Vec::new();
+    let unique_count = loop {
+        buffer.clear();
+        match xml_reader.read_event_into(&mut buffer) {
+            Ok(Event::Start(element)) if element.local_name().as_ref() == b"sst" => {
+                break unique_count_of(&element).map_err(|xml_error| unreadable(&xml_error))?;
+            }
+            Ok(Event::Eof) => return Ok(()),
+            Err(xml_error) => return Err(unreadable(&xml_error)),
+            Ok(_) => {}
+        }
+    };
+    let mut num_texts: u64 = 0;
+    loop {
+        buffer.clear();
+        match xml_reader.read_event_into(&mut buffer) {
+            Ok(Event::Start(element)) if element.local_name().as_ref() == b"si" => {
+                num_texts = num_texts.saturating_add(1);
+                if num_texts > crate::MAX_TEXTS {
+                    return Err(ReadError::Unreadable("too many texts".to_owned()));
+                }
+                // calamine reads a text up to the first end of an element of
+                // the same name, and counts nothing inside it.
+                let text_name = element.name().as_ref().to_vec();
+                let mut text_buffer = Vec::new();
+                loop {
+                    text_buffer.clear();
+                    match xml_reader.read_event_into(&mut text_buffer) {
+                        Ok(Event::End(end)) if end.name().as_ref() == text_name.as_slice() => break,
+                        Ok(Event::Eof) => return Ok(()),
+                        Err(xml_error) => return Err(unreadable(&xml_error)),
+                        Ok(_) => {}
+                    }
+                }
+            }
+            Ok(Event::End(element)) if element.local_name().as_ref() == b"sst" => break,
+            Ok(Event::Eof) => return Ok(()),
+            Err(xml_error) => return Err(unreadable(&xml_error)),
+            Ok(_) => {}
+        }
+    }
+    if unique_count.is_some_and(|unique_count| unique_count > num_texts) {
+        return Err(ReadError::Unreadable(
+            "the table of texts says it holds more texts than it does".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// The attribute `uniqueCount` of `sst`, the root of a table of texts, as
+/// calamine reads it, up to the first attribute of that name: a number
+/// when it is written in digits alone, any zeros first among them, and
+/// `None` when it is missing, holds anything else, or passes a `u64`.
+fn unique_count_of(sst: &BytesStart<'_>) -> Result<Option<u64>, AttrError> {
+    for attribute in sst.attributes().with_checks(false) {
+        let attribute = attribute?;
+        if attribute.key.as_ref() == b"uniqueCount" {
+            let digits = attribute.value.as_ref();
+            if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+                return Ok(None);
+            }
+            return Ok(std::str::from_utf8(digits)
+                .ok()
+                .and_then(|digits| digits.parse::<u64>().ok()));
+        }
+    }
+    Ok(None)
 }
 
 /// The date system of the workbook `path`: that of the last element

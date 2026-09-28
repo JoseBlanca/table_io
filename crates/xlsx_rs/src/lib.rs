@@ -13,6 +13,7 @@ use std::io::Cursor;
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
 use crate::cell::{TextCount, cell_of_value};
+use crate::parts::PartBounds;
 use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
@@ -120,6 +121,32 @@ pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 /// about 133 MB, while a zip can be written to unzip to many GB.
 pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 
+/// The most bytes each of the parts calamine reads whole when it opens
+/// the file, other than the table of texts, may hold unzipped, 10,000,000:
+/// past it the read is [`ReadError::Unreadable`], "a part of the file is
+/// too large". The parts are the package relationships, the workbook, its
+/// relationships and the styles.
+///
+/// The value is that of "What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`, where a real one is a few KB: a workbook listing
+/// 20,000,000 defined names, 3.2 MB zipped, took calamine 1.61 GB.
+pub const MAX_SETTINGS_PART_BYTES: u64 = 10_000_000;
+
+/// The most bytes the table of texts, the part that holds once each text
+/// the cells hold, may hold unzipped, 400,000,000, twice
+/// [`MAX_TEXT_BYTES`]: past it the read is [`ReadError::Unreadable`], "too
+/// much text".
+pub const MAX_TEXT_TABLE_BYTES: u64 = MAX_TEXT_BYTES.saturating_mul(2);
+
+/// The most texts, elements `si`, the table of texts may hold, 10,000,000:
+/// past it the read is [`ReadError::Unreadable`], "too many texts".
+///
+/// The value is that of "What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`: calamine holds 12 bytes in the wasm for each text
+/// before its characters, 120 MB for these, where a table of individuals
+/// has at most as many texts as cells, 2,000,000.
+pub const MAX_TEXTS: u64 = 10_000_000;
+
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
 /// refusing it at the first cell that makes the rectangle of the values
 /// larger than `max_cells` cells.
@@ -136,9 +163,17 @@ pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 ///   not those it was saved with, "Invalid checksum";
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
+/// - "a part of the file is too large", for a part calamine reads whole
+///   when it opens the file past [`MAX_SETTINGS_PART_BYTES`]: the package
+///   relationships, `_rels/.rels`, the workbook, its relationships or the
+///   styles;
+/// - "too much text", for a table of texts past [`MAX_TEXT_TABLE_BYTES`];
+///   "too many texts", for one of more texts than [`MAX_TEXTS`]; and "the
+///   table of texts says it holds more texts than it does", for one whose
+///   attribute `uniqueCount` is larger than its texts;
 /// - "the part … cannot be read as XML: …", with the message of quick-xml,
-///   for package relationships, `_rels/.rels`, or a workbook whose XML
-///   xlsx_rs cannot read for the date system;
+///   for package relationships, a table of texts or a workbook whose XML
+///   xlsx_rs cannot read up to what it takes of it;
 /// - calamine's, for a zip it cannot read as a workbook, or whose sheet it
 ///   cannot read;
 /// - "no visible worksheet", for a workbook whose worksheets are all
@@ -156,8 +191,14 @@ pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 ///   with a value than `max_cells`, a cell written again counted again;
 /// - "too much text", for texts of the cells past [`MAX_TEXT_BYTES`].
 pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError> {
-    read_first_sheet_within_unzipped_bytes(bytes, max_cells, MAX_UNZIPPED_BYTES)
+    read_first_sheet_within(bytes, max_cells, PART_BOUNDS)
 }
+
+/// The bounds of the parts of [`read_first_sheet`].
+const PART_BOUNDS: PartBounds = PartBounds {
+    max_unzipped_bytes: MAX_UNZIPPED_BYTES,
+    max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
+};
 
 /// Reads as [`read_first_sheet`] does, with `max_unzipped_bytes` in the
 /// place of [`MAX_UNZIPPED_BYTES`], so that a test can pass the bound with
@@ -173,6 +214,39 @@ pub fn read_first_sheet_within_unzipped_bytes(
     max_cells: u32,
     max_unzipped_bytes: u64,
 ) -> Result<Sheet, ReadError> {
+    let bounds = PartBounds {
+        max_unzipped_bytes,
+        max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
+    };
+    read_first_sheet_within(bytes, max_cells, bounds)
+}
+
+/// Reads as [`read_first_sheet`] does, with `max_text_table_bytes` in the
+/// place of [`MAX_TEXT_TABLE_BYTES`], so that a test can pass the bound
+/// with a file of a few KB instead of 400 MB of text.
+///
+/// # Errors
+///
+/// Those of [`read_first_sheet`], the bound of the bytes of the table of
+/// texts being `max_text_table_bytes`.
+pub fn read_first_sheet_within_text_table_bytes(
+    bytes: &[u8],
+    max_cells: u32,
+    max_text_table_bytes: u64,
+) -> Result<Sheet, ReadError> {
+    let bounds = PartBounds {
+        max_unzipped_bytes: MAX_UNZIPPED_BYTES,
+        max_text_table_bytes,
+    };
+    read_first_sheet_within(bytes, max_cells, bounds)
+}
+
+/// Reads as [`read_first_sheet`] does, within `bounds`.
+fn read_first_sheet_within(
+    bytes: &[u8],
+    max_cells: u32,
+    bounds: PartBounds,
+) -> Result<Sheet, ReadError> {
     if bytes.starts_with(&COMPOUND_FILE_MARK) {
         return Err(ReadError::Refused(refusal_of_compound_file(bytes)));
     }
@@ -180,9 +254,10 @@ pub fn read_first_sheet_within_unzipped_bytes(
         return Err(ReadError::Refused(Refusal::NotXlsx));
     }
     // Read before calamine, which takes the date system from an element of
-    // another namespace in a workbook Excel 365 saves ("What xlsx_rs reads
-    // before calamine" of docs/specs/read.md, point 2).
-    let date_system = parts::read_parts(bytes, max_unzipped_bytes)?.date_system;
+    // another namespace in a workbook Excel 365 saves, and reads four parts
+    // whole, with no bound, when it opens the file ("What xlsx_rs reads
+    // before calamine" of docs/specs/read.md, points 2 and 3).
+    let date_system = parts::read_parts(bytes, bounds)?.date_system;
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;
     let sheet_name = workbook
         .sheets_metadata()

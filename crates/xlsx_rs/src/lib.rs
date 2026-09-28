@@ -186,6 +186,9 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 ///   column, or a number of rows or columns, past what a `u32` holds,
 ///   which no file calamine reads can give and which are there so that
 ///   the read has no panic;
+/// - "too many merged ranges", for a sheet with more merged ranges than
+///   `max_cells`, and "the part … cannot be read as XML: …" for one whose
+///   XML xlsx_rs cannot read up to its merged ranges;
 /// - "overlapping merged ranges", for two merged ranges that share a cell;
 /// - "cells written more than once", for a file that gives more cells
 ///   with a value than `max_cells`, a cell written again counted again;
@@ -257,7 +260,8 @@ fn read_first_sheet_within(
     // another namespace in a workbook Excel 365 saves, and reads four parts
     // whole, with no bound, when it opens the file ("What xlsx_rs reads
     // before calamine" of docs/specs/read.md, points 2 and 3).
-    let date_system = parts::read_parts(bytes, bounds)?.date_system;
+    let mut parts_read = parts::read_parts(bytes, bounds)?;
+    let date_system = parts_read.date_system;
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;
     let sheet_name = workbook
         .sheets_metadata()
@@ -317,7 +321,10 @@ fn read_first_sheet_within(
         }));
     };
     // Read once the cells are, so that a sheet refused as it is read is not
-    // read a second time for its merged ranges.
+    // read a second time for its merged ranges; counted first, since
+    // calamine holds them all ("What xlsx_rs reads before calamine" of
+    // docs/specs/read.md, point 4).
+    parts_read.check_merged_ranges(&sheet_name, max_cells)?;
     let merged_ranges: Vec<MergedRange> = workbook
         .merge_cells_by_sheet_name(&sheet_name)
         .map_err(read_error_of)?

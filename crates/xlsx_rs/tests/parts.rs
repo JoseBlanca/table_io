@@ -508,3 +508,61 @@ fn a_table_of_texts_named_in_capitals_is_checked() {
         ))
     );
 }
+
+/// The sheet of one cell, A1, the number 7, with `num_merged_ranges`
+/// merged ranges of two cells each outside its rectangle, D1:E1, D2:E2
+/// and so on, in a part named `xl/worksheets/data.xml`, which the
+/// relationship of the sheet names as `relationship_target`, read with a
+/// limit of 4 cells.
+fn read_with_merged_ranges(
+    num_merged_ranges: u32,
+    relationship_target: &str,
+) -> Result<Sheet, ReadError> {
+    let merge_cells: String = (1..=num_merged_ranges)
+        .map(|row| format!(r#"<mergeCell ref="D{row}:E{row}"/>"#))
+        .collect();
+    let mut parts = parts_of_worksheet(&format!(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData><mergeCells count="{num_merged_ranges}">{merge_cells}</mergeCells>"#
+    ));
+    for (name, xml) in &mut parts {
+        if name == "xl/worksheets/sheet1.xml" {
+            *name = "xl/worksheets/data.xml".to_owned();
+        }
+        if name == "xl/_rels/workbook.xml.rels" {
+            *xml = xml.replace(
+                r#"Target="worksheets/sheet1.xml""#,
+                &format!(r#"Target="{relationship_target}""#),
+            );
+        }
+    }
+    read_first_sheet(&xlsx_of_parts(&parts), 4)
+}
+
+// The part of the sheet is found by the relationship the workbook gives
+// it, relative to the folder of the workbook or from the root of the zip,
+// and not by its name.
+#[test]
+fn a_sheet_with_more_merged_ranges_than_the_limit_of_cells_is_unreadable() {
+    for relationship_target in ["worksheets/data.xml", "/xl/worksheets/data.xml"] {
+        let read = read_with_merged_ranges(5, relationship_target);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable("too many merged ranges".to_owned())),
+            "{relationship_target}"
+        );
+    }
+}
+
+#[test]
+fn a_sheet_with_as_many_merged_ranges_as_the_limit_of_cells_is_read() {
+    for relationship_target in ["worksheets/data.xml", "/xl/worksheets/data.xml"] {
+        let read = read_with_merged_ranges(4, relationship_target);
+
+        assert_eq!(
+            read.unwrap().cells,
+            [SheetCell::Number(7.0)],
+            "{relationship_target}"
+        );
+    }
+}

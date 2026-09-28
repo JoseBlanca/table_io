@@ -932,6 +932,16 @@ mod tests {
         }
     }
 
+    // After a match that fails at a second mark, the next match starts at
+    // that mark.
+    #[test]
+    fn a_name_after_two_marks_is_counted() {
+        let bytes = b"<<mergeCell ref=\"A1:B1\"/>";
+        for split in 0..=bytes.len() {
+            assert_eq!(merged_ranges_in(bytes, split), 1, "split at {split}");
+        }
+    }
+
     #[test]
     fn a_name_given_a_byte_at_a_time_is_counted() {
         let mut counter = ElementCounter::of_name(b"sheet");

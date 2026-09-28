@@ -868,6 +868,7 @@ fn a_table_of_texts_whose_unique_count_is_within_10_000_000_missing_or_not_a_num
         r#"uniqueCount="1""#,
         r#"uniqueCount="1000""#,
         r#"uniqueCount="0010000000""#,
+        r#"uniqueCount="0000000000000000010000000""#,
         "",
         r#"uniqueCount="many""#,
         r#"uniqueCount="-3""#,

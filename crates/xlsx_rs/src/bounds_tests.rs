@@ -459,3 +459,23 @@ fn a_settings_part_is_checksummed_after_an_error_of_xml() {
         Err(ReadError::Unreadable("Invalid checksum".to_owned()))
     );
 }
+
+// The package relationships are the part named _rels/.rels, from the root:
+// a/_rels/.rels is another part, which calamine does not hold whole.
+#[test]
+fn a_part_of_relationships_in_a_folder_is_not_held_to_the_bound_of_settings_parts() {
+    let mut parts = parts_with_styles();
+    let (_, package_relationships) = parts
+        .iter()
+        .find(|(name, _)| name == "_rels/.rels")
+        .unwrap();
+    let copy = padded(package_relationships, 50_000);
+    parts.push(("a/_rels/.rels".to_owned(), copy));
+
+    let read = read_within(
+        &parts,
+        bounds_with(|bounds| bounds.max_settings_part_bytes = 20_000),
+    );
+
+    assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)]);
+}

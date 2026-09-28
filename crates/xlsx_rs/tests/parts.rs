@@ -511,6 +511,15 @@ fn a_target_of_the_workbook_in_capitals_is_found() {
     assert_eq!(read.unwrap().cells, date_of_1904());
 }
 
+// calamine reads the entities of the target, as xlsx_rs does: the folder
+// is a&b/, written a&amp;b/.
+#[test]
+fn the_entities_of_the_target_of_the_workbook_are_read() {
+    let read = read_of_1904_date_in_folder("a&b/", "a&amp;b/workbook.xml");
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
 /// `xml` with spaces after its declaration, `<?xml ... ?>`, up to
 /// `num_bytes` bytes, which XML reads as it read `xml`; `None` when `xml`
 /// has no declaration or more bytes than that.

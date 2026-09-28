@@ -1,11 +1,20 @@
 //! The dates, the times and the durations, over files written in memory
-//! with rust_xlsxwriter in Excel's date system of 1900 ("Each cell" of
+//! with rust_xlsxwriter in Excel's date system of 1900, and by hand in the
+//! system of 1904, which rust_xlsxwriter does not write ("Each cell" of
 //! `docs/specs/read.md`).
+
+#[expect(
+    dead_code,
+    reason = "the dates are numbers, and no cell here is a text written by hand"
+)]
+mod hand_written;
 
 use std::error::Error;
 
 use rust_xlsxwriter::{Format, Workbook};
 use xlsx_rs::{SheetCell, read_first_sheet};
+
+use crate::hand_written::xlsx_of_1904_worksheet;
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
@@ -126,5 +135,28 @@ fn a_date_below_0_is_the_number() {
     assert_eq!(
         cell_of_number_with_format(-3.0, "dd/mm/yyyy").unwrap(),
         SheetCell::Number(-3.0)
+    );
+}
+
+#[test]
+fn a_workbook_of_the_1904_system_gives_its_dates_in_that_system() {
+    // Styles 1 to 3 of the file are the three formats, in this order.
+    let number_formats = ["dd/mm/yyyy hh:mm:ss", "dd/mm/yyyy", "hh:mm:ss"];
+    let bytes = xlsx_of_1904_worksheet(
+        r#"<sheetData><row r="1"><c r="A1" s="1"><v>43963.5</v></c></row><row r="2"><c r="A2" s="2"><v>2957003</v></c></row><row r="3"><c r="A3" s="2"><v>2957004</v></c></row><row r="4"><c r="A4" s="3"><v>0</v></c></row><row r="5"><c r="A5" s="2"><v>59</v></c></row></sheetData>"#,
+        &number_formats,
+    );
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+    assert_eq!(
+        sheet.cells,
+        [
+            // 13 May 2024 at 12:00, 45425.5 in the 1900 system.
+            text("2024-05-13 12:00:00"),
+            text("9999-12-31"),
+            SheetCell::Number(2_957_004.0),
+            text("00:00:00"),
+            // 1904 was a leap year: day 59 is 29 February.
+            text("1904-02-29"),
+        ]
     );
 }

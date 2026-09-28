@@ -1,14 +1,17 @@
 //! An xlsx written by hand from the XML of its one worksheet, for the
 //! files rust_xlsxwriter does not write: a merged range written from its
 //! last cell, two ranges that overlap, a value in a merged range's other
-//! cells, a cell written more than once, and a text longer than the 32,767
-//! characters Excel allows.
+//! cells, a cell written more than once, a text longer than the 32,767
+//! characters Excel allows, and a workbook in the date system of 1904.
 //!
 //! The xlsx is a zip whose files are stored as they are, with no
 //! compression, which a zip may do and calamine reads, so that it needs no
 //! crate of zip. It holds the five files calamine needs to find the first
 //! sheet, and the texts of the cells are written in the cells themselves,
-//! `t="inlineStr"`, so that there is no table of shared texts.
+//! `t="inlineStr"`, so that there is no table of shared texts. A workbook
+//! of 1904 holds a sixth, `xl/styles.xml`, where the formats of its
+//! numbers are, which calamine finds by that name with no relationship to
+//! it.
 
 #![expect(
     clippy::unwrap_used,
@@ -19,19 +22,35 @@
 /// `worksheet_body`: its `<sheetData>`, and its `<mergeCells>` when it has
 /// merged ranges.
 pub fn xlsx_of_worksheet(worksheet_body: &str) -> Vec<u8> {
-    let worksheet = format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{worksheet_body}</worksheet>"#
-    );
     let files = [
         ("[Content_Types].xml", CONTENT_TYPES.to_owned()),
         ("_rels/.rels", PACKAGE_RELATIONSHIPS.to_owned()),
-        ("xl/workbook.xml", WORKBOOK.to_owned()),
+        ("xl/workbook.xml", workbook("")),
         (
             "xl/_rels/workbook.xml.rels",
             WORKBOOK_RELATIONSHIPS.to_owned(),
         ),
-        ("xl/worksheets/sheet1.xml", worksheet),
+        ("xl/worksheets/sheet1.xml", worksheet(worksheet_body)),
+    ];
+    stored_zip(&files)
+}
+
+/// The xlsx of one worksheet, as [`xlsx_of_worksheet`] gives it, in the
+/// date system of 1904, `date1904="1"` in the `<workbookPr>` of its
+/// workbook, with the formats of numbers `number_formats`: a cell written
+/// with `s="1"` has the first of them, `s="2"` the second, and so on, and
+/// a cell with no `s` has none.
+pub fn xlsx_of_1904_worksheet(worksheet_body: &str, number_formats: &[&str]) -> Vec<u8> {
+    let files = [
+        ("[Content_Types].xml", CONTENT_TYPES.to_owned()),
+        ("_rels/.rels", PACKAGE_RELATIONSHIPS.to_owned()),
+        ("xl/workbook.xml", workbook(r#"<workbookPr date1904="1"/>"#)),
+        (
+            "xl/_rels/workbook.xml.rels",
+            WORKBOOK_RELATIONSHIPS.to_owned(),
+        ),
+        ("xl/styles.xml", styles(number_formats)),
+        ("xl/worksheets/sheet1.xml", worksheet(worksheet_body)),
     ];
     stored_zip(&files)
 }
@@ -47,8 +66,49 @@ const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="
 const PACKAGE_RELATIONSHIPS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#;
 
-const WORKBOOK: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#;
+/// The XML of the worksheet whose element `<worksheet>` holds
+/// `worksheet_body`.
+fn worksheet(worksheet_body: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">{worksheet_body}</worksheet>"#
+    )
+}
+
+/// The XML of the workbook of the one sheet `Sheet1`, with
+/// `workbook_properties`, a `<workbookPr>` or nothing, before its sheets.
+fn workbook(workbook_properties: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">{workbook_properties}<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>"#
+    )
+}
+
+/// The XML of the styles of a workbook whose formats of numbers are
+/// `number_formats`. Each format is a `<numFmt>` of its own number, from
+/// 164, the first that is not one of Excel's built-in formats, as Excel and
+/// rust_xlsxwriter number them; and each has a style of a cell, an `<xf>`
+/// of `<cellXfs>` that names it, whose place in `<cellXfs>` is the `s` of a
+/// cell. The first `<xf>`, `s="0"`, is the style of a cell with no `s`,
+/// the format General. calamine takes a cell for a date or a duration by
+/// the format its `<xf>` names, and reads nothing else of the styles.
+fn styles(number_formats: &[&str]) -> String {
+    let format_ids = (164..).map(|format_id: u32| format_id.to_string());
+    let (num_fmts, cell_xfs): (String, String) = number_formats
+        .iter()
+        .zip(format_ids)
+        .map(|(format_code, format_id)| {
+            (
+                format!(r#"<numFmt numFmtId="{format_id}" formatCode="{format_code}"/>"#),
+                format!(r#"<xf numFmtId="{format_id}" applyNumberFormat="1"/>"#),
+            )
+        })
+        .unzip();
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts>{num_fmts}</numFmts><cellXfs><xf numFmtId="0"/>{cell_xfs}</cellXfs></styleSheet>"#
+    )
+}
 
 const WORKBOOK_RELATIONSHIPS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#;

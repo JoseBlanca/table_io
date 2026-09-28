@@ -29,8 +29,9 @@ in the cargo registry. The checks below fail on that commit: the 1904
 test is ignored and gives the wrong date, and the named test files
 below do not exist.
 
-`cargo wasm-check` runs in a worktree only once `main` has the alias as a
-string, 405f9f6 of `owner-files`; until the branch is merged, the plan runs
+`cargo wasm-check`, the shortcut of `.cargo/config.toml` that compiles
+both crates for the browser, runs in a worktree only once `main` has it
+written as a string, as 405f9f6 of `owner-files`; until the branch is merged, the plan runs
 the command it stands for by hand, `cargo check --workspace --all-targets
 --target wasm32-unknown-unknown --config 'build.rustflags=["-D","warnings"]'`.
 
@@ -43,9 +44,11 @@ refused instead of read with cells missing.
 **Deliverables:**
 
 1. `cargo test -p xlsx_rs --test parts -- --list` lists at least 5
-   tests, which pass: every byte of a sheet's compressed data changed in
-   turn, no copy giving other cells than the file's; the bound of
-   unzipped bytes through a small one; a table of texts named in
+   tests, which pass: a file whose sheet's compressed bytes are changed
+   one at a time, each changed copy either refused or read with exactly
+   the cells of the unchanged file; the bound of unzipped bytes, tested
+   through a function that takes the bound as an argument, with a bound
+   of a few KB; a table of texts named in
    capitals found; a Strict file of the 1904 system; the first 500 bytes
    of an xlsx refused with the zip crate's message.
 2. `cargo test -p xlsx_rs --test owner_files`: the 1904 test runs,
@@ -95,10 +98,11 @@ the first cell, which ends popnei_web's light worker.
 - [ ] 2.1 The bounds of point 3: the settings parts, the table of texts
   and its count. Serves 1.
 - [ ] 2.2 The count of the merged ranges of point 4, after calamine has
-  opened the file. Serves 1. Can run beside 2.1 only in another tree;
-  here, after it.
-- [ ] 2.3 The node tests, `unique_count.xlsx` written by the helper of
-  hand-made files and committed, and the measurements. Serves 2 and 3.
+  opened the file. Serves 1. Needs 2.1, since both change the same
+  module.
+- [ ] 2.3 The node tests, `unique_count.xlsx` written by
+  `crates/xlsx_rs/tests/hand_written/`, which builds an xlsx from the XML
+  of its parts, and committed, and the measurements. Serves 2 and 3.
 
 **What could go wrong:** the time. If the read of 2,000,000 cells more
 than doubles, the owner is told before the plan ends, with where the

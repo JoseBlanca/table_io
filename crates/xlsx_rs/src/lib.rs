@@ -198,6 +198,9 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a settings part past
 ///   [`MAX_SETTINGS_PART_BYTES`], in any folder;
+/// - "a part of the file is not in UTF-8", for a settings part or a table
+///   of texts that quick-xml decodes with another encoding, from a byte
+///   order mark or from the `encoding` of its declaration;
 /// - "the workbook lists too many sheets", for paths of the sheets counted
 ///   past [`MAX_SHEET_PATH_BYTES`];
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a

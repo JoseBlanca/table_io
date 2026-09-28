@@ -544,6 +544,7 @@ fn read_with_copy_of_part(
 // which xlsx_rs does not look for: every part whose name ends as one of
 // them is held to their bound, `\` read as `/` and ignoring case.
 #[test]
+#[ignore = "takes 19 s in cargo test, past 10 s; run before each release"]
 fn a_part_named_as_one_calamine_reads_whole_in_another_folder_is_held_to_the_same_bound() {
     for (part_name, copy_name) in [
         ("xl/workbook.xml", "data/workbook.xml"),
@@ -1235,4 +1236,88 @@ fn the_paths_of_the_sheets_are_bounded_at_100_000_000_bytes() {
             "the workbook lists too many sheets".to_owned()
         ))
     );
+}
+
+// calamine decodes the texts of a part in the encoding it declares, and
+// one declared windows-1252 turns a byte 80 into €, 3 bytes of UTF-8, so
+// every bound counted in the bytes of the part would hold 3 times as much.
+#[test]
+fn a_part_calamine_reads_whole_declared_in_windows_1252_is_unreadable() {
+    for part_name in [
+        "_rels/.rels",
+        "xl/workbook.xml",
+        "xl/_rels/workbook.xml.rels",
+        "xl/styles.xml",
+        "xl/sharedStrings.xml",
+    ] {
+        let mut parts = parts_of_1904_worksheet(
+            r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData>"#,
+            &[],
+        );
+        parts.push((
+            "xl/sharedStrings.xml".to_owned(),
+            shared_strings(r#"uniqueCount="1""#, &["id"]),
+        ));
+        let xml = xml_of(&mut parts, part_name).unwrap();
+        *xml = xml.replace(r#"encoding="UTF-8""#, r#"encoding="windows-1252""#);
+        assert!(xml.contains("windows-1252"), "{part_name}");
+
+        let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "a part of the file is not in UTF-8".to_owned()
+            )),
+            "{part_name}"
+        );
+    }
+}
+
+/// The xlsx of [`parts_with_texts`] whose table of texts, of `id` and
+/// `pop`, is written as `bytes_of_xml` gives the bytes of its XML.
+fn xlsx_with_texts_as(bytes_of_xml: impl Fn(&str) -> Vec<u8>) -> Vec<u8> {
+    let parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
+    let files: Vec<(&str, Vec<u8>)> = parts
+        .iter()
+        .map(|(name, xml)| {
+            if name == "xl/sharedStrings.xml" {
+                (name.as_str(), bytes_of_xml(xml))
+            } else {
+                (name.as_str(), xml.as_bytes().to_vec())
+            }
+        })
+        .collect();
+    stored_zip(&files)
+}
+
+#[test]
+fn a_table_of_texts_that_starts_with_the_byte_order_mark_of_utf_16_is_unreadable() {
+    let bytes = xlsx_with_texts_as(|xml| {
+        let mut utf_16 = vec![0xFF, 0xFE];
+        utf_16.extend(xml.encode_utf16().flat_map(u16::to_le_bytes));
+        utf_16
+    });
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "a part of the file is not in UTF-8".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_table_of_texts_that_starts_with_the_byte_order_mark_of_utf_8_is_read() {
+    let bytes = xlsx_with_texts_as(|xml| {
+        let mut utf_8 = vec![0xEF, 0xBB, 0xBF];
+        utf_8.extend(xml.as_bytes());
+        utf_8
+    });
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(read.unwrap().cells, the_two_texts());
 }

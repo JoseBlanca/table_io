@@ -71,7 +71,8 @@ pub(crate) struct PartBounds {
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
 /// bounds of the parts calamine reads whole ("What xlsx_rs reads before
-/// calamine", point 3); "the workbook lists too many sheets" when the
+/// calamine", point 3); "a part of the file is not in UTF-8" for one of
+/// them in another encoding (point 3); "the workbook lists too many sheets" when the
 /// paths of the sheets are counted past `bounds.max_sheet_path_bytes`
 /// (point 3); "too many merged ranges" for a part with more
 /// merged ranges than `max_cells` (point 4); and "the part … cannot be read
@@ -244,15 +245,21 @@ impl<'unzipped, Part: Read> PartReader<'unzipped, Part> {
         self.sheets.as_ref().map_or(0, |sheets| sheets.num_elements)
     }
 
-    /// The error of the part, its failure when it has one, and otherwise
-    /// the error of `read_result`, what the reading of the part gave.
-    fn finish<Copied>(self, read_result: io::Result<Copied>) -> Result<(), ReadError> {
+    /// What was counted in the part, once `read_result`, what the reading
+    /// of the part to its end gave, is known.
+    ///
+    /// # Errors
+    ///
+    /// The failure of the part when it has one, and otherwise the error of
+    /// `read_result`.
+    fn finish<Copied>(self, read_result: io::Result<Copied>) -> Result<PartCounts, ReadError> {
         if let Some(failure) = self.failure {
             return Err(failure);
         }
-        read_result
-            .map(|_| ())
-            .map_err(|io_error| ReadError::Unreadable(io_error.to_string()))
+        read_result.map_err(|io_error| ReadError::Unreadable(io_error.to_string()))?;
+        Ok(PartCounts {
+            num_sheets: self.num_sheets(),
+        })
     }
 
     /// Keeps `failure` as the failure of the part, and gives the error of
@@ -300,6 +307,14 @@ impl<Part: Read> Read for PartReader<'_, Part> {
         }
         Ok(num_read)
     }
+}
+
+/// What the reader of a part counted in it, besides what it bounds as it
+/// reads.
+struct PartCounts {
+    /// The bytes `sheet` right after `<` or `:`, counted in a workbook, 0
+    /// in another part.
+    num_sheets: u64,
 }
 
 /// The nine bytes every element `mergeCell`, a merged range, has at the
@@ -449,18 +464,20 @@ fn read_every_part(
             u64::from(max_cells),
         );
         match part_kind {
-            PartKind::TextTable => read_text_table(part_reader, bounds.max_texts)?,
+            PartKind::TextTable => {
+                read_text_table(part_reader, bounds.max_texts)?;
+            }
             PartKind::PackageRelationships | PartKind::WorkbookRelationships => {
                 sheet_paths.add_relationships(read_longest_tag(part_reader)?);
             }
             PartKind::Workbook => {
-                let mut part_reader = part_reader.counting_sheets();
-                let copy_result = io::copy(&mut part_reader, &mut io::sink());
-                let num_sheets = part_reader.num_sheets();
-                part_reader.finish(copy_result)?;
-                sheet_paths.add_workbook(num_sheets);
+                let part_counts = read_xml_part(part_reader.counting_sheets(), |_, _| Ok(()))?;
+                sheet_paths.add_workbook(part_counts.num_sheets);
             }
-            PartKind::Styles | PartKind::Other => {
+            PartKind::Styles => {
+                read_xml_part(part_reader, |_, _| Ok(()))?;
+            }
+            PartKind::Other => {
                 let copy_result = io::copy(&mut part_reader, &mut io::sink());
                 part_reader.finish(copy_result)?;
             }
@@ -474,34 +491,80 @@ fn read_every_part(
     Ok(())
 }
 
-/// Reads the part of relationships that `part_reader` unzips with
-/// quick-xml, configured as calamine configures it, to the end of the part
-/// or to its first error of XML, and then the rest of its bytes; gives the
-/// bytes of its longest tag, from `<` to `>`, of an element, since a target
-/// and the folder calamine takes from one are inside one tag. An error of
-/// XML is not an error here: calamine refuses the file at one.
+/// Reads the XML of the part that `part_reader` unzips with quick-xml,
+/// configured as calamine configures it, to the end of the part or to its
+/// first error of XML, giving each event to `on_event` with the bytes it
+/// took; then reads the rest of the part to its end, and gives what its
+/// reader counted. An error of XML is not an error here: calamine refuses
+/// a file at one before the end of what it reads of the part, and never
+/// reads one after it.
 ///
 /// # Errors
 ///
-/// The failure of `part_reader`, an error of the zip or a bound of its
-/// bytes passed.
-fn read_longest_tag<Part: Read>(part_reader: PartReader<'_, Part>) -> Result<u64, ReadError> {
+/// The error `on_event` gives, when it gives one, at once; the failure of
+/// `part_reader`, an error of the zip or a bound of its bytes passed; and
+/// [`ReadError::Unreadable`], "a part of the file is not in UTF-8", when
+/// quick-xml decodes the part with another encoding, from a byte order mark
+/// at its start or from the `encoding` of a declaration `<?xml … ?>`
+/// ("What xlsx_rs reads before calamine" of `docs/specs/read.md`, point
+/// 3). calamine decodes the texts of a part in the encoding it declares,
+/// where a byte of windows-1252 may be 3 bytes of UTF-8, so every bound
+/// counted in the bytes of the part would hold 3 times as much.
+fn read_xml_part<Part: Read>(
+    part_reader: PartReader<'_, Part>,
+    mut on_event: impl FnMut(&Event<'_>, u64) -> Result<(), ReadError>,
+) -> Result<PartCounts, ReadError> {
     let mut xml_reader = xml_reader_over(BufReader::new(part_reader));
-    let mut longest_tag: u64 = 0;
     let mut buffer = Vec::new();
     loop {
         buffer.clear();
-        let tag_start = xml_reader.buffer_position();
+        let event_start = xml_reader.buffer_position();
         match xml_reader.read_event_into(&mut buffer) {
-            Ok(Event::Start(_) | Event::Empty(_) | Event::End(_)) => {
-                let tag_bytes = xml_reader.buffer_position().saturating_sub(tag_start);
-                longest_tag = longest_tag.max(tag_bytes);
-            }
             Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
+            Ok(event) => {
+                let event_bytes = xml_reader.buffer_position().saturating_sub(event_start);
+                on_event(&event, event_bytes)?;
+            }
         }
     }
-    read_to_end(xml_reader)?;
+    let is_utf_8 = xml_reader.decoder().encoding().name() == "UTF-8";
+    let mut buffered_part = xml_reader.into_inner();
+    let copy_result = io::copy(&mut buffered_part, &mut io::sink());
+    let part_counts = buffered_part.into_inner().finish(copy_result)?;
+    if !is_utf_8 {
+        return Err(ReadError::Unreadable(
+            "a part of the file is not in UTF-8".to_owned(),
+        ));
+    }
+    Ok(part_counts)
+}
+
+/// Reads the part of relationships that `part_reader` unzips as
+/// [`read_xml_part`] does, and gives the bytes of its longest tag of an
+/// element, from `<` to `>`, since a target and the folder calamine takes
+/// from one are inside one tag.
+///
+/// # Errors
+///
+/// Those of [`read_xml_part`].
+fn read_longest_tag<Part: Read>(part_reader: PartReader<'_, Part>) -> Result<u64, ReadError> {
+    let mut longest_tag: u64 = 0;
+    read_xml_part(part_reader, |event, event_bytes| {
+        match event {
+            Event::Start(_) | Event::Empty(_) | Event::End(_) => {
+                longest_tag = longest_tag.max(event_bytes);
+            }
+            Event::Text(_)
+            | Event::CData(_)
+            | Event::Comment(_)
+            | Event::Decl(_)
+            | Event::PI(_)
+            | Event::DocType(_)
+            | Event::GeneralRef(_)
+            | Event::Eof => {}
+        }
+        Ok(())
+    })?;
     Ok(longest_tag)
 }
 
@@ -655,11 +718,9 @@ fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, Attr
     })
 }
 
-/// Reads the table of texts that `part_reader` unzips with quick-xml,
-/// configured as calamine configures it, to the end of the part or to its
-/// first error of XML, and then the rest of its bytes, so that the part is
-/// read to its end ("What xlsx_rs reads before calamine" of
-/// `docs/specs/read.md`, point 3). It counts every element of local name
+/// Reads the table of texts that `part_reader` unzips as [`read_xml_part`]
+/// does ("What xlsx_rs reads before calamine" of `docs/specs/read.md`,
+/// point 3). It counts every element of local name
 /// `si`, each a text, those inside another `si` and outside the root among
 /// them, and reads every attribute `uniqueCount` of every element of local
 /// name `sst`, the number of texts the table says it holds, for which
@@ -667,41 +728,35 @@ fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, Attr
 /// fewer: the `si` of the first `sst`, not those inside another, and
 /// reserves room for the first `uniqueCount` of the first `sst`.
 ///
-/// An error of XML is not an error here: calamine refuses a file at one
-/// before `</sst>` and never reads one after it.
-///
 /// # Errors
 ///
 /// [`ReadError::Unreadable`]: "too many texts" at the first `si` past
-/// `max_texts`, or at a `uniqueCount` past it; and the failure of
-/// `part_reader`, an error of the zip or a bound of its bytes passed.
+/// `max_texts`, or at a `uniqueCount` past it; and those of
+/// [`read_xml_part`].
 fn read_text_table<Part: Read>(
     part_reader: PartReader<'_, Part>,
     max_texts: u64,
 ) -> Result<(), ReadError> {
-    let mut xml_reader = xml_reader_over(BufReader::new(part_reader));
     let mut num_texts: u64 = 0;
-    let mut buffer = Vec::new();
-    loop {
-        buffer.clear();
-        match xml_reader.read_event_into(&mut buffer) {
-            Ok(Event::Start(element)) => match element.local_name().as_ref() {
-                b"si" => {
-                    num_texts = num_texts.saturating_add(1);
-                    if num_texts > max_texts {
-                        return Err(too_many_texts());
-                    }
-                }
-                b"sst" if is_unique_count_past(&element, max_texts) => {
+    read_xml_part(part_reader, |event, _| {
+        let Event::Start(element) = event else {
+            return Ok(());
+        };
+        match element.local_name().as_ref() {
+            b"si" => {
+                num_texts = num_texts.saturating_add(1);
+                if num_texts > max_texts {
                     return Err(too_many_texts());
                 }
-                _ => {}
-            },
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
+            }
+            b"sst" if is_unique_count_past(element, max_texts) => {
+                return Err(too_many_texts());
+            }
+            _ => {}
         }
-    }
-    read_to_end(xml_reader)
+        Ok(())
+    })?;
+    Ok(())
 }
 
 /// The error of a table of texts past [`crate::MAX_TEXTS`].
@@ -744,21 +799,6 @@ fn is_number_past(digits: &[u8], max_number: u64) -> bool {
             .saturating_add(u64::from(digit.saturating_sub(b'0')))
     });
     number > max_number
-}
-
-/// Reads what is left of the part of `xml_reader` to its end, past where
-/// the reader of XML stopped, and gives the failure of the part, if any.
-///
-/// # Errors
-///
-/// The failure of the part: an error of the zip, or a bound of its bytes
-/// passed.
-fn read_to_end<Part: Read>(
-    xml_reader: XmlReader<BufReader<PartReader<'_, Part>>>,
-) -> Result<(), ReadError> {
-    let mut buffered_part = xml_reader.into_inner();
-    let copy_result = io::copy(&mut buffered_part, &mut io::sink());
-    buffered_part.into_inner().finish(copy_result)
 }
 
 /// The date system of the workbook `path` ("What xlsx_rs reads before

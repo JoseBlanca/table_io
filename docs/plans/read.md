@@ -6,7 +6,7 @@ visible sheet of an xlsx into its cells, the binding crate that exports
 `readXlsx`, and the package `js/xlsx_rs` that popnei_web installs, up to
 the package packed as a release would be. The release itself is not in
 the plan: it is made by hand, on the owner's order, once the repository
-is on GitHub (`docs/architecture.md`, section 5). State: approved by the
+is on GitHub (`docs/architecture.md`, section 5). State: under way since 28 September 2026; approved by the
 owner on 28 September 2026, as was its breakdown. Branch `plan/read`, report `docs/reports/read.md`.
 
 ## In and out

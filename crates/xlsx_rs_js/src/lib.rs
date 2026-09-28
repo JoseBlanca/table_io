@@ -88,18 +88,39 @@ fn js_value_of_cell(cell: SheetCell) -> JsValue {
         SheetCell::Empty => JsValue::NULL,
         SheetCell::Text(text) => JsValue::from(text),
         SheetCell::Number(number) => JsValue::from(number),
-        SheetCell::Bool(value) => JsValue::from(value),
+        SheetCell::Bool(is_true) => JsValue::from(is_true),
     }
 }
 
+/// The rectangle a refusal gives, in the numbers of [`XlsxRead`]: all 0
+/// for a refusal with no rectangle.
+struct RefusalRectangle {
+    /// The first row, from 1.
+    first_row: u32,
+    /// The first column, column A being 1.
+    first_column: u32,
+    /// The number of rows.
+    num_rows: u32,
+    /// The number of columns.
+    num_columns: u32,
+}
+
+/// The rectangle of a refusal that has none.
+const NO_RECTANGLE: RefusalRectangle = RefusalRectangle {
+    first_row: 0,
+    first_column: 0,
+    num_rows: 0,
+    num_columns: 0,
+};
+
 /// The `XlsxRead` of a refusal: its code, and the fields its words need.
 fn read_of_refusal(refusal: Refusal) -> XlsxRead {
-    let (code, detail, sheet, [first_row, first_column, num_rows, num_columns]) = match refusal {
-        Refusal::NotXlsx => ("notXlsx", String::new(), String::new(), [0; 4]),
-        Refusal::OldExcel => ("oldExcel", String::new(), String::new(), [0; 4]),
-        Refusal::Encrypted => ("encrypted", String::new(), String::new(), [0; 4]),
-        Refusal::EmptySheet { sheet } => ("emptySheet", String::new(), sheet, [0; 4]),
-        Refusal::CellError { error } => ("cellError", error, String::new(), [0; 4]),
+    let (code, detail, sheet, rectangle) = match refusal {
+        Refusal::NotXlsx => ("notXlsx", String::new(), String::new(), NO_RECTANGLE),
+        Refusal::OldExcel => ("oldExcel", String::new(), String::new(), NO_RECTANGLE),
+        Refusal::Encrypted => ("encrypted", String::new(), String::new(), NO_RECTANGLE),
+        Refusal::EmptySheet { sheet } => ("emptySheet", String::new(), sheet, NO_RECTANGLE),
+        Refusal::CellError { error } => ("cellError", error, String::new(), NO_RECTANGLE),
         Refusal::SheetTooLarge {
             sheet,
             first_row,
@@ -110,9 +131,20 @@ fn read_of_refusal(refusal: Refusal) -> XlsxRead {
             "sheetTooLarge",
             String::new(),
             sheet,
-            [first_row, first_column, num_rows, num_columns],
+            RefusalRectangle {
+                first_row,
+                first_column,
+                num_rows,
+                num_columns,
+            },
         ),
     };
+    let RefusalRectangle {
+        first_row,
+        first_column,
+        num_rows,
+        num_columns,
+    } = rectangle;
     XlsxRead {
         refusal: code.to_owned(),
         detail,

@@ -192,13 +192,13 @@ systems, and a number outside Excel's range of dates as the number.
 
 **Tasks:**
 
-- [ ] 3.1 The module of the dates, `crates/xlsx_rs/src/date.rs`: the
+- [x] 3.1 The module of the dates, `crates/xlsx_rs/src/date.rs`: the
   rounding to the millisecond, the days and the milliseconds split in
   whole numbers, the parts from calamine, the numbers below 0 and after
   9999, the durations; with its tests of the 1904 system. A task and a
   commit of its own: a wrong date is a wrong cell and no failure. Serves
   1.
-- [ ] 3.2 The dates in the cells of a sheet, with the date system of the
+- [x] 3.2 The dates in the cells of a sheet, with the date system of the
   workbook. Serves 2. Needs 3.1.
 
 **What could go wrong:** 45425.9999999999 must give the next day, which

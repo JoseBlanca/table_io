@@ -157,9 +157,9 @@ boolean, an empty cell as `null`.
 | `TRUE` or `FALSE`, `VERDADERO` or `FALSO` in Spanish | `Bool` | the boolean |
 | a date: a number with a format of date or time, of 1 day or more, whose time, rounded to the millisecond, is 0 | `DateTime` whose `ExcelDateTime` is not a duration | `2024-05-13` |
 | a date and a time: the same, with a time that is not 0, whether the format shows it or not (**Open 2**, below, decided by the owner) | `DateTime` | `2024-05-13 12:00:00`, and `2024-05-13 12:00:00.250` when its milliseconds are not 0 |
-| a time alone: a number with a format of date or time that rounds to less than 1 day and not below 0 | `DateTime` | `14:30:00` |
+| a time alone: a number with a format of date or time that rounds to less than 1 day and not below 0, a number a little below 0 that rounds to 0 milliseconds among them | `DateTime` | `14:30:00` |
 | a format of date on a number below 0, or on a day after 31 December 9999, which Excel shows as `#######` | `DateTime`, with the parts of a wrong date | the number |
-| a duration, a format such as `[h]:mm:ss` | `DateTime` whose `ExcelDateTime` is a duration | hours, minutes and seconds, the hours not wrapped at 24: 1.5 days is `36:00:00`, and a negative one `-0:30:00` |
+| a duration, a format such as `[h]:mm:ss` | `DateTime` whose `ExcelDateTime` is a duration | hours, minutes and seconds, the hours not wrapped at 24 nor written with a leading 0: 1.5 days is `36:00:00`, and a negative one `-0:30:00` |
 | a date written as ISO 8601 text, a cell of the type `d`, which other programs than Excel may write | `DateTimeIso` | the text as it is |
 | an error: `#N/A`, `#DIV/0!`, `#NAME?`, `#NULL!`, `#NUM!`, `#REF!`, `#VALUE!` | `Error` | the text of the error as Excel writes it in English; popnei_web's reader takes a text equal to one of the seven as missing, and so also the same text typed in a cell, which it cannot tell from an error (**Open 1**, below, decided by the owner) |
 | a formula | the value saved with it | the cell of that value, by the rows above |
@@ -177,6 +177,11 @@ shown without it, and decides by the number: a number with no time, as a
 date typed by hand has, gives the date alone, and a number with a time
 gives both, whatever Excel shows, as the owner decided on 27 September
 2026 (**Open 2**, below).
+
+A time alone, a date and a time, and a duration are written with their
+milliseconds, `.250`, when the rounded number has any, and without them
+when it has none; decided with work package 3 on 28 September 2026, since
+a time alone and a duration of the table above had not said.
 
 xlsx_rs first rounds the number to a whole number of milliseconds, and
 splits that into its days and the milliseconds of its last day, with the

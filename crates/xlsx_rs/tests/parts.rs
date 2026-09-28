@@ -450,6 +450,89 @@ fn a_relationship_after_the_end_of_relationships_is_not_read() {
     );
 }
 
+// calamine takes a relationship whose type ends in
+// /relationships/officeDocument, and not one that ends in officeDocument
+// alone.
+#[test]
+fn a_relationship_whose_type_ends_in_office_document_alone_is_not_the_workbook() {
+    let read = read_of_1904_date_with_package_relationships(
+        &[
+            office_document_relationship("rId1", OFFICE_DOCUMENT_TYPE, "xl/workbook.xml"),
+            office_document_relationship(
+                "rId2",
+                r#"Type="http://example.com/officeDocument""#,
+                "data/workbook.xml",
+            ),
+        ]
+        .concat(),
+        "",
+    );
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
+// Relationships and Relationship are matched by their local names, the
+// names after any prefix.
+#[test]
+fn relationships_with_a_prefix_give_the_workbook() {
+    let read = read_of_1904_date(|parts| {
+        for (name, xml) in parts.iter_mut() {
+            if name == "_rels/.rels" {
+                *xml = xml
+                    .replace("<Relationships xmlns=", "<pr:Relationships xmlns:pr=")
+                    .replace("<Relationship ", "<pr:Relationship ")
+                    .replace("</Relationships>", "</pr:Relationships>");
+                assert!(xml.contains("<pr:Relationship "));
+            }
+        }
+    });
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
+// calamine reads the XML of the workbook without checking that an end tag
+// names the element it ends.
+#[test]
+fn a_workbook_whose_end_tag_names_another_element_is_read() {
+    let read = read_of_1904_date(|parts| {
+        for (name, xml) in parts.iter_mut() {
+            if name == "xl/workbook.xml" {
+                *xml = xml.replace("</sheets>", "</sheetz>");
+                assert!(xml.contains("</sheetz>"));
+            }
+        }
+    });
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
+// The workbook is read up to the end of its root, as calamine reads it up
+// to </workbook>: a workbookPr after it is not read.
+#[test]
+fn a_workbook_pr_after_the_end_of_the_root_is_not_read() {
+    let read = read_of_1904_date(|parts| {
+        for (name, xml) in parts.iter_mut() {
+            if name == "xl/workbook.xml" {
+                xml.push_str("<x><workbookPr/></x>");
+            }
+        }
+    });
+
+    assert_eq!(read.unwrap().cells, date_of_1904());
+}
+
+// A workbook named by _rels/.rels but missing gives the system of 1900,
+// and calamine then finds no sheet: the file names a workbook.
+#[test]
+fn a_workbook_named_but_missing_is_no_visible_worksheet() {
+    let read = read_of_1904_date(|parts| parts.retain(|(name, _)| name != "xl/workbook.xml"));
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("no visible worksheet".to_owned()))
+    );
+}
+
 #[test]
 fn a_file_whose_package_relationships_name_no_workbook_is_unreadable() {
     let other_type = r#"Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties""#;

@@ -34,7 +34,11 @@ pub(crate) struct PartBounds {
     /// The most bytes the parts may hold together once unzipped,
     /// [`crate::MAX_UNZIPPED_BYTES`] outside the tests.
     pub(crate) max_unzipped_bytes: u64,
-    /// The most bytes the table of texts may hold once unzipped,
+    /// The most bytes each settings part, a part calamine reads whole other
+    /// than a table of texts, may hold once unzipped,
+    /// [`crate::MAX_SETTINGS_PART_BYTES`] outside the tests.
+    pub(crate) max_settings_part_bytes: u64,
+    /// The most bytes each table of texts may hold once unzipped,
     /// [`crate::MAX_TEXT_TABLE_BYTES`] outside the tests.
     pub(crate) max_text_table_bytes: u64,
 }
@@ -179,17 +183,8 @@ impl PartsRead<'_> {
 /// or a workbook whose XML cannot be read up to what xlsx_rs takes of it.
 pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'_>, ReadError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
-    let part_sizes = read_every_part(&mut archive, bounds.max_unzipped_bytes)?;
+    read_every_part(&mut archive, bounds)?;
     let part_names = PartNames::of_archive(&archive);
-    let part_size_of = |archive: &Archive<'_>, path: &str| {
-        archive
-            .index_for_name(part_names.zip_name_of(path))
-            .and_then(|part_index| part_sizes.get(part_index).copied())
-    };
-    // Checked before it is read, as the other parts calamine reads whole.
-    if part_size_of(&archive, PACKAGE_RELATIONSHIPS_PATH).is_some_and(is_past_settings_part_bytes) {
-        return Err(too_large_part());
-    }
     let Some(workbook_folder) = workbook_folder_of(&mut archive, &part_names)? else {
         return Err(ReadError::Unreadable(
             "the file names no workbook".to_owned(),
@@ -197,23 +192,6 @@ pub(crate) fn read_parts(bytes: &[u8], bounds: PartBounds) -> Result<PartsRead<'
     };
     let workbook_path = format!("{workbook_folder}workbook.xml");
     let text_table_path = format!("{workbook_folder}sharedStrings.xml");
-    let settings_paths = [
-        workbook_path.clone(),
-        format!("{workbook_folder}_rels/workbook.xml.rels"),
-        format!("{workbook_folder}styles.xml"),
-    ];
-    if settings_paths
-        .iter()
-        .filter_map(|path| part_size_of(&archive, path))
-        .any(is_past_settings_part_bytes)
-    {
-        return Err(too_large_part());
-    }
-    if part_size_of(&archive, &text_table_path)
-        .is_some_and(|num_bytes| num_bytes > bounds.max_text_table_bytes)
-    {
-        return Err(ReadError::Unreadable("too much text".to_owned()));
-    }
     check_text_table(&mut archive, &part_names, &text_table_path)?;
     let (date_system, sheets) = read_workbook(&mut archive, &part_names, &workbook_path)?;
     Ok(PartsRead {
@@ -234,49 +212,189 @@ type Archive<'bytes> = ZipArchive<Cursor<&'bytes [u8]>>;
 /// of the workbook.
 const PACKAGE_RELATIONSHIPS_PATH: &str = "_rels/.rels";
 
-/// Whether a part of `num_bytes` bytes unzipped, one calamine reads whole
-/// when it opens the file other than the table of texts, passes
-/// [`crate::MAX_SETTINGS_PART_BYTES`].
-fn is_past_settings_part_bytes(num_bytes: u64) -> bool {
-    num_bytes > crate::MAX_SETTINGS_PART_BYTES
+/// What calamine may read a part as, told by the end of its name, `\\`
+/// read as `/` and ignoring case, in any folder: the part calamine reads is
+/// always one of them, since its name is the folder of the workbook
+/// followed by the usual name ("What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`, point 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PartKind {
+    /// `_rels/.rels`, the package relationships, which give the folder of
+    /// the workbook.
+    PackageRelationships,
+    /// A name ending in `workbook.xml`: the workbook, which lists the
+    /// sheets and the defined names.
+    Workbook,
+    /// A name ending in `workbook.xml.rels`: the relationships of the
+    /// workbook, which give the part of each sheet.
+    WorkbookRelationships,
+    /// A name ending in `styles.xml`: the styles, where the formats of the
+    /// numbers are.
+    Styles,
+    /// A name ending in `sharedStrings.xml`: a table of texts.
+    TextTable,
+    /// Any other part, a sheet among them.
+    Other,
 }
 
-/// The error of a part calamine reads whole that passes its bound.
-fn too_large_part() -> ReadError {
-    ReadError::Unreadable("a part of the file is too large".to_owned())
+impl PartKind {
+    /// The kind of the part named `zip_name` in the zip.
+    fn of_zip_name(zip_name: &str) -> Self {
+        let name = zip_name.replace('\\', "/").to_ascii_lowercase();
+        if name == PACKAGE_RELATIONSHIPS_PATH {
+            Self::PackageRelationships
+        } else if name.ends_with("workbook.xml") {
+            Self::Workbook
+        } else if name.ends_with("workbook.xml.rels") {
+            Self::WorkbookRelationships
+        } else if name.ends_with("styles.xml") {
+            Self::Styles
+        } else if name.ends_with("sharedstrings.xml") {
+            Self::TextTable
+        } else {
+            Self::Other
+        }
+    }
+
+    /// The most bytes a part of this kind may hold unzipped, within
+    /// `bounds`, and the message of the error past it; `None` for a part
+    /// calamine does not hold whole.
+    fn bound_of_bytes(self, bounds: &PartBounds) -> Option<PartBound> {
+        match self {
+            Self::PackageRelationships
+            | Self::Workbook
+            | Self::WorkbookRelationships
+            | Self::Styles => Some(PartBound {
+                max_bytes: bounds.max_settings_part_bytes,
+                message: "a part of the file is too large",
+            }),
+            Self::TextTable => Some(PartBound {
+                max_bytes: bounds.max_text_table_bytes,
+                message: "too much text",
+            }),
+            Self::Other => None,
+        }
+    }
 }
 
-/// Reads every part of `archive` to its end and discards what it reads,
-/// and gives the number of bytes of each part unzipped, in the order of
-/// the zip.
-fn read_every_part(
-    archive: &mut Archive<'_>,
-    max_unzipped_bytes: u64,
-) -> Result<Vec<u64>, ReadError> {
-    let mut unzipped_bytes: u64 = 0;
-    let mut part_sizes = Vec::with_capacity(archive.len());
+/// The most bytes a part may hold unzipped, and the message of the error
+/// past it.
+#[derive(Debug, Clone, Copy)]
+struct PartBound {
+    /// The most bytes.
+    max_bytes: u64,
+    /// The message of [`ReadError::Unreadable`] past them.
+    message: &'static str,
+}
+
+/// The bytes the parts of a zip hold unzipped, counted as they are read.
+struct UnzippedBytes {
+    /// The bytes read so far, of every part.
+    num_bytes: u64,
+    /// The most they may be.
+    max_bytes: u64,
+}
+
+/// A part of the zip as it is unzipped, its bytes counted as they pass,
+/// and the first failure kept: an error of the zip, or a bound passed.
+///
+/// Once it has failed, it gives its error at each read, so that a reader
+/// of XML over it stops, and the failure is taken from it rather than from
+/// the reader of XML.
+struct PartReader<'unzipped, Part> {
+    /// The part, as the zip crate unzips it.
+    part: Part,
+    /// The bound of the bytes of this part, if it has one.
+    bound: Option<PartBound>,
+    /// The bytes of this part read so far.
+    num_bytes: u64,
+    /// The bytes of every part read so far.
+    unzipped: &'unzipped mut UnzippedBytes,
+    /// The first failure, `None` while there is none.
+    failure: Option<ReadError>,
+}
+
+impl<'unzipped, Part: Read> PartReader<'unzipped, Part> {
+    /// A reader of `part`, whose bytes are held to `bound` and counted in
+    /// `unzipped`.
+    fn new(part: Part, bound: Option<PartBound>, unzipped: &'unzipped mut UnzippedBytes) -> Self {
+        Self {
+            part,
+            bound,
+            num_bytes: 0,
+            unzipped,
+            failure: None,
+        }
+    }
+
+    /// The error of the part, its failure when it has one, and otherwise
+    /// the error of `read_result`, what the reading of the part gave.
+    fn finish<Copied>(self, read_result: io::Result<Copied>) -> Result<(), ReadError> {
+        if let Some(failure) = self.failure {
+            return Err(failure);
+        }
+        read_result
+            .map(|_| ())
+            .map_err(|io_error| ReadError::Unreadable(io_error.to_string()))
+    }
+
+    /// Keeps `failure` as the failure of the part, and gives the error of
+    /// a read for it.
+    fn fail(&mut self, failure: ReadError) -> io::Error {
+        let io_error = io::Error::other(format!("{failure:?}"));
+        self.failure = Some(failure);
+        io_error
+    }
+}
+
+impl<Part: Read> Read for PartReader<'_, Part> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if let Some(failure) = &self.failure {
+            return Err(io::Error::other(format!("{failure:?}")));
+        }
+        let num_read = match self.part.read(buffer) {
+            Ok(num_read) => num_read,
+            Err(zip_io_error) => {
+                return Err(self.fail(ReadError::Unreadable(zip_io_error.to_string())));
+            }
+        };
+        let num_read_bytes = u64::try_from(num_read).unwrap_or(u64::MAX);
+        self.num_bytes = self.num_bytes.saturating_add(num_read_bytes);
+        self.unzipped.num_bytes = self.unzipped.num_bytes.saturating_add(num_read_bytes);
+        if self.unzipped.num_bytes > self.unzipped.max_bytes {
+            let message = format!(
+                "the file unzips to more than {} bytes",
+                text_of_count(self.unzipped.max_bytes)
+            );
+            return Err(self.fail(ReadError::Unreadable(message)));
+        }
+        if let Some(bound) = self.bound
+            && self.num_bytes > bound.max_bytes
+        {
+            return Err(self.fail(ReadError::Unreadable(bound.message.to_owned())));
+        }
+        Ok(num_read)
+    }
+}
+
+/// Reads every part of `archive` to its end and discards what it reads, so
+/// that the zip crate checks the checksum of each, counting the bytes of
+/// each and of all within `bounds`.
+fn read_every_part(archive: &mut Archive<'_>, bounds: PartBounds) -> Result<(), ReadError> {
+    let mut unzipped = UnzippedBytes {
+        num_bytes: 0,
+        max_bytes: bounds.max_unzipped_bytes,
+    };
     for part_index in 0..archive.len() {
-        let mut part = archive
+        let part = archive
             .by_index(part_index)
             .map_err(unreadable_of_zip_error)?;
-        // One byte more than the room left, so that a part that passes the
-        // bound is found without being read past it.
-        let room_left = max_unzipped_bytes.saturating_sub(unzipped_bytes);
-        let part_bytes = io::copy(
-            &mut part.by_ref().take(room_left.saturating_add(1)),
-            &mut io::sink(),
-        )
-        .map_err(|zip_io_error| ReadError::Unreadable(zip_io_error.to_string()))?;
-        unzipped_bytes = unzipped_bytes.saturating_add(part_bytes);
-        if unzipped_bytes > max_unzipped_bytes {
-            return Err(ReadError::Unreadable(format!(
-                "the file unzips to more than {} bytes",
-                text_of_count(max_unzipped_bytes)
-            )));
-        }
-        part_sizes.push(part_bytes);
+        let bound = PartKind::of_zip_name(part.name()).bound_of_bytes(&bounds);
+        let mut part_reader = PartReader::new(part, bound, &mut unzipped);
+        let copy_result = io::copy(&mut part_reader, &mut io::sink());
+        part_reader.finish(copy_result)?;
     }
-    Ok(part_sizes)
+    Ok(())
 }
 
 /// The names of the parts of a zip, as calamine matches a name it looks

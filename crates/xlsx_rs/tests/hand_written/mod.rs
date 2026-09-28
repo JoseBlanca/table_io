@@ -215,11 +215,12 @@ pub fn stored_zip<Contents: AsRef<[u8]>>(files: &[(&str, Contents)]) -> Vec<u8> 
     zip
 }
 
-/// The CRC-32 of `bytes`, as a zip checks each file with it.
+/// The CRC-32 of `bytes`, as a zip checks each file with it, worked out a
+/// byte at a time with a table of the CRC of each byte, so that a part of
+/// 50 MB takes a fraction of a second in a test.
 fn crc32(bytes: &[u8]) -> u32 {
-    let mut crc = u32::MAX;
-    for byte in bytes {
-        crc ^= u32::from(*byte);
+    let table: [u32; 256] = std::array::from_fn(|byte| {
+        let mut crc = u32::try_from(byte).unwrap();
         for _ in 0..8 {
             crc = if crc & 1 == 1 {
                 (crc >> 1) ^ 0xEDB8_8320
@@ -227,6 +228,12 @@ fn crc32(bytes: &[u8]) -> u32 {
                 crc >> 1
             };
         }
+        crc
+    });
+    let mut crc = u32::MAX;
+    for byte in bytes {
+        let table_index = usize::from(crc.to_le_bytes()[0] ^ byte);
+        crc = (crc >> 8) ^ table.get(table_index).copied().unwrap_or_default();
     }
     !crc
 }

@@ -122,21 +122,27 @@ pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 /// about 133 MB, while a zip can be written to unzip to many GB.
 pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 
-/// The most bytes each of the parts calamine reads whole when it opens
-/// the file, other than the table of texts, may hold unzipped, 10,000,000:
-/// past it the read is [`ReadError::Unreadable`], "a part of the file is
-/// too large". The parts are the package relationships, the workbook, its
-/// relationships and the styles.
+/// The most bytes each settings part may hold unzipped, 50,000,000: past
+/// it the read is [`ReadError::Unreadable`], "a part of the file is too
+/// large". A settings part is one calamine reads whole when it opens the
+/// file, other than a table of texts, found by the end of its name in any
+/// folder: `_rels/.rels`, the package relationships, and a part whose name
+/// ends in `workbook.xml`, the workbook, in `workbook.xml.rels`, its
+/// relationships, or in `styles.xml`, the styles.
 ///
 /// The value is that of "What xlsx_rs reads before calamine" of
-/// `docs/specs/read.md`, where a real one is a few KB: a workbook listing
-/// 20,000,000 defined names, 3.2 MB zipped, took calamine 1.61 GB.
-pub const MAX_SETTINGS_PART_BYTES: u64 = 10_000_000;
+/// `docs/specs/read.md`, point 3. One Excel saves is a few KB, but a
+/// workbook that gathers tens of thousands of styles or defined names can
+/// pass 10 MB; calamine holds of a workbook of 50 MB of defined names
+/// about 175 MB natively, estimated there from a workbook listing
+/// 20,000,000 of them, 3.2 MB zipped, which took calamine 1.61 GB.
+pub const MAX_SETTINGS_PART_BYTES: u64 = 50_000_000;
 
-/// The most bytes the table of texts, the part that holds once each text
+/// The most bytes each table of texts, the part that holds once each text
 /// the cells hold, may hold unzipped, 400,000,000, twice
 /// [`MAX_TEXT_BYTES`]: past it the read is [`ReadError::Unreadable`], "too
-/// much text".
+/// much text". A table of texts is a part whose name ends in
+/// `sharedStrings.xml`, `\` read as `/` and ignoring case, in any folder.
 pub const MAX_TEXT_TABLE_BYTES: u64 = MAX_TEXT_BYTES.saturating_mul(2);
 
 /// The most texts, elements `si`, the table of texts may hold, 10,000,000:
@@ -166,11 +172,10 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 ///   `_rels/.rels`, are missing or name no workbook;
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
-/// - "a part of the file is too large", for a part calamine reads whole
-///   when it opens the file past [`MAX_SETTINGS_PART_BYTES`]: the package
-///   relationships, `_rels/.rels`, the workbook, its relationships or the
-///   styles;
-/// - "too much text", for a table of texts past [`MAX_TEXT_TABLE_BYTES`];
+/// - "a part of the file is too large", for a settings part past
+///   [`MAX_SETTINGS_PART_BYTES`], in any folder;
+/// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
+///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder;
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`]; and "the
 ///   table of texts says it holds more texts than it does", for one whose
 ///   attribute `uniqueCount` is larger than its texts;
@@ -203,6 +208,7 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
 /// The bounds of the parts of [`read_first_sheet`].
 const PART_BOUNDS: PartBounds = PartBounds {
     max_unzipped_bytes: MAX_UNZIPPED_BYTES,
+    max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
     max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
 };
 
@@ -222,6 +228,7 @@ pub fn read_first_sheet_within_unzipped_bytes(
 ) -> Result<Sheet, ReadError> {
     let bounds = PartBounds {
         max_unzipped_bytes,
+        max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
         max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
     };
     read_first_sheet_within(bytes, max_cells, bounds)
@@ -242,6 +249,7 @@ pub fn read_first_sheet_within_text_table_bytes(
 ) -> Result<Sheet, ReadError> {
     let bounds = PartBounds {
         max_unzipped_bytes: MAX_UNZIPPED_BYTES,
+        max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
         max_text_table_bytes,
     };
     read_first_sheet_within(bytes, max_cells, bounds)

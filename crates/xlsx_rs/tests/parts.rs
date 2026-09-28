@@ -499,9 +499,9 @@ fn read_with_part_of(part_name: &str, num_bytes: usize) -> Option<Result<Sheet, 
 }
 
 #[test]
-fn a_part_calamine_reads_whole_past_10_000_000_bytes_is_unreadable() {
+fn a_part_calamine_reads_whole_past_50_000_000_bytes_is_unreadable() {
     for part_name in SETTINGS_PARTS {
-        let read = read_with_part_of(part_name, 10_000_001).unwrap();
+        let read = read_with_part_of(part_name, 50_000_001).unwrap();
 
         assert_eq!(
             read,
@@ -514,11 +514,60 @@ fn a_part_calamine_reads_whole_past_10_000_000_bytes_is_unreadable() {
 }
 
 #[test]
-fn a_part_calamine_reads_whole_of_10_000_000_bytes_is_read() {
+fn a_part_calamine_reads_whole_of_50_000_000_bytes_is_read() {
     for part_name in SETTINGS_PARTS {
-        let read = read_with_part_of(part_name, 10_000_000).unwrap();
+        let read = read_with_part_of(part_name, 50_000_000).unwrap();
 
         assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)], "{part_name}");
+    }
+}
+
+/// The sheet of one cell, A1, the number 7, in a workbook of the 1904
+/// system with a copy of its part `part_name` renamed `copy_name`, padded
+/// to `num_bytes` bytes; `None` when there is no such part, or it has
+/// more bytes than that.
+fn read_with_copy_of_part(
+    part_name: &str,
+    copy_name: &str,
+    num_bytes: usize,
+) -> Option<Result<Sheet, ReadError>> {
+    let mut parts = parts_of_1904_worksheet(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData>"#,
+        &[],
+    );
+    let xml = xml_of(&mut parts, part_name)?.clone();
+    parts.push((copy_name.to_owned(), padded(&xml, num_bytes)?));
+    Some(read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS))
+}
+
+// calamine reads the parts of the folder the package relationships give,
+// which xlsx_rs does not look for: every part whose name ends as one of
+// them is held to their bound, `\` read as `/` and ignoring case.
+#[test]
+fn a_part_named_as_one_calamine_reads_whole_in_another_folder_is_held_to_the_same_bound() {
+    for (part_name, copy_name) in [
+        ("xl/workbook.xml", "data/workbook.xml"),
+        ("xl/_rels/workbook.xml.rels", "data/_rels/workbook.xml.rels"),
+        ("xl/styles.xml", "data/styles.xml"),
+        ("xl/styles.xml", "DATA\\STYLES.XML"),
+        ("xl/workbook.xml", "otherworkbook.xml"),
+        ("_rels/.rels", "_RELS\\.RELS"),
+    ] {
+        let past_bound = read_with_copy_of_part(part_name, copy_name, 50_000_001).unwrap();
+        let at_bound = read_with_copy_of_part(part_name, copy_name, 50_000_000).unwrap();
+
+        assert_eq!(
+            past_bound,
+            Err(ReadError::Unreadable(
+                "a part of the file is too large".to_owned()
+            )),
+            "{copy_name}"
+        );
+        assert_eq!(
+            at_bound.unwrap().cells,
+            [SheetCell::Number(7.0)],
+            "{copy_name}"
+        );
     }
 }
 
@@ -613,6 +662,22 @@ fn a_table_of_texts_whose_unique_count_is_its_texts_missing_or_not_a_number_is_r
 
         assert_eq!(read.unwrap().cells, the_two_texts(), "{sst_attributes}");
     }
+}
+
+#[test]
+fn a_table_of_texts_in_another_folder_is_held_to_the_bound_of_its_bytes() {
+    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
+    let num_bytes = u64::try_from(shared_strings_xml.len()).unwrap();
+    let mut parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
+    parts.push((
+        "data/sharedStrings.xml".to_owned(),
+        format!("{shared_strings_xml} "),
+    ));
+    let bytes = xlsx_of_parts(&parts);
+
+    let read = read_first_sheet_within_text_table_bytes(&bytes, MAX_SHEET_CELLS, num_bytes);
+
+    assert_eq!(read, Err(ReadError::Unreadable("too much text".to_owned())));
 }
 
 // calamine finds the table of texts by its name ignoring case, and so does

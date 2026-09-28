@@ -2,12 +2,11 @@
 # Compiles both crates, their tests included, for the target of the package,
 # with every warning an error: nothing else builds them for wasm before the
 # package is built.
-wasm-check = [
-    "check",
-    "--workspace",
-    "--all-targets",
-    "--target",
-    "wasm32-unknown-unknown",
-    "--config",
-    "build.rustflags=[\"-D\", \"warnings\"]",
-]
+#
+# A string and not a list: cargo reads every .cargo/config.toml from the
+# folder it runs in upwards, and a worktree under .claude/worktrees/ lies
+# inside the main checkout, which has this file too. Two lists of one alias
+# are joined, which gave `check ... check ...` and "unexpected argument
+# 'check' found" in every worktree once main had this file, on 28 September
+# 2026; two strings are not joined, the nearer one wins.
+wasm-check = "check --workspace --all-targets --target wasm32-unknown-unknown --config build.rustflags=[\"-D\",\"warnings\"]"

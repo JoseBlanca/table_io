@@ -1235,8 +1235,12 @@ fn a_workbook_of_2_000_sheets_naming_one_target_of_500_kb_is_unreadable() {
 /// The sheet of [`parts_with_sheets_of_one_target`] with 999 sheets, which
 /// with the element `sheets` around them are 1,000 counted, and the tag of
 /// its relationship padded with an attribute so that it and the longest tag
-/// of `_rels/.rels` hold `sum_of_tags` bytes together.
-fn read_with_1_000_sheets_and_tags_of(sum_of_tags: usize) -> Result<Sheet, ReadError> {
+/// of `_rels/.rels` hold `sum_of_tags` bytes together; the part
+/// `first_part_name` first in the zip, the others in their usual order.
+fn read_with_1_000_sheets_and_tags_of(
+    sum_of_tags: usize,
+    first_part_name: &str,
+) -> Result<Sheet, ReadError> {
     let bare_parts = parts_with_sheets_of_one_target(999, "worksheets/sheet1.xml", r#" pad="""#);
     let tag_bytes_of = |part_name: &str| {
         bare_parts
@@ -1247,30 +1251,35 @@ fn read_with_1_000_sheets_and_tags_of(sum_of_tags: usize) -> Result<Sheet, ReadE
     let bare_sum =
         tag_bytes_of("_rels/.rels").saturating_add(tag_bytes_of("xl/_rels/workbook.xml.rels"));
     let padding = "a".repeat(sum_of_tags.saturating_sub(bare_sum));
-    let parts = parts_with_sheets_of_one_target(
+    let mut parts = parts_with_sheets_of_one_target(
         999,
         "worksheets/sheet1.xml",
         &format!(r#" pad="{padding}""#),
     );
+    parts.sort_by_key(|(name, _)| name != first_part_name);
     read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS)
 }
 
 // The largest count of the bytes sheet after < or : in a workbook, 1,000,
 // times the sum of the two longest tags of the relationships, 100,000 or
 // 100,001 bytes: 100,000,000 bytes, MAX_SHEET_PATH_BYTES, read, and
-// 100,001,000 refused.
+// 100,001,000 refused. The longer tag, of the relationships of the
+// workbook, comes after the shorter one in the zip and before it.
 #[test]
 fn the_paths_of_the_sheets_are_bounded_at_100_000_000_bytes() {
-    let at_bound = read_with_1_000_sheets_and_tags_of(100_000);
-    let past_bound = read_with_1_000_sheets_and_tags_of(100_001);
+    for first_part_name in ["[Content_Types].xml", "xl/_rels/workbook.xml.rels"] {
+        let at_bound = read_with_1_000_sheets_and_tags_of(100_000, first_part_name);
+        let past_bound = read_with_1_000_sheets_and_tags_of(100_001, first_part_name);
 
-    assert_eq!(at_bound.unwrap().name, "s1");
-    assert_eq!(
-        past_bound,
-        Err(ReadError::Unreadable(
-            "the workbook lists too many sheets".to_owned()
-        ))
-    );
+        assert_eq!(at_bound.unwrap().name, "s1", "{first_part_name}");
+        assert_eq!(
+            past_bound,
+            Err(ReadError::Unreadable(
+                "the workbook lists too many sheets".to_owned()
+            )),
+            "{first_part_name}"
+        );
+    }
 }
 
 // calamine decodes the texts of a part in the encoding it declares, and

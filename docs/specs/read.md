@@ -178,6 +178,18 @@ date typed by hand has, gives the date alone, and a number with a time
 gives both, whatever Excel shows, as the owner decided on 27 September
 2026 (**Open 2**, below).
 
+calamine keeps the year of its parts in 16 bits, so a day far past
+9999, 23,981,957 among them, comes back as a plausible year below 10000,
+2024 for that one; so xlsx_rs does not ask calamine for the parts of a
+day past 2,958,466, the first day after 9999 in the 1900 system, and
+gives the number for any later one, in both systems (found with work
+package 3, 28 September 2026). A time that rounds to a whole day,
+0.99999999999 with a format of time, is a day of 1 and gives the date
+`1900-01-01`, or `1904-01-02`, where Excel shows `00:00:00`: calamine
+does not give the format, and a number of 1 day or more is a date; a
+column of times may then hold one date, which the user sees in the
+table.
+
 A time alone, a date and a time, and a duration are written with their
 milliseconds, `.250`, when the rounded number has any, and without them
 when it has none; decided with work package 3 on 28 September 2026, since

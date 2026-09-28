@@ -237,7 +237,9 @@ At three levels, each named in the spec with the cases it holds.
   bytes changed in turn, each copy giving a sheet, a refusal or an error.
 - **The package under node**, as it is released: its `init` given the
   bytes of the `.wasm`, and `readXlsx` over two of the owner's files, the
-  cells and a refusal. It is what checks a release before it is tagged.
+  cells and a refusal, and until those exist over a file written by the
+  tests and a CSV; and the declarations it generates compared with the
+  ones kept in git. It is what checks a release before it is tagged.
 - **In popnei_web**, which tests its own reading of the package under
   Vitest and the Individuals step in Chromium, Firefox and WebKit with a
   few xlsx files copied from here. A finding there about a cell is a

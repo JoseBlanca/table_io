@@ -25,8 +25,11 @@ This is xlsx_rs's first spec. It was written in popnei_web, as
 `docs/specs/worker/files.md` there, because the repository of xlsx_rs did
 not exist yet, and it was approved by the owner on 28 September 2026 with
 the specs of popnei_web's stage 4; it moved here, whole, on 28 September
-2026, changed only in its paths and in what it says of popnei_web. There
-is no code of it yet.
+2026, changed only in its paths and in what it says of popnei_web. The
+same day the owner added to "How it is verified" the test that no file
+makes it panic and the declarations kept in git, and decided that the
+test of the package reads a file written by the tests until the owner's
+own exist. There is no code of it yet.
 
 This spec gives the Rust library that reads the first sheet of an xlsx,
 the file Excel saves by default, into its cells, and the wasm package
@@ -639,6 +642,19 @@ which ran. What each gives that this spec does not expect, a date read
 as a number, a cell missing, is a finding for this spec and not a test
 to be bent.
 
+**No file makes it panic**, added on 28 September 2026 by the owner's
+decision, from the rules of pop_var_caller's review. One test takes a file
+written by the tests with a text, a number, a boolean, a date, a formula,
+a merged range and a hidden first sheet, and reads it cut short at every
+length from 0 bytes to its whole size, and with each of its bytes in turn
+replaced by its complement, the byte with every bit flipped. For every
+copy, `read_first_sheet` returns, a sheet, a refusal or an error, and
+does not panic, which the test checks with `std::panic::catch_unwind`;
+it asserts nothing of which. A panic is a trap in the wasm that ends
+popnei_web's light worker (above, "The refusals"). One found in calamine
+is a finding for this spec and an issue for calamine, and the test keeps
+the copy that found it as a case of its own.
+
 ### The package, built
 
 A test under node of the package as it is released, which gives its
@@ -648,6 +664,24 @@ file beside its JavaScript, as a browser does, and reads
 `excel_en.xlsx` and `encrypted.xlsx`: the cells the Rust tests give, and
 the refusal `encrypted`. It is what checks a release before it is
 tagged, as popnei's `npm test` checks its package.
+
+Until the owner's two files exist, as the owner decided on 28 September
+2026, the test reads in their place `tests/data/written.xlsx`, a file of
+a table of a few rows with a text, a number, a boolean, a date and a
+merged range, which a test of xlsx_rs marked `#[ignore]` writes with
+rust_xlsxwriter when it is run by hand and which is committed; and the
+bytes of `id,pop\n`, a CSV: the cells the Rust tests give for the first,
+and the refusal `notXlsx` for the second. They stay when the owner's
+files arrive, and a release made before that says in its notes that
+`excel_en.xlsx` and `encrypted.xlsx` were not read.
+
+The same test compares the declarations wasm-bindgen generated,
+`wasm/xlsx_rs.d.ts`, with `js/xlsx_rs/test/xlsx_rs.d.ts`, kept in git:
+the lines of "The Rust interface" above as wasm-bindgen writes them,
+without the comments added there. A difference fails the test, so that a
+change of the contract with popnei_web is made in that file, and seen,
+before it is released (added on 28 September 2026 by the owner's
+decision).
 
 ### In popnei_web
 

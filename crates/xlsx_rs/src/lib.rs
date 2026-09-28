@@ -4,13 +4,6 @@
 #![forbid(unsafe_code)]
 
 mod cell;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the cells of a sheet take it in task 3.2 of docs/plans/read.md"
-    )
-)]
 mod date;
 mod rectangle;
 
@@ -19,6 +12,7 @@ use std::io::Cursor;
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
 use crate::cell::{TextCount, cell_of_value};
+use crate::date::DateSystem;
 use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
@@ -150,6 +144,11 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         return Err(ReadError::Refused(Refusal::NotXlsx));
     }
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;
+    let date_system = if workbook.has_1904_epoch() {
+        DateSystem::Excel1904
+    } else {
+        DateSystem::Excel1900
+    };
     let sheet_name = workbook
         .sheets_metadata()
         .iter()
@@ -165,7 +164,7 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
         let mut kept_cells = Vec::new();
         let mut text_count = TextCount::with_bound(MAX_TEXT_BYTES);
         while let Some(calamine_cell) = cells_reader.next_cell().map_err(read_error_of)? {
-            let cell = cell_of_value(calamine_cell.get_value());
+            let cell = cell_of_value(calamine_cell.get_value(), date_system);
             if cell == SheetCell::Empty {
                 continue;
             }

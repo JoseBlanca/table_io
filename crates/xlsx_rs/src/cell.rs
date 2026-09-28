@@ -3,15 +3,15 @@
 use calamine::{CellErrorType, DataRef};
 
 use crate::SheetCell;
+use crate::date::{DateSystem, cell_of_date};
 
-/// The cell of `calamine_value`, as "Each cell" gives it.
+/// The cell of `calamine_value`, as "Each cell" gives it, a date in the
+/// workbook's `date_system`.
 ///
-/// A date, a date with its time, a time alone and a duration are the
-/// number Excel stores until work package 3 of `docs/plans/read.md` builds
-/// them. calamine's reader of an xlsx never gives a whole number, `Int`,
-/// nor a duration as ISO 8601 text, `DurationIso`; they are given all the
-/// same, as [`cell_of_whole_number`] says and as their text.
-pub(crate) fn cell_of_value(calamine_value: &DataRef<'_>) -> SheetCell {
+/// calamine's reader of an xlsx never gives a whole number, `Int`, nor a
+/// duration as ISO 8601 text, `DurationIso`; they are given all the same,
+/// as [`cell_of_whole_number`] says and as their text.
+pub(crate) fn cell_of_value(calamine_value: &DataRef<'_>, date_system: DateSystem) -> SheetCell {
     match calamine_value {
         DataRef::Empty => SheetCell::Empty,
         DataRef::SharedString(calamine_text) => cell_of_text(calamine_text),
@@ -19,7 +19,7 @@ pub(crate) fn cell_of_value(calamine_value: &DataRef<'_>) -> SheetCell {
         DataRef::Float(number) => cell_of_number(*number),
         DataRef::Bool(is_true) => SheetCell::Bool(*is_true),
         DataRef::Int(whole_number) => cell_of_whole_number(*whole_number),
-        DataRef::DateTime(date_time) => cell_of_number(date_time.as_f64()),
+        DataRef::DateTime(date_time) => cell_of_date(date_time, date_system),
         DataRef::DateTimeIso(calamine_text) | DataRef::DurationIso(calamine_text) => {
             cell_of_text(calamine_text)
         }
@@ -137,6 +137,7 @@ mod tests {
 
     use crate::SheetCell;
     use crate::cell::{TextCount, TooMuchText, cell_of_value};
+    use crate::date::DateSystem;
 
     #[test]
     fn texts_up_to_the_bound_are_counted_and_one_byte_more_is_too_much() {
@@ -156,13 +157,16 @@ mod tests {
 
     #[test]
     fn a_shared_text_with_no_character_is_an_empty_cell() {
-        assert_eq!(cell_of_value(&DataRef::SharedString("")), SheetCell::Empty);
+        assert_eq!(
+            cell_of_value(&DataRef::SharedString(""), DateSystem::Excel1900),
+            SheetCell::Empty
+        );
     }
 
     #[test]
     fn a_text_of_the_cell_with_no_character_is_an_empty_cell() {
         assert_eq!(
-            cell_of_value(&DataRef::String(String::new())),
+            cell_of_value(&DataRef::String(String::new()), DateSystem::Excel1900),
             SheetCell::Empty
         );
     }
@@ -172,9 +176,12 @@ mod tests {
 
     #[test]
     fn a_whole_number_a_float_holds_exactly_is_the_number() {
-        assert_eq!(cell_of_value(&DataRef::Int(-7)), SheetCell::Number(-7.0));
         assert_eq!(
-            cell_of_value(&DataRef::Int(9_007_199_254_740_992)),
+            cell_of_value(&DataRef::Int(-7), DateSystem::Excel1900),
+            SheetCell::Number(-7.0)
+        );
+        assert_eq!(
+            cell_of_value(&DataRef::Int(9_007_199_254_740_992), DateSystem::Excel1900),
             SheetCell::Number(9_007_199_254_740_992.0)
         );
     }
@@ -182,11 +189,11 @@ mod tests {
     #[test]
     fn a_whole_number_past_two_to_the_53_is_its_digits_as_text() {
         assert_eq!(
-            cell_of_value(&DataRef::Int(9_007_199_254_740_993)),
+            cell_of_value(&DataRef::Int(9_007_199_254_740_993), DateSystem::Excel1900),
             SheetCell::Text("9007199254740993".to_owned())
         );
         assert_eq!(
-            cell_of_value(&DataRef::Int(i64::MIN)),
+            cell_of_value(&DataRef::Int(i64::MIN), DateSystem::Excel1900),
             SheetCell::Text("-9223372036854775808".to_owned())
         );
     }
@@ -198,7 +205,10 @@ mod tests {
     #[test]
     fn a_date_written_in_iso_8601_is_its_text() {
         assert_eq!(
-            cell_of_value(&DataRef::DateTimeIso("2024-05-13".to_owned())),
+            cell_of_value(
+                &DataRef::DateTimeIso("2024-05-13".to_owned()),
+                DateSystem::Excel1900
+            ),
             SheetCell::Text("2024-05-13".to_owned())
         );
     }
@@ -206,7 +216,10 @@ mod tests {
     #[test]
     fn a_duration_written_in_iso_8601_is_its_text() {
         assert_eq!(
-            cell_of_value(&DataRef::DurationIso("PT1H30M".to_owned())),
+            cell_of_value(
+                &DataRef::DurationIso("PT1H30M".to_owned()),
+                DateSystem::Excel1900
+            ),
             SheetCell::Text("PT1H30M".to_owned())
         );
     }
@@ -216,7 +229,10 @@ mod tests {
         // calamine writes it #DATA!, and its reader of an xlsx refuses the
         // sheet at it rather than give it.
         assert_eq!(
-            cell_of_value(&DataRef::Error(CellErrorType::GettingData)),
+            cell_of_value(
+                &DataRef::Error(CellErrorType::GettingData),
+                DateSystem::Excel1900
+            ),
             SheetCell::Text("#GETTING_DATA".to_owned())
         );
     }

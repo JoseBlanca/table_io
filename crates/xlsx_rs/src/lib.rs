@@ -167,11 +167,11 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// natively in the review of `docs/specs/read.md` of 28 September 2026.
 /// The paths are counted as the largest count, in a part whose name ends in
 /// `workbook.xml`, of the bytes `sheet` right after `<` or `:`, which every
-/// element `sheet` has at the start of its name, times the sum of the two
-/// longest tags, from `<` to `>`, of the parts named `_rels/.rels` or
-/// ending in `workbook.xml.rels`, since a target and the folder calamine
-/// takes from one are inside one tag ("What xlsx_rs reads before calamine",
-/// point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
+/// element `sheet` has at the start of its name, times the sum of two
+/// tags: of the parts named `_rels/.rels` or ending in `workbook.xml.rels`,
+/// the longest tag, from `<` to `>`, of each is taken, and the two longest
+/// of these are added, since a target and the folder calamine takes from
+/// one are inside one tag ("What xlsx_rs reads before calamine", point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
 /// with tags of about 150 bytes: 300 KB.
 pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 

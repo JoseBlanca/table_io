@@ -8,9 +8,10 @@ writes a plan.
 
 ## State
 
-Under way. Work package 1 is done; work package 2 is being built.
-The owner is asked whether xlsx_rs may check the zip's checksums with the
-`zip` crate, a new direct dependency (below, work package 1).
+Under way. Work packages 1 and 2 are done; work package 3 is being built.
+The owner is asked whether xlsx_rs may read the zip's checksums and the
+merged ranges itself, with the `zip` and `quick-xml` crates calamine
+brings, as direct dependencies (below, work packages 1 and 2).
 
 ## Work package 1: the whole path
 
@@ -93,3 +94,44 @@ declarations reads it as a heading.
 Issues to open once the repository is on GitHub: calamine 0.36.1 panics
 on a compound file cut short (`cfb.rs` lines 306, 330 and 346), and its
 comment at `cfb.rs:114` says its loop over the DIFAT may not end.
+
+## Work package 2: every cell but the dates, the merged ranges, the limit
+
+- 2.1, e89d69e; 2.2, da04c6f; 2.3, 5046023. A whole number past 2^53,
+  which calamine's reader of an xlsx never gives, is its digits as text.
+  A number that is not finite could be tested through `read_first_sheet`
+  after all: rust_xlsxwriter writes a formula saved with `NaN` or `inf`
+  as a number, which calamine reads as one; the plan's "What could go
+  wrong" did not apply.
+
+Deliverables, checked on d7ea962, after the review's fixes:
+
+1. `cargo test -p xlsx_rs --test cells`: 14 passed.
+2. `--test merged`: 6 passed.
+3. `--test refusals`: 18 passed; the XFD1 test fails if the limit is
+   checked after the read, which the reviewer of the tests confirmed by
+   moving the check.
+
+The node test: 9 pass. The `.wasm`: 515,506 bytes raw, 283,532 gzipped.
+
+The review, four reviewers over spec, tests, errors with architecture,
+and numbers with api. What mattered, fixed in fbf00c9 and d7ea962 for the
+spec and d166157 to e1183d1 for the code:
+
+- Three files a program could be written to make, small in the zip and
+  large in memory: one cell written 40,000,000 times, 1.29 GB from 6.5
+  MB; one long text merged over 10,000 cells, 1.15 GB from 5.7 KB; and
+  40,000,000 merged ranges, 650 MB from 5.1 MB. The first two are now
+  refused. The third, and the workbook's table of texts, are read whole
+  by calamine, and whether xlsx_rs reads them itself is asked of the
+  owner with the checksums.
+- A merged range written from its last cell was left unfilled, and two
+  that overlap gave cells that depended on their order in the file; the
+  first is now read as the same range and the second refused.
+- calamine's arithmetic on rows and columns panics in a build of the
+  tests and wraps in the package; calamine is now compiled without
+  overflow checks in the tests too, so that the test of damaged files of
+  work package 4 tests what ships.
+- The refusals `cellError` and `sheetTooLarge` were not read in the
+  package's test, and no test had a rectangle refused whose first row and
+  column differ: both added.

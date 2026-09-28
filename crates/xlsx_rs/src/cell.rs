@@ -52,7 +52,7 @@ pub(crate) fn cell_of_number(number: f64) -> SheetCell {
 
 /// The largest whole number every smaller one of which a float holds
 /// exactly, 2^53.
-const LARGEST_EXACT_WHOLE_NUMBER: u64 = 1 << 53;
+pub(crate) const LARGEST_EXACT_WHOLE_NUMBER: u64 = 1 << 53;
 
 /// A whole number as the number when a float holds it exactly, up to 2^53
 /// either side of 0, and as its digits, a text, past that, so that no

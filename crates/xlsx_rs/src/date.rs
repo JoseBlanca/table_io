@@ -4,7 +4,7 @@
 use calamine::{ExcelDateTime, ExcelDateTimeType};
 
 use crate::SheetCell;
-use crate::cell::cell_of_number;
+use crate::cell::{LARGEST_EXACT_WHOLE_NUMBER, cell_of_number};
 
 /// The date system of a workbook: the day Excel counts its numbers from.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -43,10 +43,14 @@ pub(crate) fn cell_of_date(date_time: &ExcelDateTime, date_system: DateSystem) -
 /// The milliseconds of a day, 24 × 60 × 60 × 1000.
 const MILLISECONDS_PER_DAY: u32 = 86_400_000;
 
-/// The largest number of milliseconds taken, 2^53, below which a float
-/// holds every whole number exactly; it is 104 billion days, far past the
-/// last day of 9999.
-const MAX_WHOLE_MILLISECONDS: f64 = 9_007_199_254_740_992.0;
+/// The largest number of milliseconds taken, 2^53, up to which a float
+/// holds every whole number exactly; it is 104,249,991 days, far past the
+/// last day of 9999, 2,958,465.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "2^53 is a power of 2, which a float holds exactly"
+)]
+const MAX_WHOLE_MILLISECONDS: f64 = LARGEST_EXACT_WHOLE_NUMBER as f64;
 
 /// The last day calamine is asked for the parts of, 2,958,466, the first
 /// day of the year 10000 in the 1900 system, and a day of 10004 in the 1904

@@ -453,7 +453,11 @@ the license. Its `build` compiles the binding crate with `cargo build
 --release --target wasm32-unknown-unknown`, then runs `wasm-bindgen
 --target web --remove-name-section --out-dir wasm --out-name xlsx_rs`
 over it, which writes the JavaScript, its declarations and
-`xlsx_rs_bg.wasm`. The package is packed with `npm pack`, and the
+`xlsx_rs_bg.wasm`; the build compiles with `--remap-path-prefix`, so that
+no path of the folders of the machine that built it is left in the
+`.wasm`, where 38 were before the review of 28 September 2026. `npm pack`
+builds and tests the package before it packs it, so that a release
+cannot pack a `wasm/` left by the build of another commit. The package is packed with `npm pack`, and the
 `.tgz`, `xlsx_rs-0.1.0.tgz`, is attached to a pre-release of a tag
 `js-v0.1.0-dev.1`, then `dev.2` and on, each used once and never moved,
 since popnei_web's lockfile keeps the hash of the file of each URL. The

@@ -75,8 +75,13 @@ wasm-bindgen 0.2.128, the version the crate pins:
 ```
 npm run build   # the crate in release, then wasm-bindgen into wasm/
 npm test        # node's own test runner; no npm dependency
-npm pack        # builds, tests, copies LICENSE from the root, then xlsx_rs-0.1.0.tgz
+npm pack        # builds, tests, copies LICENSE and THIRD_PARTY_LICENSES.md from the root, then xlsx_rs-0.1.0.tgz
 ```
+
+`THIRD_PARTY_LICENSES.md` holds the license of each crate compiled into
+the `.wasm`, which their licenses ask to go with every copy; it is written
+again when a dependency changes, from the list the command at its top
+gives.
 
 The build writes the paths of the home folder into the `.wasm` as `~`
 (`--remap-path-prefix`, in the script's `RUSTFLAGS`), so that the paths of

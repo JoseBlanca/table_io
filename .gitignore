@@ -3,10 +3,12 @@ target/
 tmp/
 .claude/worktrees/
 # What npm installs for the test of the package, and what the build and
-# `npm pack` leave in js/xlsx_rs: the output of wasm-bindgen, the copy of
-# LICENSE that the package's `prepack` puts beside `package.json`, and the
-# packed package, which is attached to a release and not committed.
+# `npm pack` leave in js/xlsx_rs: the output of wasm-bindgen, the copies of
+# LICENSE and THIRD_PARTY_LICENSES.md that the package's `prepack` puts
+# beside `package.json`, and the packed package, which is attached to a
+# release and not committed.
 node_modules/
 js/xlsx_rs/wasm/
 js/xlsx_rs/LICENSE
+js/xlsx_rs/THIRD_PARTY_LICENSES.md
 js/xlsx_rs/*.tgz

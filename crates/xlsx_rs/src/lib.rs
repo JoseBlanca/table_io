@@ -412,9 +412,14 @@ fn excel_rectangle_of(
     })
 }
 
+/// The message of [`ReadError::Unreadable`] for texts of the cells past
+/// [`MAX_TEXT_BYTES`] and for a table of texts past
+/// [`MAX_TEXT_TABLE_BYTES`].
+pub(crate) const TOO_MUCH_TEXT: &str = "too much text";
+
 /// The error of a read whose texts passed [`MAX_TEXT_BYTES`].
 fn too_much_text() -> ReadError {
-    ReadError::Unreadable("too much text".to_owned())
+    ReadError::Unreadable(TOO_MUCH_TEXT.to_owned())
 }
 
 /// The error of a sheet xlsx_rs cannot give, with `cause` after its name.

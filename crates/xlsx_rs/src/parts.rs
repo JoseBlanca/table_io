@@ -160,7 +160,7 @@ impl PartKind {
             }),
             Self::TextTable => Some(PartBound {
                 max_bytes: bounds.max_text_table_bytes,
-                message: "too much text",
+                message: crate::TOO_MUCH_TEXT,
             }),
             Self::Other => None,
         }

@@ -19,7 +19,7 @@ use zip::ZipArchive;
 use zip::result::ZipError;
 
 use crate::bounds_tests::hand_written::{
-    parts_of_1904_worksheet, parts_of_worksheet, shared_strings, xlsx_of_parts,
+    parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
 };
 use crate::parts::PartBounds;
 use crate::{
@@ -397,5 +397,65 @@ fn the_paths_of_the_sheets_past_the_bound_are_too_many_sheets() {
         Err(ReadError::Unreadable(
             "the workbook lists too many sheets".to_owned()
         ))
+    );
+}
+
+/// The parts of [`parts_with_styles`] whose styles have an error of XML
+/// right after the declaration, an end tag with no element open, followed
+/// by `padding`.
+fn parts_with_styles_failing_early(padding: &str) -> Vec<(String, String)> {
+    let mut parts = parts_with_styles();
+    for (name, xml) in &mut parts {
+        if name == "xl/styles.xml" {
+            let declaration_end = xml.find("?>").unwrap().checked_add(2).unwrap();
+            let (declaration, rest) = xml.split_at(declaration_end);
+            *xml = format!("{declaration}</x>{padding}{rest}");
+        }
+    }
+    parts
+}
+
+// The reader of XML stops at the error, within its first read of 8 KB, and
+// the part is still read to its end: its 50,000 bytes more pass the bound.
+#[test]
+fn a_settings_part_is_counted_to_its_end_after_an_error_of_xml() {
+    let parts = parts_with_styles_failing_early(&" ".repeat(50_000));
+
+    let read = read_within(
+        &parts,
+        bounds_with(|bounds| bounds.max_settings_part_bytes = 20_000),
+    );
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "a part of the file is too large".to_owned()
+        ))
+    );
+}
+
+// A byte changed after the error of XML, where the part is stored
+// uncompressed, is found by the checksum of the part, which the zip crate
+// checks at its end.
+#[test]
+fn a_settings_part_is_checksummed_after_an_error_of_xml() {
+    let mark = "a byte after the error";
+    let parts = parts_with_styles_failing_early(&format!("{}{mark}", " ".repeat(50_000)));
+    let files: Vec<(&str, &str)> = parts
+        .iter()
+        .map(|(name, xml)| (name.as_str(), xml.as_str()))
+        .collect();
+    let mut bytes = stored_zip(&files);
+    let mark_position = bytes
+        .windows(mark.len())
+        .position(|window| window == mark.as_bytes())
+        .unwrap();
+    bytes[mark_position] = b'A';
+
+    let read = read_first_sheet_within(&bytes, MAX_SHEET_CELLS, PART_BOUNDS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable("Invalid checksum".to_owned()))
     );
 }

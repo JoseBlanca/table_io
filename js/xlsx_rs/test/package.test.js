@@ -3,16 +3,13 @@
 // declarations of the contract with popnei_web ("The package, built" of
 // docs/specs/read.md).
 //
-// The owner's excel_en.xlsx and encrypted.xlsx are read when they are in
-// tests/data/, and their tests are skipped with the name of the file while
-// they are not; the one of excel_en.xlsx fails until the cells the owner
-// says it shows are added to it. The files of tests/data/ that
+// The owner's excel_en.xlsx and encrypted.xlsx, in tests/data/, are read
+// with the cells the owner typed. The files of tests/data/ that
 // crates/xlsx_rs/tests/write_fixtures.rs writes, written.xlsx,
 // empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx and
 // wide_table_at_c2.xlsx, and a CSV, are read in any case.
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { before, test } from "node:test";
 
@@ -194,18 +191,6 @@ test("a file calamine cannot read throws an Error with its message", async () =>
 });
 
 /**
- * The option of node:test that skips a test of the owner's `fileName` while
- * it is not in tests/data/, with the reason the Rust test gives.
- */
-function skippedUntilMade(fileName) {
-    return {
-        skip: existsSync(new URL(fileName, dataDir))
-            ? false
-            : `waits for tests/data/${fileName}, made by the owner`,
-    };
-}
-
-/**
  * The cells under `header` in the first row of the sheet of `fields`, from
  * the second row to the last; empty when no cell of the first row is
  * `header`.
@@ -236,37 +221,21 @@ function hasForm(cellText, pattern) {
     );
 }
 
-/**
- * The cell of the sheet of `fields` at `reference`, such as "C3", as Excel
- * names the cells; undefined when it is outside the rectangle or is not a
- * reference.
- */
-function cellAt(fields, reference) {
-    const match = /^([A-Z]+)([0-9]+)$/.exec(reference);
-    if (match === null) {
-        return undefined;
-    }
-    const column = [...match[1]].reduce(
-        (sum, letter) => sum * 26 + letter.charCodeAt(0) - 64,
-        0,
-    );
-    const rowOffset = Number(match[2]) - fields.firstRow;
-    const columnOffset = column - fields.firstColumn;
-    if (rowOffset < 0 || rowOffset >= fields.numRows || columnOffset < 0 || columnOffset >= fields.numColumns) {
-        return undefined;
-    }
-    return fields.cells[rowOffset * fields.numColumns + columnOffset];
-}
-
 // What "Made by the owner" of docs/specs/read.md says excel_en.xlsx holds,
 // as crates/xlsx_rs/tests/owner_files.rs asserts it, with the cells the
-// owner says the file shows in Excel, without which the test fails.
-test("excel_en.xlsx gives the cells of English Excel", skippedUntilMade("excel_en.xlsx"), async () => {
+// owner typed. The file is a copy of excel_es.xlsx, since an xlsx stores
+// formulas and errors in English whatever the language of Excel.
+test("excel_en.xlsx gives the cells of English Excel", async () => {
     const bytes = await readFile(new URL("excel_en.xlsx", dataDir));
 
     const fields = fieldsOfRead(bytes);
 
     assert.equal(fields.refusal, "");
+    assert.equal(fields.sheet, "Hoja1");
+    assert.deepEqual(
+        [fields.firstRow, fields.firstColumn, fields.numRows, fields.numColumns],
+        [1, 1, 7, 7],
+    );
     const headerRow = fields.cells.slice(0, fields.numColumns);
     for (const name of ["Individuo", "Población", "Altura", "Fecha", "Hora", "Afectado", "Código"]) {
         assert.ok(headerRow.includes(name), `no ${name} in the header ${JSON.stringify(headerRow)}`);
@@ -322,20 +291,20 @@ test("excel_en.xlsx gives the cells of English Excel", skippedUntilMade("excel_e
         "rows, from 0 for the header, with an Individuo and no Población, as a merged range lost leaves them",
     );
 
-    // The cells the owner says excel_en.xlsx shows in Excel, each its
-    // reference and its cell, such as ["C3", 1.75].
-    const ownerCells = [];
-    assert.ok(
-        ownerCells.length > 0,
-        'the test has no cell of the file yet; add to its list, as ["C3", 1.75], ' +
-            "the cells the owner says the file shows, each with its reference, before the test can pass",
-    );
-    for (const [reference, cell] of ownerCells) {
-        assert.equal(cellAt(fields, reference), cell, `the cell at ${reference}`);
-    }
+    // The cells the owner typed, from A1, row after row: B3:B4 merged,
+    // G2:G4 formatted 000, row 5 blank, G6 =NA() and G7 =1/0.
+    assert.deepEqual(fields.cells, [
+        "Individuo", "Población", "Altura", "Fecha", "Hora", "Afectado", "Código",
+        "ind1", "Andalucía", 1.75, "2024-05-13", "14:30:00", true, 7,
+        "ind2", "Castilla y León", 1.62, "2024-05-14", "09:05:00", false, 12,
+        "001", "Castilla y León", 1.8, "2024-05-15", "18:45:00", true, 3,
+        null, null, null, null, null, null, null,
+        "ind4", "Murcia", 1.55, "2024-05-16", "07:00:00", false, "#N/A",
+        "ind5", "Murcia", 1.7, "2024-05-17", "12:15:00", true, "#DIV/0!",
+    ]);
 });
 
-test("encrypted.xlsx is refused as encrypted", skippedUntilMade("encrypted.xlsx"), async () => {
+test("encrypted.xlsx is refused as encrypted", async () => {
     const bytes = await readFile(new URL("encrypted.xlsx", dataDir));
 
     const fields = fieldsOfRead(bytes);

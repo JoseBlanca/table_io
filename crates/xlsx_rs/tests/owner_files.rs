@@ -1,18 +1,17 @@
 //! The files the owner makes by hand in Excel, LibreOffice and Google
 //! Sheets, read from `tests/data/` ("Made by the owner" of
-//! `docs/specs/read.md`). None is there yet, so each test is ignored with
-//! the name of the file it waits for.
+//! `docs/specs/read.md`). A test whose file is not there, `libreoffice.xlsx`,
+//! is ignored with the name of the file it waits for.
 //!
-//! The owner has not yet said in which cells each value lies, so the tests
-//! assert what the spec says each file holds and can be found without it:
-//! the header; in the column a header names, the values the spec gives, and
-//! the kind of every cell, a number under `Altura`, a date under `Fecha`;
-//! and a population in every row of an individual, which a merged range
-//! lost would leave empty. A test of a file with cells also holds the list
-//! of the cells the owner says the file shows, each with its reference in
-//! Excel, and fails while that list is empty, so that taking off its
-//! `#[ignore]` without the cells cannot pass. What a file gives that the
-//! spec does not expect is a finding for the spec, and not a test to be
+//! The tests assert what the spec says each file holds: the header; in the
+//! column a header names, the values the spec gives, and the kind of every
+//! cell, a number under `Altura`, a date under `Fecha`; and a population in
+//! every row of an individual, which a merged range lost would leave empty.
+//! A test of a file with cells also holds the list of the cells the owner
+//! typed, each with its reference in Excel, checked by reading each file on
+//! 28 September 2026, and fails while that list is empty, so that taking
+//! off an `#[ignore]` without the cells cannot pass. What a file gives that
+//! the spec does not expect is a finding for the spec, and not a test to be
 //! bent.
 
 use std::path::PathBuf;
@@ -222,6 +221,18 @@ fn assert_the_table_of_the_first_file(file_name: &str, sheet: &Sheet) {
             .any(|row| row.iter().all(|cell| *cell == SheetCell::Empty)),
         "{file_name}: no blank row"
     );
+    assert_the_kinds_of_the_columns(file_name, sheet);
+    let rows = rows_of_an_individual_with_no_population(sheet);
+    assert!(
+        rows.is_empty(),
+        "{file_name}: rows, from 0 for the header, with an Individuo and no Población, as a merged range lost leaves them: {rows:?}"
+    );
+}
+
+/// Asserts, of every cell of `sheet` that is not empty, that it is a
+/// number under `Altura`, a text `dddd-dd-dd` under `Fecha`, a text
+/// `dd:dd:dd` under `Hora` and a boolean under `Afectado`.
+fn assert_the_kinds_of_the_columns(file_name: &str, sheet: &Sheet) {
     let kinds: [(&str, &str, IsOfKind); 4] = [
         ("Altura", "a number", |cell| {
             matches!(cell, SheetCell::Number(_))
@@ -247,35 +258,121 @@ fn assert_the_table_of_the_first_file(file_name: &str, sheet: &Sheet) {
             "{file_name}: under {header}, cells that are not {kind}: {other_cells:?}"
         );
     }
-    let rows = rows_of_an_individual_with_no_population(sheet);
-    assert!(
-        rows.is_empty(),
-        "{file_name}: rows, from 0 for the header, with an Individuo and no Población, as a merged range lost leaves them: {rows:?}"
+}
+
+/// The cells the owner typed in `excel_es.xlsx`, sheet `Hoja1`, from A1,
+/// each its reference and its cell: B3:B4 merged, G2:G4 formatted `000`,
+/// row 5 blank, G6 `=NOD()` and G7 `=1/0`. `excel_en.xlsx` is a copy of
+/// it, since an xlsx stores formulas and errors in English whatever the
+/// language of Excel.
+fn cells_of_the_first_file() -> Vec<(&'static str, SheetCell)> {
+    let rows: [[SheetCell; 7]; 7] = [
+        HEADER.map(text),
+        [
+            text("ind1"),
+            text("Andalucía"),
+            SheetCell::Number(1.75),
+            text("2024-05-13"),
+            text("14:30:00"),
+            SheetCell::Bool(true),
+            SheetCell::Number(7.0),
+        ],
+        [
+            text("ind2"),
+            text("Castilla y León"),
+            SheetCell::Number(1.62),
+            text("2024-05-14"),
+            text("09:05:00"),
+            SheetCell::Bool(false),
+            SheetCell::Number(12.0),
+        ],
+        [
+            text("001"),
+            text("Castilla y León"),
+            SheetCell::Number(1.8),
+            text("2024-05-15"),
+            text("18:45:00"),
+            SheetCell::Bool(true),
+            SheetCell::Number(3.0),
+        ],
+        std::array::from_fn(|_| SheetCell::Empty),
+        [
+            text("ind4"),
+            text("Murcia"),
+            SheetCell::Number(1.55),
+            text("2024-05-16"),
+            text("07:00:00"),
+            SheetCell::Bool(false),
+            text("#N/A"),
+        ],
+        [
+            text("ind5"),
+            text("Murcia"),
+            SheetCell::Number(1.7),
+            text("2024-05-17"),
+            text("12:15:00"),
+            SheetCell::Bool(true),
+            text("#DIV/0!"),
+        ],
+    ];
+    with_references(&rows)
+}
+
+/// The references of Excel of a table from A1, `A1` to `G7`, each with its
+/// cell, row after row.
+const REFERENCES: [[&str; 7]; 7] = [
+    ["A1", "B1", "C1", "D1", "E1", "F1", "G1"],
+    ["A2", "B2", "C2", "D2", "E2", "F2", "G2"],
+    ["A3", "B3", "C3", "D3", "E3", "F3", "G3"],
+    ["A4", "B4", "C4", "D4", "E4", "F4", "G4"],
+    ["A5", "B5", "C5", "D5", "E5", "F5", "G5"],
+    ["A6", "B6", "C6", "D6", "E6", "F6", "G6"],
+    ["A7", "B7", "C7", "D7", "E7", "F7", "G7"],
+];
+
+/// `rows`, a table of 7 rows of 7 cells from A1, as a list of the cells,
+/// each with its reference.
+fn with_references(rows: &[[SheetCell; 7]; 7]) -> Vec<(&'static str, SheetCell)> {
+    REFERENCES
+        .iter()
+        .flatten()
+        .copied()
+        .zip(rows.iter().flatten().cloned())
+        .collect()
+}
+
+/// Asserts that `sheet` is named `name` and is a rectangle of 7 rows of 7
+/// columns from A1.
+fn assert_a_table_of_7_by_7_at_a1(file_name: &str, sheet: &Sheet, name: &str) {
+    assert_eq!(
+        (
+            sheet.name.as_str(),
+            sheet.first_row,
+            sheet.first_column,
+            sheet.num_rows,
+            sheet.num_columns
+        ),
+        (name, 1, 1, 7, 7),
+        "{file_name}: the name and the rectangle of the sheet"
     );
 }
 
 #[test]
-#[ignore = "waits for tests/data/excel_es.xlsx, made by the owner"]
 fn excel_es_xlsx_gives_the_cells_of_spanish_excel() {
     let sheet = read_owner_file("excel_es.xlsx").unwrap().unwrap();
 
+    assert_a_table_of_7_by_7_at_a1("excel_es.xlsx", &sheet, "Hoja1");
     assert_the_table_of_the_first_file("excel_es.xlsx", &sheet);
-    // The cells the owner says excel_es.xlsx shows in Excel, each its
-    // reference and its cell, such as ("C3", SheetCell::Number(1.75)).
-    let owner_cells: Vec<(&str, SheetCell)> = Vec::new();
-    assert_the_cells_the_owner_sees("excel_es.xlsx", &sheet, &owner_cells);
+    assert_the_cells_the_owner_sees("excel_es.xlsx", &sheet, &cells_of_the_first_file());
 }
 
 #[test]
-#[ignore = "waits for tests/data/excel_en.xlsx, made by the owner"]
 fn excel_en_xlsx_gives_the_cells_of_english_excel() {
     let sheet = read_owner_file("excel_en.xlsx").unwrap().unwrap();
 
+    assert_a_table_of_7_by_7_at_a1("excel_en.xlsx", &sheet, "Hoja1");
     assert_the_table_of_the_first_file("excel_en.xlsx", &sheet);
-    // The cells the owner says excel_en.xlsx shows in Excel, each its
-    // reference and its cell, such as ("C3", SheetCell::Number(1.75)).
-    let owner_cells: Vec<(&str, SheetCell)> = Vec::new();
-    assert_the_cells_the_owner_sees("excel_en.xlsx", &sheet, &owner_cells);
+    assert_the_cells_the_owner_sees("excel_en.xlsx", &sheet, &cells_of_the_first_file());
 }
 
 #[test]
@@ -290,26 +387,38 @@ fn libreoffice_xlsx_gives_the_cells_of_libreoffice_calc() {
     assert_the_cells_the_owner_sees("libreoffice.xlsx", &sheet, &owner_cells);
 }
 
+// The file is in the date system of 1904, `date1904="1"`, with A2 saved
+// as 43963, which is 13 May 2024 in it. Excel also writes an element
+// `<x15:workbookPr chartTrackingRefBase="1"/>` inside `<extLst>` of
+// `xl/workbook.xml`, which calamine 0.36.1 (`xlsx/mod.rs`, `read_workbook`)
+// takes by its local name for the `workbookPr` of the workbook, and it sets
+// the date system back to 1900: A2 is read as 2020-05-12.
 #[test]
-#[ignore = "waits for tests/data/excel_1904.xlsx, made by the owner"]
+#[ignore = "calamine 0.36.1 reads the date system from x15:workbookPr in extLst; fixed when xlsx_rs reads workbookPr itself"]
 fn excel_1904_xlsx_gives_the_date_as_excel_shows_it() {
     let sheet = read_owner_file("excel_1904.xlsx").unwrap().unwrap();
 
-    assert!(
-        sheet.cells.contains(&text("2024-05-13")),
-        "no cell is 2024-05-13 in {:?}",
-        sheet.cells
+    assert_eq!(
+        sheet,
+        Sheet {
+            name: "Sheet1".to_owned(),
+            first_row: 1,
+            first_column: 1,
+            num_rows: 2,
+            num_columns: 2,
+            cells: vec![
+                text("Fecha"),
+                text("Hora"),
+                text("2024-05-13"),
+                text("14:30:00"),
+            ],
+        }
     );
-    // The cells the owner says excel_1904.xlsx shows in Excel, each its
-    // reference and its cell, such as ("C3", SheetCell::Number(1.75)).
-    let owner_cells: Vec<(&str, SheetCell)> = Vec::new();
-    assert_the_cells_the_owner_sees("excel_1904.xlsx", &sheet, &owner_cells);
 }
 
 // The file is a table saved with a password to open it; which table does
 // not matter, and nothing is to be added.
 #[test]
-#[ignore = "waits for tests/data/encrypted.xlsx, made by the owner"]
 fn encrypted_xlsx_is_refused_as_encrypted() {
     let read = read_owner_file("encrypted.xlsx").unwrap();
 
@@ -319,49 +428,51 @@ fn encrypted_xlsx_is_refused_as_encrypted() {
 // The file is a table saved as "Excel 97-2003 Workbook"; which table does
 // not matter, and nothing is to be added.
 #[test]
-#[ignore = "waits for tests/data/excel97.xls, made by the owner"]
 fn excel97_xls_is_refused_as_old_excel() {
     let read = read_owner_file("excel97.xls").unwrap();
 
     assert_eq!(read, Err(ReadError::Refused(Refusal::OldExcel)));
 }
 
-// "The refusals", point 5, of the spec: whether Excel saves the error of a
-// spill as #SPILL!, which calamine refuses, or as #VALUE!, which it reads,
-// is not known until this file is read. The test takes either and prints
-// which; the spec is then corrected to it, and the test asserts that one
-// alone, with the cells the owner says the file shows.
+// "The refusals", point 5, of the spec: Excel 365 saves the error of a
+// spill, A1 `=SEQUENCE(3)` with a value in A2, as `#VALUE!`, which calamine
+// reads, and not as `#SPILL!`, so the file is read and nothing is refused.
 #[test]
-#[ignore = "waits for tests/data/spill.xlsx, made by the owner"]
-fn spill_xlsx_is_refused_as_spill_or_read_with_value() {
-    let read = read_owner_file("spill.xlsx").unwrap();
+fn spill_xlsx_is_read_with_value() {
+    let sheet = read_owner_file("spill.xlsx").unwrap().unwrap();
 
-    match read {
-        Err(ReadError::Refused(Refusal::CellError { error })) => {
-            assert_eq!(error, "#SPILL!");
-            println!("spill.xlsx is refused as CellError, #SPILL!");
+    assert_eq!(
+        sheet,
+        Sheet {
+            name: "Hoja1".to_owned(),
+            first_row: 1,
+            first_column: 1,
+            num_rows: 2,
+            num_columns: 1,
+            cells: vec![text("#VALUE!"), SheetCell::Number(5.0)],
         }
-        Ok(sheet) => {
-            assert!(
-                sheet.cells.contains(&text("#VALUE!")),
-                "spill.xlsx is read with no cell #VALUE!: {:?}",
-                sheet.cells
-            );
-            println!("spill.xlsx is read, with a cell #VALUE!");
-        }
-        Err(read_error) => panic!("spill.xlsx gives neither: {read_error:?}"),
-    }
+    );
 }
 
+// The file is the English table, its values pasted, imported into Google
+// Sheets and downloaded as .xlsx. The paste lost what the first file has
+// and a user of Google Sheets would not: `001` came as the number 1, the
+// merge of B3:B4 is gone, leaving B4 empty, and G7 is the text `#¡DIV/0!`
+// of the Spanish Excel, pasted, and not an error.
 #[test]
-#[ignore = "waits for tests/data/google_sheets.xlsx, made by the owner"]
 fn google_sheets_xlsx_gives_the_cells_of_google_sheets() {
     let sheet = read_owner_file("google_sheets.xlsx").unwrap().unwrap();
 
-    assert_the_table_of_the_first_file("google_sheets.xlsx", &sheet);
-    // The cells the owner says google_sheets.xlsx shows in Google Sheets,
-    // each its reference and its cell, such as
-    // ("C3", SheetCell::Number(1.75)).
-    let owner_cells: Vec<(&str, SheetCell)> = Vec::new();
+    assert_a_table_of_7_by_7_at_a1("google_sheets.xlsx", &sheet, "Sheet1");
+    assert_the_kinds_of_the_columns("google_sheets.xlsx", &sheet);
+    let mut owner_cells = cells_of_the_first_file();
+    for (reference, cell) in &mut owner_cells {
+        match *reference {
+            "A4" => *cell = SheetCell::Number(1.0),
+            "B4" => *cell = SheetCell::Empty,
+            "G7" => *cell = text("#¡DIV/0!"),
+            _ => {}
+        }
+    }
     assert_the_cells_the_owner_sees("google_sheets.xlsx", &sheet, &owner_cells);
 }

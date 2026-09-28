@@ -65,7 +65,12 @@ the cells that hold it (`SharedString`), a text the cell holds itself
 (`String`), a boolean, a date or a time, a date written in ISO 8601, or
 an error such as `#N/A`. `DataRef` also has a whole number and a
 duration in ISO 8601, which calamine's reader of an xlsx never gives,
-and which xlsx_rs turns into a number and a text all the same. calamine's
+and which xlsx_rs turns into a number and a text all the same: a whole
+number is the number up to 2^53 either side of 0, which a JavaScript
+number holds exactly, and its digits as text beyond, so that no cell
+holds a number other than the file's; and the one error calamine knows
+that its reader of an xlsx never gives, `GettingData`, is the text
+`#GETTING_DATA`, as a file writes it. calamine's
 other type of value, `Data`, is what it gives when it reads a whole
 sheet at once, which xlsx_rs does not do (below). xlsx_rs turns each
 value into one of the four kinds of cell the table holds (`Cell`,
@@ -225,6 +230,19 @@ population, told only by the warning of individuals with no population.
 A name of a column merged over two columns gives two columns of one
 name, which the reader refuses, "two columns are named Origen".
 
+Every cell of the range inside the rectangle takes the value of its
+first cell, or is empty when that cell has none, as when it lies outside
+the rectangle, whatever the file holds in it: Excel and LibreOffice show
+the first cell's value over the range, and LibreOffice can keep the
+values of the other cells hidden in the file. Such a hidden value still
+counts for the rectangle. A range the file writes from its last cell to
+its first, `B4:B2`, which Excel does not write, is the same range,
+`B2:B4`. Two ranges that overlap, which Excel does not let a user make,
+make the file unreadable, `ReadError::Unreadable` with xlsx_rs's message
+"overlapping merged ranges": which value their shared cells took would
+depend on the order of the ranges in the file. These three were decided
+after the review of work package 2, on 28 September 2026.
+
 ### The refusals
 
 A file xlsx_rs cannot read as an xlsx is refused with the kind of
@@ -301,6 +319,34 @@ are values"); the lints of xlsx_rs, popnei's, deny what panics in its own
 code, and calamine cannot be read line by line for it. A sheet so large in memory that the
 wasm cannot grow, within 20 MB of zip, ends the same way. The read then
 fails because its worker failed (popnei_web's `docs/specs/worker/messages.md`).
+
+Two bounds keep a file written to be small in the zip and large in
+memory from reaching that trap, both found by the review of work package
+2 on 28 September 2026 and both `ReadError::Unreadable` with xlsx_rs's
+message, since no program a user saves with writes such a file:
+
+- **More cells written than the limit.** A file may write the same cell
+  more than once; the rectangle then stays small while every copy is
+  kept, 1.29 GB for a zip of 6.5 MB that wrote one cell 40,000,000 times
+  in the review's trial. A read that is given more cells than
+  `max_cells`, counted as written, is refused, "cells written more than
+  once"; below that, a cell written again takes the last value, as
+  calamine gives them.
+- **More text than 200,000,000 bytes, `MAX_TEXT_BYTES`.** One text is
+  copied into every cell that holds it, and a text of 100,000 characters
+  merged over 10,000 cells took 1.15 GB for a zip of 5.7 KB. The bytes of
+  the texts of the cells, merged ones counted in each cell, are summed
+  as they are made, and past the bound the read is refused, "too much
+  text". 200 MB of UTF-8 is 400 MB or more as JavaScript's strings, the
+  largest a tab can be asked to hold; a table of individuals of 20 MB of
+  CSV holds about 20 MB of text.
+
+What xlsx_rs does not bound, since calamine reads it whole before
+xlsx_rs sees it: the number of merged ranges, 16 bytes each, 650 MB for a
+zip of 5.1 MB with 40,000,000 of them in the trial, and the workbook's
+table of texts. A file written for it can still trap the worker.
+Whether xlsx_rs reads those parts itself, with the crates of zip and XML
+calamine brings, is the owner's to decide.
 
 ## The Rust interface
 
@@ -615,11 +661,19 @@ holds, and the literal cells it gives:
 | the bytes of `id,pop\n` | `NotXlsx`; and the empty bytes |
 | the first 500 bytes of an xlsx | `Unreadable`, with calamine's message |
 | the 22 bytes of an empty zip, `PK` and the bytes 5 and 6 | `NotXlsx` |
+| "id" at C2 and a value at XFD200 | `SheetTooLarge` from row 2 and column 3, whose first row and column differ |
+| a cell written 3 times at A1, with `max_cells` 2 | `Unreadable`, "cells written more than once" |
+| a text of 100,000 characters merged over enough cells to pass `MAX_TEXT_BYTES` | `Unreadable`, "too much text" |
+| a range written `B4:B2`, and two ranges that overlap | the range filled as `B2:B4`; `Unreadable`, "overlapping merged ranges" |
+| a merged range whose other cells hold values in the file | every cell the first cell's value |
 | the eight bytes of a compound file of Office followed by zeros | `OldExcel` |
 | a compound file with `EncryptedPackage` in UTF-16 among its bytes, cut short | `Encrypted`, and no panic |
 
-A text with no character, the first row of "Each cell", is tested at the
-function that makes the cell of one value, since rust_xlsxwriter writes
+A text with no character, the first row of "Each cell", a whole number,
+a date and a duration written in ISO 8601, and `GettingData`, are tested
+at the function that makes the cell of one value, since calamine's
+reader of an xlsx gives none of the last four; the text with no
+character, since rust_xlsxwriter writes
 an empty text as no cell and a formula saved with `""` as the number 0.
 
 rust_xlsxwriter writes neither the date system of 1904, nor a password,
@@ -698,8 +752,11 @@ give it, its type in JavaScript among it, a blank cell `null`, and the
 refusal `notXlsx` for the second. Two more files written the same way,
 a first sheet with no value and a table that starts at C2, give the
 refusal `emptySheet` with its sheet's name and a rectangle whose first
-row and first column differ, so that the codes and the fields popnei_web
-reads are each checked in the package. They stay when the owner's
+row and first column differ; and two more, a cell saved with
+`#GETTING_DATA` and a table from C2 read with a small `maxCells`, give
+`cellError` with its text in `detail` and `sheetTooLarge` with its
+rectangle, so that the codes and the fields popnei_web reads are each
+checked in the package. They stay when the owner's
 files arrive, and a release made before that says in its notes that
 `excel_en.xlsx` and `encrypted.xlsx` were not read.
 

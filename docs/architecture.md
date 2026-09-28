@@ -215,6 +215,14 @@ in the package measured, and is approved by the owner before it is added.
 An upgrade of one is a commit of its own, with the tests and the size
 before and after. `Cargo.lock` is committed.
 
+calamine is compiled with its checks of integer overflow off in the
+builds of the tests too, `[profile.dev.package.calamine] overflow-checks
+= false`, as the release build that makes the package has them: calamine
+adds and subtracts row and column numbers with plain operators, which
+panic in a build of the tests and wrap in the package, so without it a
+test of a damaged file would stop at a panic the package does not have
+(review of work package 2, 28 September 2026).
+
 The release profile is `opt-level = 3`, LTO and one codegen unit, as
 popnei_web's `docs/technology.md` measured it. With `opt-level = "z"`,
 which trades speed for size, the three crates of that measurement,

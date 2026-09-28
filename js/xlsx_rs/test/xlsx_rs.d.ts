@@ -56,7 +56,8 @@ export class XlsxRead {
  *
  * # Errors
  *
- * Throws an `Error` with calamine's message for a file it cannot read.
+ * Throws an `Error` for a file that cannot be read, with the message of
+ * the zip crate, of calamine or of xlsx_rs, whichever failed.
  */
 export function readXlsx(bytes: Uint8Array, max_cells: number): XlsxRead;
 

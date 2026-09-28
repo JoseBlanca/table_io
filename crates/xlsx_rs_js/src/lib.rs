@@ -5,8 +5,8 @@
 //! command line writes from it the JavaScript and the declarations of the
 //! package `js/xlsx_rs`. It holds no rule about a cell: it copies the sheet
 //! or the refusal that `xlsx_rs::read_first_sheet` gives into [`XlsxRead`],
-//! and turns a file calamine cannot read into a JavaScript `Error` with
-//! calamine's message.
+//! and turns a file that cannot be read into a JavaScript `Error` with the
+//! message of the zip crate, of calamine or of xlsx_rs, whichever failed.
 //!
 //! wasm-bindgen copies the doc comments of the exported items into the
 //! declarations, `wasm/xlsx_rs.d.ts`, which the test of the package
@@ -58,7 +58,8 @@ pub struct XlsxRead {
 ///
 /// # Errors
 ///
-/// Throws an `Error` with calamine's message for a file it cannot read.
+/// Throws an `Error` for a file that cannot be read, with the message of
+/// the zip crate, of calamine or of xlsx_rs, whichever failed.
 #[wasm_bindgen(js_name = readXlsx)]
 pub fn read_xlsx(bytes: &[u8], max_cells: u32) -> Result<XlsxRead, JsError> {
     match xlsx_rs::read_first_sheet(bytes, max_cells) {

@@ -4,6 +4,14 @@
 #![forbid(unsafe_code)]
 
 mod cell;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the cells of a sheet take it in task 3.2 of docs/plans/read.md"
+    )
+)]
+mod date;
 mod rectangle;
 
 use std::io::Cursor;

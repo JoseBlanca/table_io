@@ -38,7 +38,7 @@ fn cell_of_text(cell_text: &str) -> SheetCell {
 
 /// A finite number as it is, and one that is not finite as the text
 /// JavaScript writes for it, since the number of a cell is finite.
-fn cell_of_number(number: f64) -> SheetCell {
+pub(crate) fn cell_of_number(number: f64) -> SheetCell {
     if number.is_finite() {
         SheetCell::Number(number)
     } else if number.is_nan() {

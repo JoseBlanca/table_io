@@ -26,9 +26,12 @@ its own around it. What each cell and each refusal is, is in
 - `readXlsx` throws an `Error` with calamine's message for a file it
   cannot read as a workbook, a file cut short or damaged.
 
-An `XlsxRead` lives in the memory of the wasm, which JavaScript's garbage
-collector does not free: read each field once, `cells` above all, which
-makes a new array at each read, and call `free()` in a `finally`.
+An `XlsxRead` lives in the memory of the wasm, up to `maxCells` cells of
+it. JavaScript's garbage collector frees it too, through a
+`FinalizationRegistry` that wasm-bindgen registers, but at a time nobody
+chooses, which may be after the next file is read: so call `free()` in a
+`finally`. Read each field once, `cells` above all, which makes a new
+array at each read.
 
 ```js
 import init, { readXlsx } from "xlsx_rs";

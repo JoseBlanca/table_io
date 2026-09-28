@@ -170,6 +170,100 @@ fn a_hidden_first_sheet_is_passed_over_for_the_second() {
 }
 
 #[test]
+fn a_very_hidden_first_sheet_is_passed_over_for_the_second() {
+    // A sheet very hidden is one only a macro can show again.
+    let mut workbook = Workbook::new();
+    let lists = workbook.add_worksheet().set_name("Listas").unwrap();
+    lists.write_string(0, 0, "a list of a form").unwrap();
+    lists.set_very_hidden(true);
+    let individuals = workbook.add_worksheet().set_name("Individuos").unwrap();
+    individuals.write_string(0, 0, "id").unwrap();
+    individuals.write_string(1, 0, "ind1").unwrap();
+    individuals.set_active(true);
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(sheet.name, "Individuos");
+    assert_eq!(sheet.cells, vec![text("id"), text("ind1")]);
+}
+
+#[test]
+fn a_hidden_row_and_a_hidden_column_are_read() {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    write_table(worksheet, 0, 0).unwrap();
+    worksheet.set_row_hidden(1).unwrap();
+    worksheet.set_column_hidden(1).unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!((sheet.num_rows, sheet.num_columns), (3, 4));
+    assert_eq!(sheet.cells, table_cells());
+}
+
+#[test]
+fn a_blank_cell_with_a_format_outside_the_values_does_not_widen_the_rectangle() {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 0, "id").unwrap();
+    worksheet
+        .write_blank(9, 4, &Format::new().set_bold())
+        .unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            name: "Sheet1".to_owned(),
+            first_row: 1,
+            first_column: 1,
+            num_rows: 1,
+            num_columns: 1,
+            cells: vec![text("id")],
+        }
+    );
+}
+
+#[test]
+fn values_at_b1_c1_and_a3_give_the_rectangle_from_a1_of_3_by_3() {
+    // The first column of the rectangle is not that of its first row.
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 1, "pop").unwrap();
+    worksheet.write_number(0, 2, 1.75).unwrap();
+    worksheet.write_boolean(2, 0, true).unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let sheet = read_first_sheet(&bytes, MAX_SHEET_CELLS).unwrap();
+
+    assert_eq!(
+        sheet,
+        Sheet {
+            name: "Sheet1".to_owned(),
+            first_row: 1,
+            first_column: 1,
+            num_rows: 3,
+            num_columns: 3,
+            cells: vec![
+                SheetCell::Empty,
+                text("pop"),
+                SheetCell::Number(1.75),
+                SheetCell::Empty,
+                SheetCell::Empty,
+                SheetCell::Empty,
+                SheetCell::Bool(true),
+                SheetCell::Empty,
+                SheetCell::Empty,
+            ],
+        }
+    );
+}
+
+#[test]
 fn a_chart_sheet_first_is_passed_over_for_the_worksheet_after_it() {
     let mut workbook = Workbook::new();
     let mut chart = Chart::new(ChartType::Column);
@@ -195,6 +289,25 @@ fn a_chart_sheet_first_is_passed_over_for_the_worksheet_after_it() {
 fn a_first_sheet_with_no_value_is_refused_with_its_name() {
     let mut workbook = Workbook::new();
     workbook.add_worksheet().set_name("Notas").unwrap();
+    let individuals = workbook.add_worksheet().set_name("Individuos").unwrap();
+    individuals.write_string(0, 0, "id").unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Refused(Refusal::EmptySheet {
+            sheet: "Notas".to_owned()
+        }))
+    );
+}
+
+#[test]
+fn a_first_sheet_holding_only_a_blank_cell_with_a_format_is_refused_with_its_name() {
+    let mut workbook = Workbook::new();
+    let notes = workbook.add_worksheet().set_name("Notas").unwrap();
+    notes.write_blank(1, 1, &Format::new().set_bold()).unwrap();
     let individuals = workbook.add_worksheet().set_name("Individuos").unwrap();
     individuals.write_string(0, 0, "id").unwrap();
     let bytes = workbook.save_to_buffer().unwrap();

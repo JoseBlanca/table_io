@@ -49,3 +49,24 @@ fn cell_of_number(number: f64) -> SheetCell {
         SheetCell::Text("-Infinity".to_owned())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use calamine::DataRef;
+
+    use crate::SheetCell;
+    use crate::cell::cell_of_value;
+
+    #[test]
+    fn a_shared_text_with_no_character_is_an_empty_cell() {
+        assert_eq!(cell_of_value(&DataRef::SharedString("")), SheetCell::Empty);
+    }
+
+    #[test]
+    fn a_text_of_the_cell_with_no_character_is_an_empty_cell() {
+        assert_eq!(
+            cell_of_value(&DataRef::String(String::new())),
+            SheetCell::Empty
+        );
+    }
+}

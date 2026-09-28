@@ -26,6 +26,18 @@ fn an_empty_file_is_refused_as_not_an_xlsx() {
 }
 
 #[test]
+fn an_empty_zip_is_refused_as_not_an_xlsx() {
+    // The 22 bytes of the end record of a zip with no file, which starts
+    // with PK and the bytes 5 and 6, not 3 and 4.
+    let mut bytes = vec![b'P', b'K', 5, 6];
+    bytes.resize(22, 0);
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(read, Err(ReadError::Refused(Refusal::NotXlsx)));
+}
+
+#[test]
 fn the_first_500_bytes_of_an_xlsx_are_unreadable_with_calamines_message() {
     let mut workbook = Workbook::new();
     workbook.add_worksheet().write_string(0, 0, "id").unwrap();

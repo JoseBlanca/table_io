@@ -46,6 +46,9 @@ pub(crate) struct PartBounds {
     /// The most texts, and the largest `uniqueCount`, each table of texts
     /// may hold, [`crate::MAX_TEXTS`] outside the tests.
     pub(crate) max_texts: u64,
+    /// The most bytes the paths of the sheets may be counted at,
+    /// [`crate::MAX_SHEET_PATH_BYTES`] outside the tests.
+    pub(crate) max_sheet_path_bytes: u64,
 }
 
 /// Reads every part of the zip `bytes` to its end, so that the zip crate
@@ -68,7 +71,9 @@ pub(crate) struct PartBounds {
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
 /// bounds of the parts calamine reads whole ("What xlsx_rs reads before
-/// calamine", point 3); "too many merged ranges" for a part with more
+/// calamine", point 3); "the workbook lists too many sheets" when the
+/// paths of the sheets are counted past `bounds.max_sheet_path_bytes`
+/// (point 3); "too many merged ranges" for a part with more
 /// merged ranges than `max_cells` (point 4); and "the part … cannot be read
 /// as XML: …", with quick-xml's message, for package relationships or a
 /// workbook whose XML cannot be read up to what xlsx_rs takes of it.
@@ -199,6 +204,9 @@ struct PartReader<'unzipped, Part> {
     merged_ranges: ElementCounter,
     /// The most merged ranges a part may hold, `max_cells`.
     max_merged_ranges: u64,
+    /// The sheets of this part, the bytes `sheet` right after `<` or `:`,
+    /// counted so far in a workbook; `None` for another part.
+    sheets: Option<ElementCounter>,
     /// The first failure, `None` while there is none.
     failure: Option<ReadError>,
 }
@@ -219,8 +227,21 @@ impl<'unzipped, Part: Read> PartReader<'unzipped, Part> {
             unzipped,
             merged_ranges: ElementCounter::of_name(MERGED_RANGE_NAME),
             max_merged_ranges,
+            sheets: None,
             failure: None,
         }
+    }
+
+    /// The same reader, which also counts the sheets of its part, a
+    /// workbook.
+    fn counting_sheets(mut self) -> Self {
+        self.sheets = Some(ElementCounter::of_name(SHEET_NAME));
+        self
+    }
+
+    /// The sheets counted so far, 0 in a part whose sheets are not counted.
+    fn num_sheets(&self) -> u64 {
+        self.sheets.as_ref().map_or(0, |sheets| sheets.num_elements)
     }
 
     /// The error of the part, its failure when it has one, and otherwise
@@ -269,8 +290,11 @@ impl<Part: Read> Read for PartReader<'_, Part> {
         {
             return Err(self.fail(ReadError::Unreadable(bound.message.to_owned())));
         }
-        self.merged_ranges
-            .count_in(buffer.get(..num_read).unwrap_or_default());
+        let bytes_read = buffer.get(..num_read).unwrap_or_default();
+        self.merged_ranges.count_in(bytes_read);
+        if let Some(sheets) = &mut self.sheets {
+            sheets.count_in(bytes_read);
+        }
         if self.merged_ranges.num_elements > self.max_merged_ranges {
             return Err(self.fail(ReadError::Unreadable("too many merged ranges".to_owned())));
         }
@@ -281,6 +305,53 @@ impl<Part: Read> Read for PartReader<'_, Part> {
 /// The nine bytes every element `mergeCell`, a merged range, has at the
 /// start of its name, with a prefix or without.
 const MERGED_RANGE_NAME: &[u8] = b"mergeCell";
+
+/// The five bytes every element `sheet` of a workbook has at the start of
+/// its name, with a prefix or without.
+const SHEET_NAME: &[u8] = b"sheet";
+
+/// What xlsx_rs counts of the paths of the sheets calamine keeps: for each
+/// sheet the workbook lists, the folder of the workbook, taken from a tag
+/// of `_rels/.rels`, followed by the target of the sheet's relationship, in
+/// a tag of the relationships of the workbook; every sheet may name the
+/// same relationship ("What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`, point 3).
+#[derive(Debug, Default)]
+struct SheetPaths {
+    /// The largest count of the bytes `sheet` right after `<` or `:` in a
+    /// part whose name ends in `workbook.xml`.
+    largest_num_sheets: u64,
+    /// The two longest tags, from `<` to `>`, of the parts named
+    /// `_rels/.rels` or ending in `workbook.xml.rels`, the longest of each
+    /// part, in bytes; the longer first.
+    longest_tags: [u64; 2],
+}
+
+impl SheetPaths {
+    /// Counts a workbook of `num_sheets` sheets.
+    fn add_workbook(&mut self, num_sheets: u64) {
+        self.largest_num_sheets = self.largest_num_sheets.max(num_sheets);
+    }
+
+    /// Counts a part of relationships whose longest tag holds
+    /// `num_tag_bytes` bytes.
+    fn add_relationships(&mut self, num_tag_bytes: u64) {
+        let [longest, second_longest] = self.longest_tags;
+        self.longest_tags = if num_tag_bytes > longest {
+            [num_tag_bytes, longest]
+        } else {
+            [longest, second_longest.max(num_tag_bytes)]
+        };
+    }
+
+    /// The bytes the paths are counted at: the largest count of sheets
+    /// times the sum of the two longest tags.
+    fn num_bytes(&self) -> u64 {
+        let [longest, second_longest] = self.longest_tags;
+        self.largest_num_sheets
+            .saturating_mul(longest.saturating_add(second_longest))
+    }
+}
 
 /// A count of the times the bytes of a name of an element come right after
 /// `<` or `:`, in bytes given a read at a time, a match split between two
@@ -365,6 +436,7 @@ fn read_every_part(
         num_bytes: 0,
         max_bytes: bounds.max_unzipped_bytes,
     };
+    let mut sheet_paths = SheetPaths::default();
     for part_index in 0..archive.len() {
         let part = archive
             .by_index(part_index)
@@ -378,17 +450,59 @@ fn read_every_part(
         );
         match part_kind {
             PartKind::TextTable => read_text_table(part_reader, bounds.max_texts)?,
-            PartKind::PackageRelationships
-            | PartKind::Workbook
-            | PartKind::WorkbookRelationships
-            | PartKind::Styles
-            | PartKind::Other => {
+            PartKind::PackageRelationships | PartKind::WorkbookRelationships => {
+                sheet_paths.add_relationships(read_longest_tag(part_reader)?);
+            }
+            PartKind::Workbook => {
+                let mut part_reader = part_reader.counting_sheets();
+                let copy_result = io::copy(&mut part_reader, &mut io::sink());
+                let num_sheets = part_reader.num_sheets();
+                part_reader.finish(copy_result)?;
+                sheet_paths.add_workbook(num_sheets);
+            }
+            PartKind::Styles | PartKind::Other => {
                 let copy_result = io::copy(&mut part_reader, &mut io::sink());
                 part_reader.finish(copy_result)?;
             }
         }
     }
+    if sheet_paths.num_bytes() > bounds.max_sheet_path_bytes {
+        return Err(ReadError::Unreadable(
+            "the workbook lists too many sheets".to_owned(),
+        ));
+    }
     Ok(())
+}
+
+/// Reads the part of relationships that `part_reader` unzips with
+/// quick-xml, configured as calamine configures it, to the end of the part
+/// or to its first error of XML, and then the rest of its bytes; gives the
+/// bytes of its longest tag, from `<` to `>`, of an element, since a target
+/// and the folder calamine takes from one are inside one tag. An error of
+/// XML is not an error here: calamine refuses the file at one.
+///
+/// # Errors
+///
+/// The failure of `part_reader`, an error of the zip or a bound of its
+/// bytes passed.
+fn read_longest_tag<Part: Read>(part_reader: PartReader<'_, Part>) -> Result<u64, ReadError> {
+    let mut xml_reader = xml_reader_over(BufReader::new(part_reader));
+    let mut longest_tag: u64 = 0;
+    let mut buffer = Vec::new();
+    loop {
+        buffer.clear();
+        let tag_start = xml_reader.buffer_position();
+        match xml_reader.read_event_into(&mut buffer) {
+            Ok(Event::Start(_) | Event::Empty(_) | Event::End(_)) => {
+                let tag_bytes = xml_reader.buffer_position().saturating_sub(tag_start);
+                longest_tag = longest_tag.max(tag_bytes);
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            Ok(_) => {}
+        }
+    }
+    read_to_end(xml_reader)?;
+    Ok(longest_tag)
 }
 
 /// The names of the parts of a zip, as calamine matches a name it looks

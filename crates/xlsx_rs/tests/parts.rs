@@ -1140,3 +1140,99 @@ fn a_name_of_the_sheet_after_a_form_feed_with_36_000_000_merged_ranges_is_unread
         Err(ReadError::Unreadable("too many merged ranges".to_owned()))
     );
 }
+
+/// The parts of [`parts_of_one_number`] whose workbook lists `num_sheets`
+/// sheets, `s1`, `s2` and so on, each naming the relationship `rId1`, and
+/// whose relationship `rId1` has the target `target` and the attributes
+/// `other_attributes` after it.
+fn parts_with_sheets_of_one_target(
+    num_sheets: u32,
+    target: &str,
+    other_attributes: &str,
+) -> Vec<(String, String)> {
+    let sheets: String = (1..=num_sheets)
+        .map(|sheet| format!(r#"<sheet name="s{sheet}" sheetId="{sheet}" r:id="rId1"/>"#))
+        .collect();
+    let mut parts = parts_of_one_number();
+    for (name, xml) in &mut parts {
+        if name == "xl/workbook.xml" {
+            *xml = xml.replace(r#"<sheet name="Sheet1" sheetId="1" r:id="rId1"/>"#, &sheets);
+        }
+        if name == "xl/_rels/workbook.xml.rels" {
+            *xml = xml.replace(
+                r#"Target="worksheets/sheet1.xml""#,
+                &format!(r#"Target="{target}"{other_attributes}"#),
+            );
+        }
+    }
+    parts
+}
+
+/// The number of bytes of the longest tag of `xml`, from `<` to `>`.
+fn longest_tag_of(xml: &str) -> usize {
+    xml.split('<')
+        .skip(1)
+        .map(|tag| tag.find('>').map_or(0, |end| end.saturating_add(2)))
+        .max()
+        .unwrap_or(0)
+}
+
+// calamine keeps the path of the part of each sheet the workbook lists, the
+// folder of the workbook followed by the target of the sheet's
+// relationship: 2,000 sheets naming one target of 500 KB, a zip of 8,586
+// bytes, took 1.0 GB natively in the spec's review of 28 September 2026.
+#[test]
+fn a_workbook_of_2_000_sheets_naming_one_target_of_500_kb_is_unreadable() {
+    let target = format!("worksheets/{}sheet1.xml", "a/".repeat(250_000));
+    let parts = parts_with_sheets_of_one_target(2_000, &target, "");
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "the workbook lists too many sheets".to_owned()
+        ))
+    );
+}
+
+/// The sheet of [`parts_with_sheets_of_one_target`] with 999 sheets, which
+/// with the element `sheets` around them are 1,000 counted, and the tag of
+/// its relationship padded with an attribute so that it and the longest tag
+/// of `_rels/.rels` hold `sum_of_tags` bytes together.
+fn read_with_1_000_sheets_and_tags_of(sum_of_tags: usize) -> Result<Sheet, ReadError> {
+    let bare_parts = parts_with_sheets_of_one_target(999, "worksheets/sheet1.xml", r#" pad="""#);
+    let tag_bytes_of = |part_name: &str| {
+        bare_parts
+            .iter()
+            .find(|(name, _)| name == part_name)
+            .map_or(0, |(_, xml)| longest_tag_of(xml))
+    };
+    let bare_sum =
+        tag_bytes_of("_rels/.rels").saturating_add(tag_bytes_of("xl/_rels/workbook.xml.rels"));
+    let padding = "a".repeat(sum_of_tags.saturating_sub(bare_sum));
+    let parts = parts_with_sheets_of_one_target(
+        999,
+        "worksheets/sheet1.xml",
+        &format!(r#" pad="{padding}""#),
+    );
+    read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS)
+}
+
+// The largest count of the bytes sheet after < or : in a workbook, 1,000,
+// times the sum of the two longest tags of the relationships, 100,000 or
+// 100,001 bytes: 100,000,000 bytes, MAX_SHEET_PATH_BYTES, read, and
+// 100,001,000 refused.
+#[test]
+fn the_paths_of_the_sheets_are_bounded_at_100_000_000_bytes() {
+    let at_bound = read_with_1_000_sheets_and_tags_of(100_000);
+    let past_bound = read_with_1_000_sheets_and_tags_of(100_001);
+
+    assert_eq!(at_bound.unwrap().name, "s1");
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable(
+            "the workbook lists too many sheets".to_owned()
+        ))
+    );
+}

@@ -159,6 +159,25 @@ pub const MAX_TEXT_TABLE_BYTES: u64 = MAX_TEXT_BYTES.saturating_mul(2);
 /// individuals has at most as many texts as cells, 2,000,000.
 pub const MAX_TEXTS: u64 = 10_000_000;
 
+/// The most bytes the paths of the sheets calamine keeps may be counted
+/// at, 100,000,000: past it the read is [`ReadError::Unreadable`], "the
+/// workbook lists too many sheets".
+///
+/// calamine keeps, for each sheet the workbook lists, the path of its part,
+/// the folder of the workbook followed by the target of the sheet's
+/// relationship, and every sheet may name the same relationship: 2,000
+/// sheets naming one target of 500 KB, a zip of 8,586 bytes, took 1.0 GB
+/// natively in the review of `docs/specs/read.md` of 28 September 2026.
+/// The paths are counted as the largest count, in a part whose name ends in
+/// `workbook.xml`, of the bytes `sheet` right after `<` or `:`, which every
+/// element `sheet` has at the start of its name, times the sum of the two
+/// longest tags, from `<` to `>`, of the parts named `_rels/.rels` or
+/// ending in `workbook.xml.rels`, since a target and the folder calamine
+/// takes from one are inside one tag ("What xlsx_rs reads before calamine",
+/// point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
+/// with tags of about 150 bytes: 300 KB.
+pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
+
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
 /// refusing it at the first cell that makes the rectangle of the values
 /// larger than `max_cells` cells.
@@ -179,6 +198,8 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a settings part past
 ///   [`MAX_SETTINGS_PART_BYTES`], in any folder;
+/// - "the workbook lists too many sheets", for paths of the sheets counted
+///   past [`MAX_SHEET_PATH_BYTES`];
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
 ///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder; and
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
@@ -215,6 +236,7 @@ const PART_BOUNDS: PartBounds = PartBounds {
     max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
     max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
     max_texts: MAX_TEXTS,
+    max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
 };
 
 /// Reads as [`read_first_sheet`] does, with `max_unzipped_bytes` in the
@@ -236,6 +258,7 @@ pub fn read_first_sheet_within_unzipped_bytes(
         max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
         max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
         max_texts: MAX_TEXTS,
+        max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
     };
     read_first_sheet_within(bytes, max_cells, bounds)
 }
@@ -258,6 +281,7 @@ pub fn read_first_sheet_within_text_table_bytes(
         max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
         max_text_table_bytes,
         max_texts: MAX_TEXTS,
+        max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
     };
     read_first_sheet_within(bytes, max_cells, bounds)
 }

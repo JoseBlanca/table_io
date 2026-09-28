@@ -346,6 +346,14 @@ are values"); the lints of xlsx_rs, popnei's, deny what panics in its own
 code, and calamine cannot be read line by line for it. A sheet so large in memory that the
 wasm cannot grow, within 20 MB of zip, ends the same way. The read then
 fails because its worker failed (popnei_web's `docs/specs/worker/messages.md`).
+The review of the code of "What xlsx_rs reads before calamine", on 28
+September 2026, found how small such a file can be: one cell of the
+sheet whose text is 999,000,000 bytes, in a zip of 972,578 bytes, made
+calamine hold about 4 GB before xlsx_rs could count the text, and the
+package trapped under node; so did a sheet declared `windows-1252`
+with one cell of 400,000,000 bytes `80`, in a zip of 390,377 bytes. No
+bound of this spec reaches the text of one cell before calamine has
+built it (**Open 3**, below).
 
 Two bounds keep a file written to be small in the zip and large in
 memory from reaching that trap, both found by the review of work package
@@ -489,6 +497,8 @@ refused when xlsx_rs cannot find it.
    read, up to its last `/`, with no `/` first. So
    `Type="…/officeDocument" Type="x" Target="…"` is a relationship of
    type `x` with no target, and one after `</Relationships>` is not read.
+   A `_rels/.rels` cut short inside `Relationships` keeps the workbook
+   xlsx_rs found in it; calamine refuses the file.
    A file whose `_rels/.rels` is missing or names no workbook so is
    refused, "the file names no workbook": calamine refuses it too, unless
    its reading and xlsx_rs's came apart, and then xlsx_rs could take the
@@ -548,7 +558,11 @@ refused when xlsx_rs cannot find it.
      of the two longest tags passes 100,000,000 bytes,
      `MAX_SHEET_PATH_BYTES`, the file is refused, "the workbook lists too
      many sheets". A workbook of 1,000 sheets as Excel writes it counts
-     1,001, with tags of about 150 bytes: 300 KB;
+     1,001, with tags of about 150 bytes: 300 KB. calamine also keeps
+     about 80 bytes natively for each sheet listed besides its path, and
+     the bound lets through about 1,000,000 sheets, since the two tags
+     are 100 bytes at the least: about 100 MB, estimated in the review
+     of the code, within what point 3 accepts for defined names;
    - each part ending in `sharedStrings.xml`, a table of texts, is refused
      past 400,000,000 bytes unzipped, `MAX_TEXT_TABLE_BYTES`, twice
      `MAX_TEXT_BYTES`, "too much text";
@@ -587,10 +601,14 @@ refused when xlsx_rs cannot find it.
      them, is let be, since calamine reserves nothing for it.
 
    xlsx_rs reads the XML of a part from the zip as it unzips it, in the
-   reading of point 1 that counts its bytes, and holds one element of it
-   at a time, as calamine does; it never holds a whole part. So reading a
-   table of texts takes at most the memory calamine's reading of it takes
-   after.
+   reading of point 1 that counts its bytes, and holds one element or one
+   text of it at a time, as calamine does, never a copy of the whole
+   part. One text can still be the whole part: a table of texts that is
+   one text of 399 MB took 406 MB natively in the review of the code, and
+   in the wasm quick-xml's buffer grows by doubling to 512 MB. It is the
+   memory calamine's reading of the same table takes after, and xlsx_rs
+   lets go of it first, but xlsx_rs holds it also for a table of texts in
+   another folder, which calamine never opens.
 4. **The merged ranges.** calamine reads every merged range of the sheet,
    each an element `mergeCell`, into memory, 16 bytes each, before xlsx_rs
    sees one: 40,000,000 in a zip of 5.1 MB held 650 MB, in the review of
@@ -627,7 +645,11 @@ file:
   not read as a number and reserves nothing for;
 - a part named as one of point 3 in a folder calamine does not read,
   held to the same bound;
-- a part of point 3 in an encoding other than UTF-8.
+- a part of point 3 in an encoding other than UTF-8, and one whose
+  second declaration `<?xml … ?>`, anywhere in the part, after its root
+  element among them, names another encoding, which quick-xml takes when
+  it meets it and calamine, stopping at the end of the root, never
+  reads; such a part is not well-formed XML.
 
 Not bounded: the time. calamine's `read_styles` reads the format of a
 style once for each style that uses it (`detect_custom_number_format`
@@ -729,7 +751,8 @@ pub struct Sheet {
 ```
 
 What xlsx_rs refuses, each with what its words need, and a file that
-calamine cannot read, with calamine's message:
+cannot be read, with the message of the zip crate, of calamine or of
+xlsx_rs, whichever failed:
 
 ```rust
 pub enum Refusal {
@@ -751,7 +774,7 @@ pub enum Refusal {
 
 pub enum ReadError {
     Refused(Refusal),
-    Unreadable(String), // calamine's message, for the console
+    Unreadable(String), // the zip crate's, calamine's or xlsx_rs's message, for the console
 }
 
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
@@ -1244,6 +1267,32 @@ its architecture and this spec.
    from the file itself, is not in calamine 0.36.1, and would be a
    reader of the styles of the workbook written for xlsx_rs, and was
    not taken either.
+
+3. **A cell whose text passes what the wasm can hold.** One cell of the
+   sheet can hold a text as large as the sheet, up to 1,000,000,000
+   bytes unzipped, and calamine builds it whole, about four copies,
+   before xlsx_rs sees the cell and counts its text against
+   `MAX_TEXT_BYTES`: a zip of 972,578 bytes took the wasm past 4 GB and
+   trapped it, and a sheet in `windows-1252` makes each byte up to 3
+   ("The refusals", above; the files are in `tmp/review-code-spec/` of
+   the review of 28 September 2026). The trap ends popnei_web's light
+   worker, which reports that the read failed; the tab goes on. The
+   options:
+   - **Leave it**, as this spec accepted before the review measured it:
+     no user file is refused, and a file written to trap the reader does,
+     which only its own user loads.
+   - **Bound every part before calamine**, the sheet among them: refuse a
+     part in an encoding other than UTF-8, whatever its name, and a
+     part past a size of its own, about 200,000,000 bytes unzipped, or
+     its text, the bytes outside its tags, past `MAX_TEXT_BYTES`. The
+     largest a 2,000,000 cells file is expected to unzip to is about
+     133 MB; a sheet whose blank cells are formatted one by one, which
+     Excel writes each as an element, can be larger and would be
+     refused; not measured.
+   The recommendation is to bound every part, in a plan of its own after
+   the first release, once the size of such a formatted sheet is
+   measured, so that the release that popnei_web waits for is not held
+   back. Meanwhile: the trap stays, as the first option.
 
 ## Not in this spec
 

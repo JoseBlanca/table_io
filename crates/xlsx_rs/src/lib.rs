@@ -237,11 +237,8 @@ fn is_visible_worksheet(calamine_sheet: &calamine::Sheet) -> bool {
 fn read_error_of(calamine_error: XlsxError) -> ReadError {
     match calamine_error {
         XlsxError::Password => ReadError::Refused(Refusal::Encrypted),
-        // An error of a cell calamine does not know is to be refusal 5,
-        // `CellError`, in task 2.1 of docs/plans/read.md; the message until
-        // then.
-        XlsxError::CellError(_)
-        | XlsxError::Io(_)
+        XlsxError::CellError(error) => ReadError::Refused(Refusal::CellError { error }),
+        XlsxError::Io(_)
         | XlsxError::Zip(_)
         | XlsxError::Vba(_)
         | XlsxError::Xml(_)
@@ -282,6 +279,16 @@ mod tests {
         assert_eq!(
             read_error_of(XlsxError::Password),
             ReadError::Refused(Refusal::Encrypted)
+        );
+    }
+
+    #[test]
+    fn calamines_error_of_a_cell_is_the_refusal_cell_error_with_its_text() {
+        assert_eq!(
+            read_error_of(XlsxError::CellError("#SPILL!".to_owned())),
+            ReadError::Refused(Refusal::CellError {
+                error: "#SPILL!".to_owned()
+            })
         );
     }
 

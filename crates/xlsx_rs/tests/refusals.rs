@@ -1,8 +1,9 @@
 //! The files refused by their first bytes, those calamine cannot read, and
-//! the workbook with no visible worksheet ("The refusals" of
-//! `docs/specs/read.md`, points 1 to 4).
+//! the workbook with no visible worksheet, and the cell with an error
+//! calamine does not know ("The refusals" of `docs/specs/read.md`, points
+//! 1 to 5).
 
-use rust_xlsxwriter::{Chart, ChartType, Workbook};
+use rust_xlsxwriter::{Chart, ChartType, Formula, Workbook};
 use xlsx_rs::{ReadError, Refusal, read_first_sheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
@@ -135,5 +136,25 @@ fn a_workbook_whose_only_worksheet_is_hidden_is_unreadable() {
     assert_eq!(
         read,
         Err(ReadError::Unreadable("no visible worksheet".to_owned()))
+    );
+}
+
+#[test]
+fn a_formula_saved_with_an_error_calamine_does_not_know_is_refused_with_its_text() {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.write_string(0, 0, "id").unwrap();
+    worksheet
+        .write_formula(1, 0, Formula::new("=A1").set_result("#GETTING_DATA"))
+        .unwrap();
+    let bytes = workbook.save_to_buffer().unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Refused(Refusal::CellError {
+            error: "#GETTING_DATA".to_owned()
+        }))
     );
 }

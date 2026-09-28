@@ -127,14 +127,16 @@ impl Rectangle {
     /// their positions, a later one over an earlier one at the same
     /// position, and the others empty; then every cell of each of
     /// `merged_ranges` inside the rectangle with the value of the range's
-    /// first cell, which is empty when that cell is outside the rectangle,
-    /// since every value is inside it.
+    /// first cell, whatever `kept_cells` held there, which is empty when
+    /// that cell is outside the rectangle, since every value is inside it.
     ///
     /// # Errors
     ///
     /// [`LayoutError::TooManyCells`] when the memory cannot hold the cells
-    /// of the rectangle, and [`LayoutError::PositionOutside`] for a cell
-    /// of `kept_cells` outside it.
+    /// of the rectangle, [`LayoutError::PositionOutside`] for a cell of
+    /// `kept_cells` outside it, and
+    /// [`LayoutError::OverlappingMergedRanges`] when two of
+    /// `merged_ranges` share a cell inside it.
     pub(crate) fn laid_out(
         &self,
         kept_cells: Vec<(Position, SheetCell)>,
@@ -142,9 +144,9 @@ impl Rectangle {
     ) -> Result<Vec<SheetCell>, LayoutError> {
         let num_cells = self.num_cells();
         let too_many_cells = || LayoutError::TooManyCells { num_cells };
+        let capacity = usize::try_from(num_cells).map_err(|_| too_many_cells())?;
         let cells = {
             let mut cells = Vec::new();
-            let capacity = usize::try_from(num_cells).map_err(|_| too_many_cells())?;
             // A failed allocation is an error here, where `vec!` would abort,
             // which in the wasm is a trap.
             cells
@@ -158,8 +160,18 @@ impl Rectangle {
                     .ok_or(LayoutError::PositionOutside { position })?;
                 *slot = cell;
             }
-            for merged_range in merged_ranges {
-                self.fill_merged_range(&mut cells, *merged_range);
+            if !merged_ranges.is_empty() {
+                // One mark for each cell of the rectangle a range has filled,
+                // so that an overlap is found in as many steps as the cells
+                // filled, and not by comparing every pair of ranges.
+                let mut is_merged = Vec::new();
+                is_merged
+                    .try_reserve_exact(capacity)
+                    .map_err(|_| too_many_cells())?;
+                is_merged.resize(capacity, false);
+                for merged_range in merged_ranges {
+                    self.fill_merged_range(&mut cells, &mut is_merged, *merged_range)?;
+                }
             }
             cells
         };
@@ -167,8 +179,19 @@ impl Rectangle {
     }
 
     /// Gives every cell of `merged_range` inside the rectangle, among
-    /// `cells` laid out row after row, the value of the range's first cell.
-    fn fill_merged_range(&self, cells: &mut [SheetCell], merged_range: MergedRange) {
+    /// `cells` laid out row after row, the value of the range's first cell,
+    /// and marks it in `is_merged`, laid out the same way.
+    ///
+    /// # Errors
+    ///
+    /// [`LayoutError::OverlappingMergedRanges`] at a cell `is_merged`
+    /// already marks, one of another range.
+    fn fill_merged_range(
+        &self,
+        cells: &mut [SheetCell],
+        is_merged: &mut [bool],
+        merged_range: MergedRange,
+    ) -> Result<(), LayoutError> {
         let MergedRange {
             first: (first_row, first_column),
             last: (last_row, last_column),
@@ -183,14 +206,21 @@ impl Rectangle {
             first_column.max(self.first_column)..=last_column.min(self.last_column);
         for row in rows_inside {
             for column in columns_inside.clone() {
-                if let Some(slot) = self
-                    .index_of((row, column))
-                    .and_then(|index| cells.get_mut(index))
-                {
+                let Some(index) = self.index_of((row, column)) else {
+                    continue;
+                };
+                if let Some(mark) = is_merged.get_mut(index) {
+                    if *mark {
+                        return Err(LayoutError::OverlappingMergedRanges);
+                    }
+                    *mark = true;
+                }
+                if let Some(slot) = cells.get_mut(index) {
                     slot.clone_from(&first_value);
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -208,6 +238,8 @@ pub(crate) enum LayoutError {
         /// The position of the cell, as calamine gives it.
         position: Position,
     },
+    /// Two merged ranges that share a cell of the rectangle.
+    OverlappingMergedRanges,
 }
 
 #[cfg(test)]

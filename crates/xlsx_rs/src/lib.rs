@@ -180,6 +180,9 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
                     "has a cell at row {row} and column {column}, counted from 0, outside its rectangle"
                 ),
             ),
+            LayoutError::OverlappingMergedRanges => {
+                ReadError::Unreadable("overlapping merged ranges".to_owned())
+            }
         })?;
     Ok(Sheet {
         name: sheet_name,

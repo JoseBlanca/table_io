@@ -3,8 +3,12 @@
 //! does not know, and the sheet too large ("The refusals" of
 //! `docs/specs/read.md`, points 1 to 6).
 
+mod hand_written;
+
 use rust_xlsxwriter::{Chart, ChartType, Formula, Workbook};
-use xlsx_rs::{ReadError, Refusal, read_first_sheet};
+use xlsx_rs::{ReadError, Refusal, SheetCell, read_first_sheet};
+
+use crate::hand_written::{text_cell, xlsx_of_worksheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
@@ -247,5 +251,43 @@ fn a_rectangle_of_as_many_cells_as_the_limit_is_read_and_one_more_is_refused() {
             num_rows: 2,
             num_columns: 3,
         }))
+    );
+}
+
+/// An xlsx whose row 1 writes the cell A1 once for each of `cell_texts`,
+/// which rust_xlsxwriter does not do: it keeps the last value written.
+fn a1_written_as_each_of(cell_texts: &[&str]) -> Vec<u8> {
+    let cells: String = cell_texts
+        .iter()
+        .map(|cell_text| text_cell("A1", cell_text))
+        .collect();
+    xlsx_of_worksheet(&format!(
+        r#"<sheetData><row r="1">{cells}</row></sheetData>"#
+    ))
+}
+
+#[test]
+fn a_cell_written_3_times_with_a_limit_of_2_cells_is_unreadable() {
+    let bytes = a1_written_as_each_of(&["ind1", "ind2", "ind3"]);
+
+    let read = read_first_sheet(&bytes, 2);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "cells written more than once".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_cell_written_twice_with_a_limit_of_2_cells_takes_the_last_value() {
+    let bytes = a1_written_as_each_of(&["ind1", "ind2"]);
+
+    let read = read_first_sheet(&bytes, 2);
+
+    assert_eq!(
+        read.map(|sheet| sheet.cells),
+        Ok(vec![SheetCell::Text("ind2".to_owned())])
     );
 }

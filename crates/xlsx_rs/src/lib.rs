@@ -145,6 +145,15 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
                     num_columns: bounds.num_columns,
                 }));
             }
+            // A cell written again is kept again, so a file that writes one
+            // cell many times would hold every copy in a rectangle within the
+            // limit; the cells kept, as written, are held to it too.
+            let num_kept_cells = u64::try_from(kept_cells.len()).unwrap_or(u64::MAX);
+            if num_kept_cells >= u64::from(max_cells) {
+                return Err(ReadError::Unreadable(
+                    "cells written more than once".to_owned(),
+                ));
+            }
             rectangle = Some(extended_rectangle);
             kept_cells.push((position, cell));
         }

@@ -4,7 +4,7 @@ Written on 28 September 2026. It builds "What xlsx_rs reads before
 calamine" of `docs/specs/read.md`: xlsx_rs opens the zip itself, checks
 every part's checksum, takes the date system from the workbook, and
 bounds what calamine would otherwise read whole, before it gives the
-bytes to calamine. State: approved by the owner on 28 September 2026. Branch
+bytes to calamine. State: under way; approved by the owner on 28 September 2026. Branch
 `plan/own-parts`, report `docs/reports/own-parts.md`. It comes before the
 first release, `js-v0.1.0-dev.1`, since without it every date of a
 workbook of the 1904 system saved by Excel 365 is four years and a day
@@ -16,8 +16,10 @@ In: the four points of that section, their tests, and the measurements
 of its "What it costs".
 
 Out: the release, which is the owner's order; the owner's
-`libreoffice.xlsx`, not made, whose test stays ignored; issues for
-calamine, once the owner agrees to post them.
+`libreoffice.xlsx`, not made, whose test stays ignored. No issue is
+opened in calamine's repository: the owner does not post in public
+repositories that are not theirs, and calamine's defects stay recorded in
+`docs/reports/read.md` and in the spec.
 
 ## What has to be in place
 

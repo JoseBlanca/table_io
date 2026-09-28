@@ -51,7 +51,8 @@ Asked of the owner:
    them.
 4. The repository on GitHub, and the order for the first release,
    `js-v0.1.0-dev.1`, which popnei_web's work package 9 of stage 4 waits
-   for.
+   for. The repository exists since 28 September 2026; the release waits
+   for the plan of `docs/plans/own-parts.md`.
 
 ## Work package 1: the whole path
 
@@ -248,7 +249,7 @@ cells `"Individuo"`, `"Población"`, `"Altura"`, `"Fecha"`, `"Afectado"`,
 `"ind1"`, `"Andalucía"`, `1.75`, `"2024-05-13"`, `true`. The `.wasm` holds
 no path of the owner's folders. The `.tgz` was not committed.
 
-Issues to open once the repository is on GitHub, all of calamine 0.36.1:
+The defects found in calamine 0.36.1, recorded here and not reported to calamine, whose repository is not the owner's:
 its reader of compound files panics on a file cut short (`cfb.rs`, lines
 306, 330 and 346) and its loop over the DIFAT may not end (`cfb.rs:114`);
 it reserves room for the texts by the count a file gives

@@ -362,7 +362,11 @@ message, since no program a user saves with writes such a file:
 What xlsx_rs does not bound, since calamine reads it whole before
 xlsx_rs sees it: the number of merged ranges, 16 bytes each, 650 MB for a
 zip of 5.1 MB with 40,000,000 of them in the trial, and the workbook's
-table of texts. A file written for it can still trap the worker.
+table of texts, for which calamine reserves room for as many texts as
+the file says it holds, `uniqueCount`, before it reads them: a file of
+6 KB saying 400,000,000 trapped the package under node in the review of
+work package 4, and one saying 150,000,000 left the wasm holding 1.8 GB.
+A file written for it can still trap the worker.
 Whether xlsx_rs reads those parts itself, with the crates of zip and XML
 calamine brings, is the owner's to decide.
 
@@ -742,7 +746,15 @@ written by the tests with a text, a number, a boolean, a date, a formula,
 a merged range and a hidden first sheet, and a compound file with
 `EncryptedPackage` in UTF-16 among its bytes, and reads each cut short at every
 length from 0 bytes to its whole size, and with each of its bytes in turn
-replaced by its complement, the byte with every bit flipped. For every
+replaced by its complement, the byte with every bit flipped. A zip keeps
+its directory at its end, so a copy cut short stops in the reader of the
+zip and a byte flipped in the compressed data mostly stops at its
+checksum, and neither reaches calamine's reading of the XML; so the test
+also builds the file from its parts, stored in the zip uncompressed,
+and cuts short and flips each part xlsx_rs reads, the workbook, its
+relationships, the table of texts, the sheet and the styles, before it
+zips them again (added after the review of work package 4, 28 September
+2026). For every
 copy, `read_first_sheet` returns, a sheet, a refusal or an error, and
 does not panic, which the test checks with `std::panic::catch_unwind`;
 it asserts nothing of which. A panic is a trap in the wasm that ends

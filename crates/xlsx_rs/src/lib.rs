@@ -189,48 +189,56 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// [`ReadError::Refused`] for a file of the refusals of
 /// `docs/specs/read.md`, with what the words of the refusal need.
 ///
-/// [`ReadError::Unreadable`] with one of these messages:
+/// [`ReadError::Unreadable`] with one of these messages, in three stages.
+/// First, as every part of the zip is unzipped before calamine opens the
+/// file, the first a part meets, the parts in the order of the zip:
 ///
 /// - the zip crate's, for a file that is not a zip past its first bytes, a
 ///   file cut short among them, and for a part of the zip whose bytes are
 ///   not those it was saved with, "Invalid checksum";
-/// - "the file names no workbook", for a file whose package relationships,
-///   `_rels/.rels`, are missing or name no workbook;
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a settings part past
 ///   [`MAX_SETTINGS_PART_BYTES`], in any folder;
-/// - "a part of the file is not in UTF-8", for a settings part or a table
-///   of texts that quick-xml decodes with another encoding, from a byte
-///   order mark or from the `encoding` of its declaration;
-/// - "the workbook lists too many sheets", for paths of the sheets counted
-///   past [`MAX_SHEET_PATH_BYTES`];
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
 ///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder; and
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
 ///   attribute `uniqueCount` passes it;
+/// - "a part of the file is not in UTF-8", for a settings part or a table
+///   of texts that quick-xml decodes with another encoding, from a byte
+///   order mark or from the `encoding` of its declaration;
+/// - "too many merged ranges", for a part of the file with more merged
+///   ranges than `max_cells`, counted as the bytes `mergeCell` right after
+///   `<` or `:`, any sheet's and not only the one read;
+/// - "the workbook lists too many sheets", for paths of the sheets counted
+///   past [`MAX_SHEET_PATH_BYTES`], once every part is read.
+///
+/// Then, as the date system is read:
+///
+/// - "the file names no workbook", for a file whose package relationships,
+///   `_rels/.rels`, are missing or name no workbook;
 /// - "the part … cannot be read as XML: …", with the message of quick-xml,
 ///   for package relationships or a workbook whose XML xlsx_rs cannot read
-///   up to what it takes of it;
+///   up to what it takes of it.
+///
+/// Then, as calamine reads the sheet:
+///
 /// - calamine's, for a zip it cannot read as a workbook, or whose sheet it
 ///   cannot read;
 /// - "no visible worksheet", for a workbook whose worksheets are all
 ///   hidden;
+/// - "cells written more than once", for a file that gives more cells
+///   with a value than `max_cells`, a cell written again counted again;
+/// - "too much text", for texts of the cells past [`MAX_TEXT_BYTES`];
 /// - "the sheet … has a rectangle of … cells, more than the memory can
 ///   hold", when the cells of a rectangle within `max_cells` cannot be
 ///   allocated;
+/// - "overlapping merged ranges", for two merged ranges that share a cell;
 /// - "the sheet … has a cell at row … and column …, counted from 0,
 ///   outside its rectangle", and the four messages of a first row or
 ///   column, or a number of rows or columns, past what a `u32` holds,
 ///   which no file calamine reads can give and which are there so that
-///   the read has no panic;
-/// - "too many merged ranges", for a part of the file with more merged
-///   ranges than `max_cells`, counted as the bytes `mergeCell` right after
-///   `<` or `:`, any sheet's and not only the one read;
-/// - "overlapping merged ranges", for two merged ranges that share a cell;
-/// - "cells written more than once", for a file that gives more cells
-///   with a value than `max_cells`, a cell written again counted again;
-/// - "too much text", for texts of the cells past [`MAX_TEXT_BYTES`].
+///   the read has no panic.
 pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError> {
     read_first_sheet_within(bytes, max_cells, PART_BOUNDS)
 }

@@ -57,11 +57,17 @@ refusal. It runs through these steps, whose rules are the spec's
    does an xlsx saved with a password, which Excel encrypts inside such a
    file; every zip, which an xlsx is, starts with `PK`. Anything else is
    refused before calamine sees it.
-2. xlsx_rs opens the zip itself, reads every part to its end so that the
-   zip checks each part's checksum, takes the date system from the
-   workbook, and refuses a file whose parts would make calamine hold more
-   than its bounds (`specs/read.md`, "What xlsx_rs reads before
-   calamine"). Then calamine opens the same bytes as a workbook, and
+2. xlsx_rs opens the zip itself and reads every part to its end, so that
+   the zip checks each part's checksum. In that one reading it applies
+   every bound of `specs/read.md`, "What xlsx_rs reads before calamine":
+   the bytes unzipped, the size of each part calamine holds whole, found
+   by the end of its name in any folder, and whether it is in UTF-8, the
+   texts of each table of texts, the merged ranges of each part, counted
+   against the limit of cells before calamine reads the sheet's, and the
+   paths of the sheets. Then it finds the workbook as calamine finds it,
+   refusing a file that names none, and takes the date system from it.
+   It lets go of its zip before calamine opens the same bytes as a
+   workbook, so the list of the parts is not held twice. calamine then the same bytes as a workbook, and
    gives the list of its sheets with whether each is hidden and whether
    it is a worksheet. The sheet read is the first worksheet in the order
    of the tabs that is not hidden.
@@ -92,7 +98,8 @@ What the code keeps, in every module:
   input can be wrong is a refusal or an error (section 3). calamine's own
   code cannot be read line by line for this, and a panic inside it ends
   the worker all the same; a file found to do so is a finding for the
-  spec and an issue for calamine.
+  spec, recorded in xlsx_rs's own documents, since the owner opens no
+  issue in a repository that is not theirs.
 - **One thread, no clock, no file system, no network.** The library reads
   bytes it is given and calls nothing of the host, so it runs the same in
   a browser, in node and natively.
@@ -112,8 +119,10 @@ A read ends in one of three ways.
   reached, and it is a value and not an error so that those fields cross
   as fields and not as text to be taken apart again.
 - **An error**, thrown: a zip calamine cannot open as a workbook, or
-  whose sheet it cannot read, a file cut short or damaged. It carries
-  calamine's message, which popnei_web writes to the console for the one
+  whose sheet it cannot read, a file cut short or damaged, or a file
+  past one of the bounds xlsx_rs checks before calamine. It carries the
+  message of the zip crate, of calamine or of xlsx_rs, whichever failed,
+  which popnei_web writes to the console for the one
   who reports it, and shows as a file that could not be read.
 - **The cells.**
 
@@ -212,8 +221,14 @@ one popnei is to have too.
 - **Rust 1.98.0**, the stable release of 18 August 2026, named in
   `rust-toolchain.toml` with the target `wasm32-unknown-unknown`, and the
   one on the owner's Mac. calamine 0.36.1 needs 1.88 at least.
+- **zip 8.6.0 and quick-xml 0.41.0**, pinned to the versions and the
+  features calamine takes them with, so that the package holds one copy
+  of each, and upgraded with calamine: xlsx_rs reads the zip and some of
+  its XML itself before calamine (section 2). The library crate alone.
 
-The owner approved the three crates on 28 September 2026. A new
+The owner approved the three crates on 28 September 2026, and zip and
+quick-xml the same day, with the spec and the plan of the parts xlsx_rs
+reads before calamine. A new
 dependency is pure Rust, builds for `wasm32-unknown-unknown`, has its size
 in the package measured, and is approved by the owner before it is added.
 An upgrade of one is a commit of its own, with the tests and the size
@@ -277,4 +292,9 @@ xlsx_rs is under the MIT license, as popnei is, which the owner decided on
 28 September 2026; the text is `LICENSE` at the root, and the package
 copies it before it is packed. calamine is under MIT too, and
 rust_xlsxwriter, used by the tests only and not shipped, under MIT or
-Apache 2.0.
+Apache 2.0. `crates/xlsx_rs/src/attrs.rs` is a copy of calamine's reader
+of attributes, `RawAttrIter`, with calamine's notice of copyright and
+license above it. The MIT license asks for its notice in every copy, and
+the package is mostly calamine's code compiled: its notice, and those of
+zip and quick-xml, are to be shipped in the package beside `LICENSE`
+before the first release.

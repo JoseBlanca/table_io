@@ -109,7 +109,7 @@ calamine cannot open and a first sheet with no value.
   `crates/xlsx_rs/tests/write_fixtures.rs`, marked `#[ignore]` and run
   once by hand, and the file committed: the spec's "The package, built"
   says what it holds. Serves 2 and 3. Needs 1.1.
-- [ ] 1.3 The binding crate and the package: `XlsxRead` and `readXlsx`
+- [x] 1.3 The binding crate and the package: `XlsxRead` and `readXlsx`
   of "The Rust interface"; `js/xlsx_rs/` with `package.json`, its
   `build`, a `prepack` that copies `LICENSE`, a README, the kept
   declarations and the node test of deliverable 4; the size of

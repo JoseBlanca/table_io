@@ -1617,14 +1617,14 @@ fn xlsx_with_text_table_of(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
 }
 
 #[test]
-#[ignore = "takes 32 s in cargo test, deflating and reading 800 MB, past 10 s; run before each release"]
-fn a_table_of_texts_of_400_000_000_bytes_is_read_and_one_byte_more_refused() {
+#[ignore = "takes 31 s in cargo test, deflating and reading 600 MB, past 10 s; run before each release"]
+fn a_table_of_texts_of_300_000_000_bytes_is_read_and_one_byte_more_refused() {
     let at_bound = read_first_sheet(
-        &xlsx_with_text_table_of(400_000_000).unwrap(),
+        &xlsx_with_text_table_of(300_000_000).unwrap(),
         MAX_SHEET_CELLS,
     );
     let past_bound = read_first_sheet(
-        &xlsx_with_text_table_of(400_000_001).unwrap(),
+        &xlsx_with_text_table_of(300_000_001).unwrap(),
         MAX_SHEET_CELLS,
     );
 
@@ -1967,4 +1967,64 @@ fn a_sheet_with_a_second_declaration_of_windows_1252_is_bounded_at_100_000_000_b
             declaration.get(..60).unwrap_or(declaration)
         );
     }
+}
+
+/// A zip of the parts of [`parts_of_one_number`] whose sheet the
+/// relationships of the workbook name `worksheets/sharedStrings.xml`, a
+/// name that ends as a table of texts does, padded with spaces after its
+/// declaration to `num_bytes` bytes, deflated.
+fn xlsx_with_sheet_named_as_a_table_of_texts(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut parts = parts_of_one_number();
+    for (name, xml) in &mut parts {
+        if name == "xl/worksheets/sheet1.xml" {
+            "xl/worksheets/sharedStrings.xml".clone_into(name);
+        }
+        if name == "xl/_rels/workbook.xml.rels" {
+            *xml = xml.replace("worksheets/sheet1.xml", "worksheets/sharedStrings.xml");
+        }
+    }
+    let (_, sheet_xml) = parts
+        .iter()
+        .find(|(name, _)| name == "xl/worksheets/sharedStrings.xml")
+        .ok_or("no sheet")?;
+    let declaration_end = sheet_xml
+        .find("?>")
+        .and_then(|position| position.checked_add(2))
+        .ok_or("no declaration")?;
+    let (head, tail) = sheet_xml.split_at(declaration_end);
+    let num_spaces = num_bytes
+        .checked_sub(u64::try_from(sheet_xml.len())?)
+        .ok_or("fewer bytes than the sheet")?;
+    let mut repeated_parts = unrepeated(&parts);
+    let sheet = repeated_parts
+        .iter_mut()
+        .find(|part| part.name == "xl/worksheets/sharedStrings.xml")
+        .ok_or("no sheet")?;
+    sheet.head = head;
+    sheet.middle = " ";
+    sheet.num_middles = num_spaces;
+    sheet.tail = tail;
+    deflated_zip(&repeated_parts)
+}
+
+// The relationships of the workbook can give a sheet any name, one that
+// ends as a table of texts does among them; the bound of every part holds
+// it all the same.
+#[test]
+#[ignore = "takes 26 s in cargo test, deflating and reading 600 MB, past 10 s; run before each release"]
+fn a_sheet_named_as_a_table_of_texts_of_300_000_001_bytes_is_refused() {
+    let at_bound = read_first_sheet(
+        &xlsx_with_sheet_named_as_a_table_of_texts(300_000_000).unwrap(),
+        MAX_SHEET_CELLS,
+    );
+    let past_bound = read_first_sheet(
+        &xlsx_with_sheet_named_as_a_table_of_texts(300_000_001).unwrap(),
+        MAX_SHEET_CELLS,
+    );
+
+    assert_eq!(at_bound.unwrap().cells, [SheetCell::Number(7.0)]);
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable("too much text".to_owned()))
+    );
 }

@@ -23,9 +23,8 @@ use crate::bounds_tests::hand_written::{
 };
 use crate::parts::PartBounds;
 use crate::{
-    MAX_PART_BYTES, MAX_SETTINGS_PART_BYTES, MAX_SHEET_PATH_BYTES, MAX_TEXT_BYTES,
-    MAX_TEXT_TABLE_BYTES, MAX_TEXTS, MAX_UNZIPPED_BYTES, PART_BOUNDS, ReadError, Sheet, SheetCell,
-    read_first_sheet_within,
+    MAX_PART_BYTES, MAX_SETTINGS_PART_BYTES, MAX_SHEET_PATH_BYTES, MAX_TEXT_BYTES, MAX_TEXTS,
+    MAX_UNZIPPED_BYTES, PART_BOUNDS, ReadError, Sheet, SheetCell, read_first_sheet_within,
 };
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
@@ -138,19 +137,20 @@ fn read_within(parts: &[(String, String)], bounds: PartBounds) -> Result<Sheet, 
     read_first_sheet_within(&xlsx_of_parts(parts), MAX_SHEET_CELLS, bounds)
 }
 
+// A table of texts is held to the bound of every part, with a message of
+// its own.
 #[test]
 fn a_table_of_texts_past_the_bound_of_its_bytes_is_too_much_text() {
-    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
-    let num_bytes = u64::try_from(shared_strings_xml.len()).unwrap();
-    let parts = parts_with_texts(shared_strings_xml);
+    let parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
+    let (padded_parts, largest) = with_largest_part(&parts, "xl/sharedStrings.xml");
 
     let past_bound = read_within(
-        &parts,
-        bounds_with(|bounds| bounds.max_text_table_bytes = num_bytes - 1),
+        &padded_parts,
+        bounds_with(|bounds| bounds.max_part_bytes = largest),
     );
     let at_bound = read_within(
-        &parts,
-        bounds_with(|bounds| bounds.max_text_table_bytes = num_bytes),
+        &padded_parts,
+        bounds_with(|bounds| bounds.max_part_bytes = largest + 1),
     );
 
     assert_eq!(
@@ -162,17 +162,16 @@ fn a_table_of_texts_past_the_bound_of_its_bytes_is_too_much_text() {
 
 #[test]
 fn a_table_of_texts_in_another_folder_is_held_to_the_bound_of_its_bytes() {
-    let shared_strings_xml = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
-    let num_bytes = u64::try_from(shared_strings_xml.len()).unwrap();
-    let mut parts = parts_with_texts(shared_strings_xml.clone());
+    let mut parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
     parts.push((
         "data/sharedStrings.xml".to_owned(),
-        format!("{shared_strings_xml} "),
+        shared_strings(r#"uniqueCount="2""#, &["id", "pop"]),
     ));
+    let (padded_parts, largest) = with_largest_part(&parts, "data/sharedStrings.xml");
 
     let read = read_within(
-        &parts,
-        bounds_with(|bounds| bounds.max_text_table_bytes = num_bytes),
+        &padded_parts,
+        bounds_with(|bounds| bounds.max_part_bytes = largest),
     );
 
     assert_eq!(read, Err(ReadError::Unreadable("too much text".to_owned())));
@@ -186,7 +185,6 @@ fn the_bounds_of_read_first_sheet_are_those_of_the_spec() {
     assert_eq!(MAX_UNZIPPED_BYTES, 1_000_000_000);
     assert_eq!(MAX_SETTINGS_PART_BYTES, 50_000_000);
     assert_eq!(MAX_TEXT_BYTES, 200_000_000);
-    assert_eq!(MAX_TEXT_TABLE_BYTES, 400_000_000);
     assert_eq!(MAX_TEXTS, 10_000_000);
     assert_eq!(MAX_SHEET_PATH_BYTES, 100_000_000);
     assert_eq!(MAX_PART_BYTES, 300_000_000);
@@ -194,14 +192,12 @@ fn the_bounds_of_read_first_sheet_are_those_of_the_spec() {
     let PartBounds {
         max_unzipped_bytes,
         max_settings_part_bytes,
-        max_text_table_bytes,
         max_texts,
         max_sheet_path_bytes,
         max_part_bytes,
     } = PART_BOUNDS;
     assert_eq!(max_unzipped_bytes, 1_000_000_000);
     assert_eq!(max_settings_part_bytes, 50_000_000);
-    assert_eq!(max_text_table_bytes, 400_000_000);
     assert_eq!(max_texts, 10_000_000);
     assert_eq!(max_sheet_path_bytes, 100_000_000);
     assert_eq!(max_part_bytes, 300_000_000);
@@ -568,20 +564,6 @@ fn a_settings_part_is_held_to_the_bound_of_every_part_too() {
             "a part of the file is too large".to_owned()
         ))
     );
-}
-
-// A table of texts has its own bound, twice the most text of a read.
-#[test]
-fn a_table_of_texts_is_not_held_to_the_bound_of_every_part() {
-    let parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
-    let (padded_parts, largest) = with_largest_part(&parts, "xl/sharedStrings.xml");
-
-    let read = read_within(
-        &padded_parts,
-        bounds_with(|bounds| bounds.max_part_bytes = largest),
-    );
-
-    assert_eq!(read.unwrap().cells, the_two_texts());
 }
 
 /// A second declaration of windows-1252, which quick-xml lets be after the

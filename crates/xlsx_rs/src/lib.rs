@@ -136,13 +136,6 @@ pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 /// 20,000,000 of them, 3.2 MB zipped, which took calamine 1.61 GB.
 pub const MAX_SETTINGS_PART_BYTES: u64 = 50_000_000;
 
-/// The most bytes each table of texts, the part that holds once each text
-/// the cells hold, may hold unzipped, 400,000,000, twice
-/// [`MAX_TEXT_BYTES`]: past it the read is [`ReadError::Unreadable`], "too
-/// much text". A table of texts is a part whose name ends in
-/// `sharedStrings.xml`, `\` read as `/` and ignoring case, in any folder.
-pub const MAX_TEXT_TABLE_BYTES: u64 = MAX_TEXT_BYTES.saturating_mul(2);
-
 /// The most texts, elements of local name `si`, each table of texts may
 /// hold, and the largest number of texts, its attribute `uniqueCount`, it
 /// may say it holds, 10,000,000: past either the read is
@@ -176,9 +169,11 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// with tags of about 150 bytes: 300 KB.
 pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 
-/// The most bytes each part other than a table of texts may hold unzipped,
-/// 300,000,000, the sheet among them: past it the read is
-/// [`ReadError::Unreadable`], "a part of the file is too large".
+/// The most bytes each part may hold unzipped, 300,000,000, the sheet
+/// among them: past it the read is [`ReadError::Unreadable`], "a part of
+/// the file is too large", or "too much text" for a table of texts, the
+/// part that holds once each text the cells hold, whose name ends in
+/// `sharedStrings.xml`, `\` read as `/` and ignoring case, in any folder.
 ///
 /// The value is that of "What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`, point 5: one cell of a sheet can hold a text as
@@ -187,7 +182,9 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// most under node 26.8.2 on 29 September 2026, where the wasm can hold
 /// 4.29 GB and a cell of 750,000,000 bytes trapped it. The largest sheet a
 /// zip of 20,000,000 bytes, popnei_web's limit, was found to hold is about
-/// 248 MB.
+/// 248 MB. A table of texts had a bound of 400,000,000 bytes until the
+/// review of 29 September 2026 found that the relationships of the
+/// workbook can give a sheet a name that ends in `sharedStrings.xml`.
 ///
 /// A part found in an encoding other than UTF-8, which calamine decodes
 /// into up to 3 bytes of UTF-8 for each byte, is counted three times, and
@@ -223,7 +220,7 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 ///   or past a third of it when the part is found in an encoding other
 ///   than UTF-8, as the next message says;
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
-///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder; and
+///   table of texts, past [`MAX_PART_BYTES`], in any folder; and
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
 ///   attribute `uniqueCount` passes it;
 /// - "a part of the file is not in UTF-8", for a settings part or a table
@@ -273,7 +270,6 @@ pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError
 const PART_BOUNDS: PartBounds = PartBounds {
     max_unzipped_bytes: MAX_UNZIPPED_BYTES,
     max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
-    max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
     max_texts: MAX_TEXTS,
     max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
     max_part_bytes: MAX_PART_BYTES,
@@ -445,8 +441,7 @@ fn excel_rectangle_of(
 }
 
 /// The message of [`ReadError::Unreadable`] for texts of the cells past
-/// [`MAX_TEXT_BYTES`] and for a table of texts past
-/// [`MAX_TEXT_TABLE_BYTES`].
+/// [`MAX_TEXT_BYTES`] and for a table of texts past [`MAX_PART_BYTES`].
 pub(crate) const TOO_MUCH_TEXT: &str = "too much text";
 
 /// The error of a read whose texts passed [`MAX_TEXT_BYTES`].

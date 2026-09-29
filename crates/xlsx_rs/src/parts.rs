@@ -42,17 +42,14 @@ pub(crate) struct PartBounds {
     /// than a table of texts, may hold once unzipped,
     /// [`crate::MAX_SETTINGS_PART_BYTES`] outside the tests.
     pub(crate) max_settings_part_bytes: u64,
-    /// The most bytes each table of texts may hold once unzipped,
-    /// [`crate::MAX_TEXT_TABLE_BYTES`] outside the tests.
-    pub(crate) max_text_table_bytes: u64,
     /// The most texts, and the largest `uniqueCount`, each table of texts
     /// may hold, [`crate::MAX_TEXTS`] outside the tests.
     pub(crate) max_texts: u64,
     /// The most bytes the paths of the sheets may be counted at,
     /// [`crate::MAX_SHEET_PATH_BYTES`] outside the tests.
     pub(crate) max_sheet_path_bytes: u64,
-    /// The most bytes each part other than a table of texts may hold once
-    /// unzipped, [`crate::MAX_PART_BYTES`] outside the tests.
+    /// The most bytes each part may hold once unzipped, a table of texts
+    /// among them, [`crate::MAX_PART_BYTES`] outside the tests.
     pub(crate) max_part_bytes: u64,
 }
 
@@ -159,11 +156,11 @@ impl PartKind {
     }
 
     /// The most bytes a part of this kind may hold unzipped, within
-    /// `bounds`, and the message of the error past it: a table of texts has
-    /// a bound of its own, and every other part is held to the bound of
-    /// every part, a settings part to the bound of settings parts too
-    /// ("What xlsx_rs reads before calamine" of `docs/specs/read.md`,
-    /// points 3 and 5).
+    /// `bounds`, and the message of the error past it: every part is held to
+    /// the bound of every part, a settings part to the bound of settings
+    /// parts too, and a table of texts past it is "too much text" ("What
+    /// xlsx_rs reads before calamine" of `docs/specs/read.md`, points 3 and
+    /// 5).
     fn bound_of_bytes(self, bounds: &PartBounds) -> PartBound {
         match self {
             Self::PackageRelationships
@@ -174,7 +171,7 @@ impl PartKind {
                 message: PART_TOO_LARGE,
             },
             Self::TextTable => PartBound {
-                max_bytes: bounds.max_text_table_bytes,
+                max_bytes: bounds.max_part_bytes,
                 message: crate::TOO_MUCH_TEXT,
             },
             Self::Other => PartBound {

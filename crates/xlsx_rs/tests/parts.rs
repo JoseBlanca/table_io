@@ -1881,16 +1881,25 @@ fn an_image_declared_in_iso_8859_1_in_a_file_otherwise_read_is_read() {
     assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)]);
 }
 
+// The workbook and the table of texts are refused in another encoding, so
+// their reads show the value is taken for UTF-8; the sheet would only be
+// counted three times.
 #[test]
-fn a_sheet_declared_in_utf8_with_spaces_in_its_value_is_read() {
-    let mut parts = parts_of_one_number();
-    let xml = xml_of(&mut parts, "xl/worksheets/sheet1.xml").unwrap();
-    *xml = xml.replace(r#"encoding="UTF-8""#, "encoding = ' UTF8 '");
-    assert!(xml.contains("' UTF8 '"));
+fn a_part_declared_in_utf8_with_spaces_in_its_value_is_read() {
+    for part_name in [
+        "xl/workbook.xml",
+        "xl/sharedStrings.xml",
+        "xl/worksheets/sheet1.xml",
+    ] {
+        let mut parts = parts_with_every_part_calamine_holds();
+        let xml = xml_of(&mut parts, part_name).unwrap();
+        *xml = xml.replace(r#"encoding="UTF-8""#, "encoding = ' UTF8 '");
+        assert!(xml.contains("' UTF8 '"), "{part_name}");
 
-    let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+        let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
 
-    assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)]);
+        assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)], "{part_name}");
+    }
 }
 
 /// Where [`xlsx_with_declaration_between_rows`] writes its spaces.

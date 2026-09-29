@@ -23,8 +23,10 @@ its own around it. What each cell and each refusal is, is in
   `"emptySheet"`, `"cellError"` or `"sheetTooLarge"`, with the fields
   that refusal's words need. A sheet whose rectangle would hold more than
   `maxCells` cells is refused as `"sheetTooLarge"`.
-- `readXlsx` throws an `Error` with calamine's message for a file it
-  cannot read as a workbook, a file cut short or damaged.
+- `readXlsx` throws an `Error` for a file it cannot read, a file cut
+  short or damaged, or one past a bound xlsx_rs checks before calamine,
+  with the message of the zip crate, of calamine or of xlsx_rs, whichever
+  failed.
 
 An `XlsxRead` lives in the memory of the wasm, up to `maxCells` cells of
 it. JavaScript's garbage collector frees it too, through a

@@ -1898,14 +1898,22 @@ const SPACES_MARK: &str = "SPACES_BETWEEN_THE_ROWS";
 
 /// A zip of the parts of [`parts_of_worksheet`] whose sheet holds A1, 7,
 /// and A2, 8, with `declaration` and spaces between the two rows that make
-/// the part of the sheet `num_bytes` bytes long, deflated.
+/// the part of the sheet `num_bytes` bytes long, deflated. The first
+/// declaration of the sheet names no encoding, so that quick-xml takes the
+/// encoding of `declaration`: after one that names an encoding it takes no
+/// later one.
 fn xlsx_with_declaration_between_rows(
     declaration: &str,
     num_bytes: u64,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
-    let parts = parts_of_worksheet(&format!(
+    let mut parts = parts_of_worksheet(&format!(
         r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row>{declaration}{SPACES_MARK}<row r="2"><c r="A2"><v>8</v></c></row></sheetData>"#
     ));
+    let sheet_xml = xml_of(&mut parts, "xl/worksheets/sheet1.xml").ok_or("no sheet")?;
+    *sheet_xml = sheet_xml.replacen(r#" encoding="UTF-8""#, "", 1);
+    if !sheet_xml.starts_with(r#"<?xml version="1.0" standalone="yes"?>"#) {
+        return Err("the first declaration still names an encoding".into());
+    }
     let (_, sheet_xml) = parts
         .iter()
         .find(|(name, _)| name == "xl/worksheets/sheet1.xml")
@@ -1926,11 +1934,12 @@ fn xlsx_with_declaration_between_rows(
     deflated_zip(&repeated_parts)
 }
 
-// A sheet in UTF-8 with a second declaration of windows-1252 between two
-// rows gave calamine the second row decoded in windows-1252, in a trial of
-// 29 September 2026; it is counted three times against the bound of
-// 300,000,000 bytes, and so is one whose declaration is behind a decoy or
-// a value of version of 1,000,000 bytes.
+// A sheet in UTF-8 whose first declaration names no encoding, with a
+// second declaration of windows-1252 between two rows, gave calamine the
+// second row decoded in windows-1252, in a trial of 29 September 2026; it
+// is counted three times against the bound of 300,000,000 bytes, and so is
+// one whose declaration is behind a decoy or a value of version of
+// 1,000,000 bytes.
 #[test]
 #[ignore = "takes 15 s in cargo test, deflating and reading 600 MB, past 10 s; run before each release"]
 fn a_sheet_with_a_second_declaration_of_windows_1252_is_bounded_at_100_000_000_bytes() {

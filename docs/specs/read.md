@@ -352,9 +352,11 @@ sheet whose text is 999,000,000 bytes, in a zip of 972,578 bytes, made
 calamine hold about 4 GB before xlsx_rs could count the text, and the
 package trapped under node; so did a sheet declared `windows-1252`
 with one cell of 400,000,000 bytes `80`, in a zip of 390,377 bytes. No
-bound of this spec reaches the text of one cell before calamine has
-built it (**Open 3**, below, decided: every part bounded before the
-first release).
+bound of this spec reached the text of one cell before calamine built
+it (**Open 3**, below). Every part is now held to 300,000,000 bytes and
+to UTF-8 before calamine opens the file ("What xlsx_rs reads before
+calamine", point 5), which keeps the largest cell under about 2 GB of
+the wasm, half of where it traps.
 
 Two bounds keep a file written to be small in the zip and large in
 memory from reaching that trap, both found by the review of work package
@@ -533,18 +535,13 @@ refused when xlsx_rs cannot find it.
      of defined names about 175 MB natively, estimated from the 80 bytes
      of memory for each name of the 1.61 GB above and from the shortest
      name, `<definedName name="a"/>`, 23 bytes, 2,170,000 names in 50 MB;
-   - each of these parts and each table of texts is refused when it is
-     in an encoding other than UTF-8, "a part of the file is not in
-     UTF-8": whenever quick-xml's reader of the part, reading it to its
-     end or first error, would decode it with another, from a byte order
-     mark at its start or from the `encoding` of its declaration
-     `<?xml … ?>`. calamine decodes the texts of a part in the encoding it
-     declares, and one declared `windows-1252` turns a byte `80` into
-     `€`, 3 bytes of UTF-8, so every bound of this point, counted in the
-     bytes of the part, would hold 3 times as much: in the spec's review,
-     paths of sheets counted at 96,171,600 bytes took calamine 300 MB.
-     Excel, LibreOffice and Google Sheets write UTF-8, and so do the
-     twelve files of `tests/data/`;
+   - each of these parts, like every part, is refused in an encoding
+     other than UTF-8, point 5. calamine decodes the texts of a part in
+     the encoding it declares, and one declared `windows-1252` turns a
+     byte `80` into `€`, 3 bytes of UTF-8, so every bound of this point,
+     counted in the bytes of the part, would hold 3 times as much: in the
+     spec's review, paths of sheets counted at 96,171,600 bytes took
+     calamine 300 MB;
    - calamine keeps, for each sheet the workbook lists, the path of its
      part, the folder of the workbook followed by the target of the
      sheet's relationship, and every sheet may name the same
@@ -628,6 +625,40 @@ refused when xlsx_rs cannot find it.
    between two reads of the zip counted too, and none is held. The bound is generous, not a law: ranges
    that do not overlap inside the rectangle cannot be more than its
    cells, but ranges outside it are let be; 2,000,000 of them hold 32 MB.
+5. **Every part, the sheet among them.** One cell of the sheet can hold a
+   text as large as the sheet, and calamine builds it whole, 2 to 6.6
+   times its bytes, before xlsx_rs sees the cell (Open 3, below). So, as
+   xlsx_rs reads each part to its end, point 1:
+   - each part other than a table of texts, whose bound is point 3's, is
+     refused past 300,000,000 bytes unzipped, `MAX_PART_BYTES`, "a part of
+     the file is too large". Measured on 29 September 2026 under node
+     26.8.2 on the owner's Mac, with the package of this branch: one cell
+     of 300,000,000 bytes took the wasm to 1.97 GB at the most, and
+     2.16 GB with a table of texts of 399,000,000 bytes, where a cell of
+     750,000,000 bytes, in a zip of 730,563 bytes, trapped it at about
+     4.2 GB. The largest sheet a zip of 20,000,000 bytes, popnei_web's
+     limit, was found to hold is about 248 MB, of blank cells each with a
+     fill, written by rust_xlsxwriter and compressed as Excel compresses;
+     Excel writes a formatted blank cell as an element of its own too,
+     `<c r="B4" s="4"/>` in `excel_en.xlsx`, and whether it writes a
+     formatted range of a million rows so is not confirmed. A table of
+     2,000,000 values each with a border is 78 MB. The text of a formula
+     is counted by no other bound, and this one limits it;
+   - every part is refused when calamine could decode it in an encoding
+     other than UTF-8, "a part of the file is not in UTF-8", found in its
+     bytes as they pass: a part whose first two bytes are `FF FE`,
+     `FE FF`, `00 3C` or `3C 00`; and a part that holds the bytes `<?xml`
+     followed, before the next `?>`, by `encoding`, `=` with any spaces,
+     tabs or line breaks around it, and a value in either quote that,
+     trimmed of spaces, tabs and line breaks, is not `utf-8` or `utf8`,
+     ignoring case, or that cannot be read so. quick-xml looks at every
+     declaration of a part, wherever it is, and the first whose
+     `encoding` names one it knows sets it (`emit_question_mark` of its
+     `reader/state.rs`): a sheet in UTF-8 with a second declaration of
+     `windows-1252` between two rows gave calamine `"café€"` in the
+     second, in a trial of 29 September 2026. Excel, LibreOffice and
+     Google Sheets write UTF-8, and so do the twelve files of
+     `tests/data/`.
 
 Where xlsx_rs refuses what calamine would read, accepted on 28 September
 2026 after the review, since no program a user saves with writes such a
@@ -646,11 +677,15 @@ file:
   not read as a number and reserves nothing for;
 - a part named as one of point 3 in a folder calamine does not read,
   held to the same bound;
-- a part of point 3 in an encoding other than UTF-8, and one whose
-  second declaration `<?xml … ?>`, anywhere in the part, after its root
-  element among them, names another encoding, which quick-xml takes when
-  it meets it and calamine, stopping at the end of the root, never
-  reads; such a part is not well-formed XML.
+- a part in an encoding other than UTF-8, even one calamine never
+  opens, and a part in UTF-8 that the rule of point 5 cannot tell from
+  one: `<?xml` with its `encoding` inside a comment or a value, `<?xml`
+  followed by a form feed, a part that starts with `3C 00` or `00 3C`
+  without a declaration, or a declaration after the root element,
+  which calamine, stopping at the end of the root, never reads; the
+  last three are not well-formed XML;
+- a part other than a table of texts past 300,000,000 bytes, even one
+  calamine never opens.
 
 Not bounded: the time. calamine's `read_styles` reads the format of a
 style once for each style that uses it (`detect_custom_number_format`
@@ -701,7 +736,15 @@ unless it is named:
   of 1,000 with two texts, read; one of `00010000001`, refused, and of
   `+400000000`, read;
 - a part of relationships declared `windows-1252`, and a table of texts
-  that starts with the byte order mark of UTF-16: each refused;
+  that starts with the byte order mark of UTF-16: each refused; a sheet
+  in UTF-8 with a second declaration of `windows-1252` between two rows,
+  and a part in the folder `docProps/` declared so, refused; a sheet
+  declared `encoding = ' UTF8 '`, read;
+- a sheet whose one cell holds 300,000,000 bytes of text, read or
+  refused for its text, and the same with 300,000,001 bytes in the part,
+  refused, "a part of the file is too large"; the review's file of one
+  cell of 999,000,000 bytes, refused; a part other than the sheet past
+  the bound, refused;
 - the file of the spec's review, 2,000 sheets naming one target of
   500 KB: refused;
 - a table of texts named in capitals, `XL/SHAREDSTRINGS.XML`, checked
@@ -1299,7 +1342,10 @@ its architecture and this spec.
    after the first release. The owner decided to bound every part
    before it, as a third work package of the plan of the parts, once the
    size of such a formatted sheet is measured; the option not taken was
-   to leave the trap until after the release.
+   to leave the trap until after the release. Measured on 29 September
+   2026 and specified in "What xlsx_rs reads before calamine", point 5:
+   300,000,000 bytes for each part, and the rule of UTF-8 for every
+   part.
 
 ## Not in this spec
 

@@ -353,8 +353,7 @@ calamine hold about 4 GB before xlsx_rs could count the text, and the
 package trapped under node; so did a sheet declared `windows-1252`
 with one cell of 400,000,000 bytes `80`, in a zip of 390,377 bytes. No
 bound of this spec reached the text of one cell before calamine built
-it (**Open 3**, below). Every part other than a table of texts is now
-held to 300,000,000 bytes before calamine opens the file, a part in
+it (**Open 3**, below). Every part is now held to 300,000,000 bytes before calamine opens the file, a part in
 another encoding than UTF-8 counted three times ("What xlsx_rs reads
 before calamine", point 5), which keeps the largest read measured under
 2.25 GB of the wasm, and under its 4 GiB with the largest single request
@@ -566,8 +565,12 @@ refused when xlsx_rs cannot find it.
      are 100 bytes at the least: about 100 MB, estimated in the review
      of the code, within what point 3 accepts for defined names;
    - each part ending in `sharedStrings.xml`, a table of texts, is refused
-     past 400,000,000 bytes unzipped, `MAX_TEXT_TABLE_BYTES`, twice
-     `MAX_TEXT_BYTES`, "too much text";
+     past 300,000,000 bytes unzipped, `MAX_PART_BYTES` of point 5, "too
+     much text". It was 400,000,000 bytes, twice `MAX_TEXT_BYTES`, until
+     the review of work package 3 on 29 September 2026 found that the
+     relationships of the workbook can give a sheet a name that ends so,
+     and the sheet then had the larger bound; the texts of the cells are
+     held to 200,000,000 bytes, `MAX_TEXT_BYTES`, whatever the table;
    - in each table of texts, xlsx_rs reads the XML, with quick-xml
      configured as calamine's `xml_reader` configures its own, so that
      the two meet the same elements, to the end of the part or to its
@@ -606,7 +609,7 @@ refused when xlsx_rs cannot find it.
    reading of point 1 that counts its bytes, and holds one element or one
    text of it at a time, as calamine does, never a copy of the whole
    part. One text can still be the whole part: a table of texts that is
-   one text of 399 MB took 406 MB natively in the review of the code, and
+   one text of 399 MB, when that was within its bound, took 406 MB natively in the review of the code, and
    in the wasm quick-xml's buffer grows by doubling to 512 MB. It is the
    memory calamine's reading of the same table takes after, and xlsx_rs
    lets go of it first, but xlsx_rs holds it also for a table of texts in
@@ -633,13 +636,13 @@ refused when xlsx_rs cannot find it.
    text as large as the sheet, and calamine builds it whole, 2 to 6.6
    times its bytes, before xlsx_rs sees the cell (Open 3, below). So, as
    xlsx_rs reads each part to its end, point 1:
-   - each part other than a table of texts, whose bound is point 3's, is
-     refused past 300,000,000 bytes unzipped, `MAX_PART_BYTES`, "a part of
-     the file is too large". Measured on 29 September 2026 under node
+   - each part is refused past 300,000,000 bytes unzipped,
+     `MAX_PART_BYTES`, "a part of the file is too large", and a table of
+     texts "too much text", point 3. Measured on 29 September 2026 under node
      26.8.2 on the owner's Mac, with the package of this branch: one cell
      of 300,000,000 bytes took the wasm to 1.71 GB at the most, made of
      runs of CDATA, and 2.25 GB with a table of texts of 399,000,000 bytes
-     made the same way; with every part calamine holds at its bound at
+     made the same way, when the table's bound was 400,000,000; with every part calamine holds at its bound at
      once, 1.96 GB (the spec's review of 29 September 2026). The wasm can
      hold 4 GiB, 4.29 GB, and it traps when one request for memory
      cannot be met: a cell of 750,000,000 bytes, in a zip of 730,563
@@ -678,8 +681,15 @@ refused when xlsx_rs cannot find it.
      declaration of a part, wherever it is, and the first whose
      `encoding` names one it knows sets it (`emit_question_mark` of its
      `reader/state.rs`): a sheet in UTF-8 with a second declaration of
-     `windows-1252` between two rows gave calamine `"café€"` in the
-     second, in a trial of 29 September 2026. Excel, LibreOffice and
+     `windows-1252` between two rows, after a first declaration with no
+     `encoding`, gave calamine `"café€"` in the second, in a trial of 29
+     September 2026. A declaration that names an encoding fixes it, and
+     quick-xml takes no later one after it (`can_be_refined` of its
+     `reader/mod.rs`), but after a first with none, or after the byte
+     order mark of UTF-8, it does; the rule does not tell these apart
+     and checks every declaration. A part in another encoding whose bytes
+     are also damaged is refused as not in UTF-8 when the rule finds it
+     before the zip crate reaches the checksum. Excel, LibreOffice and
      Google Sheets write UTF-8, and the eleven zips of `tests/data/` pass
      the rule.
 
@@ -706,9 +716,8 @@ file:
   without a declaration, or a declaration after the root element,
   which calamine, stopping at the end of the root, never reads; the
   last three are not well-formed XML;
-- a part other than a table of texts past 300,000,000 bytes, or past
-  100,000,000 when it is found in another encoding, even one calamine
-  never opens.
+- a part past 300,000,000 bytes, or past 100,000,000 when it is found
+  in another encoding, even one calamine never opens.
 
 Not bounded: the time. calamine's `read_styles` reads the format of a
 style once for each style that uses it (`detect_custom_number_format`
@@ -746,7 +755,7 @@ unless it is named:
 - each bound of points 1 and 3 at its value, a file that reaches it
   read and one a byte or a text past it refused: 1,000,000,000 bytes
   unzipped, 50,000,000 bytes of each of the four settings parts,
-  400,000,000 bytes of a table of texts, 10,000,000 texts, a
+  300,000,000 bytes of a table of texts, 10,000,000 texts, a
   `uniqueCount` of 10,000,000, and 100,000,000 bytes of the paths of the
   sheets. A test that takes more
   than 10 s in `cargo test` on the owner's Mac is marked `#[ignore]`,
@@ -760,8 +769,8 @@ unless it is named:
   `+400000000`, read;
 - a part of relationships declared `windows-1252`, and a table of texts
   that starts with the byte order mark of UTF-16: each refused; a sheet
-  of 100,000,001 bytes in UTF-8 with a second declaration of
-  `windows-1252` between two rows, refused, "a part of the file is too
+  of 100,000,001 bytes in UTF-8 with a first declaration with no
+  `encoding` and a second of `windows-1252` between two rows, refused, "a part of the file is too
   large", and of 100,000,000 bytes, read; the same with the declaration
   behind a decoy `foo="encoding='utf-8'"`, and behind a `version` of
   1,000,000 bytes; an image `xl/media/a.svg` declared `iso-8859-1` in a
@@ -772,7 +781,8 @@ unless it is named:
   one cell holds its text, "too much text"; of 300,000,001 bytes, "a part
   of the file is too large"; the review's file of one cell of
   999,000,000 bytes, refused; a part other than the sheet past the
-  bound, refused;
+  bound, refused; a sheet named by the workbook's relationships
+  `worksheets/sharedStrings.xml`, of 300,000,001 bytes, refused;
 - the file of the spec's review, 2,000 sheets naming one target of
   500 KB: refused;
 - a table of texts named in capitals, `XL/SHAREDSTRINGS.XML`, checked
@@ -1372,8 +1382,8 @@ its architecture and this spec.
    size of such a formatted sheet is measured; the option not taken was
    to leave the trap until after the release. Measured on 29 September
    2026 and specified in "What xlsx_rs reads before calamine", point 5:
-   300,000,000 bytes for each part other than a table of texts, and a
-   part in another encoding than UTF-8 counted three times.
+   300,000,000 bytes for each part, and a part in another encoding than
+   UTF-8 counted three times.
 
 ## Not in this spec
 

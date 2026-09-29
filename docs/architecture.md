@@ -67,7 +67,7 @@ refusal. It runs through these steps, whose rules are the spec's
    paths of the sheets. Then it finds the workbook as calamine finds it,
    refusing a file that names none, and takes the date system from it.
    It lets go of its zip before calamine opens the same bytes as a
-   workbook, so the list of the parts is not held twice. calamine then the same bytes as a workbook, and
+   workbook, so the list of the parts is not held twice. calamine then
    gives the list of its sheets with whether each is hidden and whether
    it is a worksheet. The sheet read is the first worksheet in the order
    of the tabs that is not hidden.

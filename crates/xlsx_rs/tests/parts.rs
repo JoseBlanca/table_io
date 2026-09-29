@@ -1715,9 +1715,9 @@ fn a_sheet_of_300_000_000_bytes_is_too_much_text_and_one_byte_more_too_large() {
 }
 
 // The file of the review of the code of 28 September 2026 that trapped the
-// package: one cell of a text, t="str", of 999,000,000 bytes `a` and an
-// entity, in a zip of 972,578 bytes, which unzips to less than
-// 1,000,000,000 bytes.
+// package, written again: one cell of a text, t="str", of 999,000,000
+// bytes `a` and an entity, which unzips to less than 1,000,000,000 bytes.
+// The zip written here is 972,791 bytes; the review's own was 972,578.
 #[test]
 #[ignore = "takes 17 s in cargo test, deflating 999 MB, past 10 s; run before each release"]
 fn a_cell_of_999_000_000_bytes_is_too_large() {

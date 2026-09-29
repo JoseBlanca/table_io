@@ -21,7 +21,8 @@ compressed bytes is refused instead of read with cells missing; and no
 file found in four rounds of review, as small as 2.5 KB, ends the light
 worker, the thread of popnei_web's tab that reads the user's files: each
 is refused with a message. The largest memory a read was made to take
-is 2.25 GB of the wasm's 4.29 GB. A table of 10,000 individuals is read
+is 2.25 GB; the compiled library, the wasm, can hold 4.29 GB at most,
+and a read that asks for more ends the light worker. A table of 10,000 individuals is read
 in about 1.2 times the time of the package before this plan, and the
 package is 300,646 bytes gzipped, 15,776 more than before it.
 
@@ -152,11 +153,14 @@ builds at 2 to 6.6 times its size before xlsx_rs sees it, and a zip of
   limit, is about 248 MB, of blank cells each with a fill, compressed as
   Excel compresses; one cell of 300,000,000 bytes took the wasm to 1.71
   GB. So every part is now refused past 300,000,000 bytes,
-  `MAX_PART_BYTES`, the table of texts among them, which had 400,000,000.
+  `MAX_PART_BYTES`, the table of texts among them, whose bound had been
+  400,000,000 bytes.
   Whether Excel writes a formatted range of a million rows cell by cell
   is not confirmed; such a sheet near 250 MB would be close to the bound.
-- quick-xml decodes a part in any encoding a declaration names, even one
-  in the middle of the part after a first declaration with none. So the
+- quick-xml, the reader of XML calamine uses, decodes a part in the
+  encoding its declaration `<?xml … encoding="…"?>` names; when the first
+  declaration names none, a second one in the middle of the part still
+  sets it. So the
   bytes of every part are scanned for such a declaration: a part
   calamine holds whole, the workbook, its relationships, the styles, the
   table of texts, is refused if one is found, "a part of the file is not
@@ -174,7 +178,8 @@ builds at 2 to 6.6 times its size before xlsx_rs sees it, and a zip of
   bounds passing in release in 3.1 s; clippy, `cargo doc`, `cargo
   wasm-check` clean; node 13 pass. Under node, the largest memory any
   file within the bounds took is 2.25 GB, a sheet and a table of texts
-  of 300,000,000 bytes each made of runs of CDATA; no file of the four
+  of 300,000,000 bytes each made of runs of CDATA, a way XML has of
+  writing a text between `<![CDATA[` and `]]>`; no file of the four
   reviews trapped. The times, the package of `main` at b6a2fbe and this
   one read in turns with a load of 6: `individuals_10000.xlsx` 91 ms and
   94 ms, the sheet of 100,000 rows × 20 columns 1,249 ms and 1,303 ms.
@@ -212,7 +217,7 @@ For the issues of xlsx_rs, once its repository is on GitHub:
   about 1.25 × 10^12 characters of calamine's reading, 20 minutes at a
   thousand million characters a second; computed, not measured. It is slow and not a trap.
 - xlsx_rs's own reading of a table of texts holds its longest text, up
-  to 400 MB, also for a table in a folder calamine never opens; the
+  to 300 MB, also for a table in a folder calamine never opens; the
   memory calamine takes for the table it reads is the same.
 
 ## For whoever next revises a skill or writes a plan

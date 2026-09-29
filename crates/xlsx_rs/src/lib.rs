@@ -218,7 +218,8 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 ///   [`MAX_SETTINGS_PART_BYTES`], in any folder, and for any part other
 ///   than a table of texts past [`MAX_PART_BYTES`], the sheet among them,
 ///   or past a third of it when the part is found in an encoding other
-///   than UTF-8, as the next message says;
+///   than UTF-8 by the rule "a part of the file is not in UTF-8" gives
+///   below;
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
 ///   table of texts, past [`MAX_PART_BYTES`], in any folder; and
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
@@ -228,8 +229,12 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 ///   `FF FE`, `FE FF`, `00 3C` or `3C 00`, or an `encoding` of a
 ///   declaration `<?xml … ?>`, wherever it is in the part, whose value is
 ///   not `utf-8` or `utf8`, ignoring case and spaces around it, or cannot
-///   be read; a part in UTF-8 with such a declaration inside a comment is
-///   refused too;
+///   be read; and some parts in UTF-8 that the rule cannot tell from one:
+///   a declaration inside a comment or the value of an attribute, `<?xml`
+///   followed by a form feed, a part that starts with `3C 00` or `00 3C`
+///   without a declaration, a declaration after the root element, and a
+///   value of `encoding` other than `utf-8` and `utf8` that the crate
+///   encoding_rs reads as UTF-8, such as `unicode-1-1-utf-8`;
 /// - "too many merged ranges", for a part of the file with more merged
 ///   ranges than `max_cells`, counted as the bytes `mergeCell` right after
 ///   `<` or `:`, any sheet's and not only the one read;

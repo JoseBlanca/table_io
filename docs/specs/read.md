@@ -690,7 +690,7 @@ refused when xlsx_rs cannot find it.
      and checks every declaration. A part in another encoding whose bytes
      are also damaged is refused as not in UTF-8 when the rule finds it
      before the zip crate reaches the checksum. Excel, LibreOffice and
-     Google Sheets write UTF-8, and the eleven zips of `tests/data/` pass
+     Google Sheets write UTF-8, and the twelve zips of `tests/data/` pass
      the rule.
 
 Where xlsx_rs refuses what calamine would read, accepted on 28 September

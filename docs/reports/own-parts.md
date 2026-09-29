@@ -7,13 +7,16 @@ section is for whoever next revises a skill or writes a plan.
 
 ## State
 
-Done on 29 September 2026. Work packages 1 and 2 were merged into
-`main` on 29 September 2026 by the owner's order, at b6a2fbe; work
+Done and released on 29 September 2026. Work packages 1 and 2 were
+merged into `main` that day by the owner's order, at b6a2fbe, and work
 package 3, added the same day when the owner decided Open 3 of the spec,
-is on the branch `plan/own-parts`, 15 commits after that; nothing is
-pushed.
+at 49bc0d1. By the owner's order, `main` was pushed to
+`github.com/JoseBlanca/xlsx_rs` at 49bc0d1, and the pre-release
+`js-v0.1.0-dev.1` made from it with `xlsx_rs-0.1.0.tgz`, 314,955 bytes;
+downloaded from its URL, the file was the same, and read the owner's
+`excel_1904.xlsx` as `2024-05-13` and `14:30:00` under node.
 
-What a user of popnei_web gets from it, once it is released: the dates of
+What a user of popnei_web gets from it: the dates of
 a workbook of the 1904 system saved by Excel 365, the owner's
 `excel_1904.xlsx` among them, are right, `2024-05-13` where the release
 before this plan would have given `2020-05-12`; a file damaged inside its
@@ -29,9 +32,8 @@ package is 300,646 bytes gzipped, 15,776 more than before it.
 What the owner decided on 29 September 2026: the merge of work packages
 1 and 2; Open 3, one cell whose text could end the light worker, fixed
 before the first release, which work package 3 did; and the first
-release once the significant work of the plan is done. What is asked
-now: the merge of work package 3, and the push and the release, which
-cannot be undone once others have downloaded them.
+release once the significant work of the plan is done, confirmed
+right before the push. Nothing more is asked of the owner.
 
 ## Work packages 1 and 2, built
 

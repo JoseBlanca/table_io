@@ -353,7 +353,8 @@ calamine hold about 4 GB before xlsx_rs could count the text, and the
 package trapped under node; so did a sheet declared `windows-1252`
 with one cell of 400,000,000 bytes `80`, in a zip of 390,377 bytes. No
 bound of this spec reaches the text of one cell before calamine has
-built it (**Open 3**, below).
+built it (**Open 3**, below, decided: every part bounded before the
+first release).
 
 Two bounds keep a file written to be small in the zip and large in
 memory from reaching that trap, both found by the review of work package
@@ -1271,7 +1272,9 @@ its architecture and this spec.
    reader of the styles of the workbook written for xlsx_rs, and was
    not taken either.
 
-3. **A cell whose text passes what the wasm can hold.** One cell of the
+3. **A cell whose text passes what the wasm can hold, decided by the
+   owner on 29 September 2026: fixed before the first release.** One
+   cell of the
    sheet can hold a text as large as the sheet, up to 1,000,000,000
    bytes unzipped, and calamine builds it whole, about four copies,
    before xlsx_rs sees the cell and counts its text against
@@ -1292,10 +1295,11 @@ its architecture and this spec.
      133 MB; a sheet whose blank cells are formatted one by one, which
      Excel writes each as an element, can be larger and would be
      refused; not measured.
-   The recommendation is to bound every part, in a plan of its own after
-   the first release, once the size of such a formatted sheet is
-   measured, so that the release that popnei_web waits for is not held
-   back. Meanwhile: the trap stays, as the first option.
+   The recommendation had been to bound every part in a plan of its own
+   after the first release. The owner decided to bound every part
+   before it, as a third work package of the plan of the parts, once the
+   size of such a formatted sheet is measured; the option not taken was
+   to leave the trap until after the release.
 
 ## Not in this spec
 

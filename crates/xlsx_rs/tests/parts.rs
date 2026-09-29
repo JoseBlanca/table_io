@@ -1534,26 +1534,38 @@ fn a_workbook_in_a_folder_data_has_its_settings_parts_held_to_their_bound() {
     }
 }
 
-/// A zip of the parts of [`parts_of_one_number`] and a part
-/// `docProps/padding.xml` of spaces whose size makes the parts unzip to
-/// `num_unzipped_bytes` bytes together, deflated.
+/// A zip of the parts of [`parts_of_one_number`] and parts
+/// `docProps/padding<i>.xml` of spaces whose sizes make the parts unzip to
+/// `num_unzipped_bytes` bytes together, deflated; each padding part holds
+/// at most 250,000,000 bytes, within the bound of every part.
 fn xlsx_unzipping_to(num_unzipped_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    const MAX_PADDING_PART_BYTES: u64 = 250_000_000;
     let parts = parts_of_one_number();
     let parts_bytes: u64 = parts
         .iter()
         .map(|(_, xml)| u64::try_from(xml.len()).unwrap_or(u64::MAX))
         .sum();
-    let num_padding_bytes = num_unzipped_bytes
+    let mut num_padding_bytes = num_unzipped_bytes
         .checked_sub(parts_bytes)
         .ok_or("fewer bytes than the parts")?;
+    let mut padding_names = Vec::new();
+    let mut padding_sizes = Vec::new();
+    while num_padding_bytes > 0 {
+        let padding_size = num_padding_bytes.min(MAX_PADDING_PART_BYTES);
+        padding_names.push(format!("docProps/padding{}.xml", padding_names.len()));
+        padding_sizes.push(padding_size);
+        num_padding_bytes = num_padding_bytes.saturating_sub(padding_size);
+    }
     let mut repeated_parts = unrepeated(&parts);
-    repeated_parts.push(RepeatedPart {
-        name: "docProps/padding.xml",
-        head: "",
-        middle: " ",
-        num_middles: num_padding_bytes,
-        tail: "",
-    });
+    for (name, padding_size) in padding_names.iter().zip(padding_sizes) {
+        repeated_parts.push(RepeatedPart {
+            name,
+            head: "",
+            middle: " ",
+            num_middles: padding_size,
+            tail: "",
+        });
+    }
     deflated_zip(&repeated_parts)
 }
 
@@ -1619,5 +1631,142 @@ fn a_table_of_texts_of_400_000_000_bytes_is_read_and_one_byte_more_refused() {
     assert_eq!(
         past_bound,
         Err(ReadError::Unreadable("too much text".to_owned()))
+    );
+}
+
+/// A zip of the parts of [`parts_of_worksheet`] whose sheet is one cell,
+/// A1, written as `cell_head`, then `num_text_bytes` bytes `a`, then
+/// `cell_tail`, deflated; its sheet holds `num_text_bytes` bytes more than
+/// [`bytes_of_sheet_around`] gives.
+fn xlsx_of_one_long_cell(
+    cell_head: &str,
+    num_text_bytes: u64,
+    cell_tail: &str,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let parts = parts_of_worksheet(&format!(
+        r#"<sheetData><row r="1">{cell_head}{TEXT_MARK}{cell_tail}</row></sheetData>"#
+    ));
+    let (_, sheet_xml) = parts
+        .iter()
+        .find(|(name, _)| name == "xl/worksheets/sheet1.xml")
+        .ok_or("no sheet")?;
+    let (head, tail) = sheet_xml.split_once(TEXT_MARK).ok_or("no mark")?;
+    let mut repeated_parts = unrepeated(&parts);
+    let sheet = repeated_parts
+        .iter_mut()
+        .find(|part| part.name == "xl/worksheets/sheet1.xml")
+        .ok_or("no sheet")?;
+    sheet.head = head;
+    sheet.middle = "a";
+    sheet.num_middles = num_text_bytes;
+    sheet.tail = tail;
+    deflated_zip(&repeated_parts)
+}
+
+/// Where [`xlsx_of_one_long_cell`] writes the text of its cell.
+const TEXT_MARK: &str = "TEXT_OF_THE_CELL";
+
+/// The bytes of the sheet of [`xlsx_of_one_long_cell`] around the text of
+/// its cell, written as `cell_head` and `cell_tail`.
+fn bytes_of_sheet_around(cell_head: &str, cell_tail: &str) -> Result<u64, Box<dyn Error>> {
+    let parts = parts_of_worksheet(&format!(
+        r#"<sheetData><row r="1">{cell_head}{cell_tail}</row></sheetData>"#
+    ));
+    let (_, sheet_xml) = parts
+        .iter()
+        .find(|(name, _)| name == "xl/worksheets/sheet1.xml")
+        .ok_or("no sheet")?;
+    Ok(u64::try_from(sheet_xml.len())?)
+}
+
+/// The text of a cell written in the cell, before and after its text.
+const INLINE_TEXT_HEAD: &str = r#"<c r="A1" t="inlineStr"><is><t>"#;
+const INLINE_TEXT_TAIL: &str = "</t></is></c>";
+
+/// A zip of the sheet of one cell, A1, whose text makes the part of the
+/// sheet `num_bytes` bytes long.
+fn xlsx_of_sheet_of(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let num_text_bytes = num_bytes
+        .checked_sub(bytes_of_sheet_around(INLINE_TEXT_HEAD, INLINE_TEXT_TAIL)?)
+        .ok_or("fewer bytes than the sheet")?;
+    xlsx_of_one_long_cell(INLINE_TEXT_HEAD, num_text_bytes, INLINE_TEXT_TAIL)
+}
+
+// The sheet at the bound is read by calamine, whose one cell of about
+// 300,000,000 bytes of text is past the 200,000,000 bytes of text a read may
+// hold.
+#[test]
+#[ignore = "deflates and reads 600 MB, past 10 s in cargo test; run before each release"]
+fn a_sheet_of_300_000_000_bytes_is_too_much_text_and_one_byte_more_too_large() {
+    let at_bound = read_first_sheet(&xlsx_of_sheet_of(300_000_000).unwrap(), MAX_SHEET_CELLS);
+    let past_bound = read_first_sheet(&xlsx_of_sheet_of(300_000_001).unwrap(), MAX_SHEET_CELLS);
+
+    assert_eq!(
+        at_bound,
+        Err(ReadError::Unreadable("too much text".to_owned()))
+    );
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable(
+            "a part of the file is too large".to_owned()
+        ))
+    );
+}
+
+// The file of the review of the code of 28 September 2026 that trapped the
+// package: one cell of a text, t="str", of 999,000,000 bytes `a` and an
+// entity, in a zip of 972,578 bytes, which unzips to less than
+// 1,000,000,000 bytes.
+#[test]
+#[ignore = "deflates 999 MB, past 10 s in cargo test; run before each release"]
+fn a_cell_of_999_000_000_bytes_is_too_large() {
+    let bytes =
+        xlsx_of_one_long_cell(r#"<c r="A1" t="str"><v>"#, 999_000_000, "&amp;</v></c>").unwrap();
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "a part of the file is too large".to_owned()
+        ))
+    );
+}
+
+/// A zip of the parts of [`parts_of_one_number`] and a part
+/// `docProps/padding.xml` of `num_bytes` spaces, deflated.
+fn xlsx_with_padding_part_of(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
+    let parts = parts_of_one_number();
+    let mut repeated_parts = unrepeated(&parts);
+    repeated_parts.push(RepeatedPart {
+        name: "docProps/padding.xml",
+        head: "",
+        middle: " ",
+        num_middles: num_bytes,
+        tail: "",
+    });
+    deflated_zip(&repeated_parts)
+}
+
+// calamine never opens docProps/padding.xml; it is held to the bound of
+// every part all the same, as the stricter cases of the spec say.
+#[test]
+#[ignore = "deflates and reads 600 MB, past 10 s in cargo test; run before each release"]
+fn a_part_other_than_the_sheet_of_300_000_000_bytes_is_read_and_one_byte_more_too_large() {
+    let at_bound = read_first_sheet(
+        &xlsx_with_padding_part_of(300_000_000).unwrap(),
+        MAX_SHEET_CELLS,
+    );
+    let past_bound = read_first_sheet(
+        &xlsx_with_padding_part_of(300_000_001).unwrap(),
+        MAX_SHEET_CELLS,
+    );
+
+    assert_eq!(at_bound.unwrap().cells, [SheetCell::Number(7.0)]);
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable(
+            "a part of the file is too large".to_owned()
+        ))
     );
 }

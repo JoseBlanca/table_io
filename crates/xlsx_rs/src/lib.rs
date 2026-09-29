@@ -175,6 +175,20 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// with tags of about 150 bytes: 300 KB.
 pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 
+/// The most bytes each part other than a table of texts may hold unzipped,
+/// 300,000,000, the sheet among them: past it the read is
+/// [`ReadError::Unreadable`], "a part of the file is too large".
+///
+/// The value is that of "What xlsx_rs reads before calamine" of
+/// `docs/specs/read.md`, point 5: one cell of a sheet can hold a text as
+/// large as the sheet, which calamine builds whole before xlsx_rs sees the
+/// cell, and a cell of 300,000,000 bytes took the wasm to 1.71 GB at the
+/// most under node 26.8.2 on 29 September 2026, where the wasm can hold
+/// 4.29 GB and a cell of 750,000,000 bytes trapped it. The largest sheet a
+/// zip of 20,000,000 bytes, popnei_web's limit, was found to hold is about
+/// 248 MB.
+pub const MAX_PART_BYTES: u64 = 300_000_000;
+
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
 /// refusing it at the first cell that makes the rectangle of the values
 /// larger than `max_cells` cells.
@@ -199,7 +213,8 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// - "the file unzips to more than 1,000,000,000 bytes", for parts that
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a settings part past
-///   [`MAX_SETTINGS_PART_BYTES`], in any folder;
+///   [`MAX_SETTINGS_PART_BYTES`], in any folder, and for any part other
+///   than a table of texts past [`MAX_PART_BYTES`], the sheet among them;
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
 ///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder; and
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
@@ -250,6 +265,7 @@ const PART_BOUNDS: PartBounds = PartBounds {
     max_text_table_bytes: MAX_TEXT_TABLE_BYTES,
     max_texts: MAX_TEXTS,
     max_sheet_path_bytes: MAX_SHEET_PATH_BYTES,
+    max_part_bytes: MAX_PART_BYTES,
 };
 
 /// Reads as [`read_first_sheet`] does, within `bounds`, which the tests of

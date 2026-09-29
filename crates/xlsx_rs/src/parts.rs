@@ -9,9 +9,10 @@
 //! crate checks only once the part has been read to its end, and calamine
 //! stops reading a sheet at its last cell; so xlsx_rs reads every part to
 //! its end first, counting its bytes. calamine also holds four parts whole
-//! when it opens the file, and every merged range of the sheet before
-//! xlsx_rs sees one. xlsx_rs bounds, in that one reading, at least what
-//! calamine could hold of each: it does not copy calamine's reading, since
+//! when it opens the file, every merged range of the sheet before xlsx_rs
+//! sees one, and each cell whole, whose text can be as large as the sheet.
+//! xlsx_rs bounds, in that one reading, at least what calamine could hold
+//! of each: it does not copy calamine's reading, since
 //! every small difference between two readings let a file past a bound in
 //! the review of 28 September 2026. The one part it finds as calamine
 //! finds it is the workbook, for its date system.
@@ -49,6 +50,9 @@ pub(crate) struct PartBounds {
     /// The most bytes the paths of the sheets may be counted at,
     /// [`crate::MAX_SHEET_PATH_BYTES`] outside the tests.
     pub(crate) max_sheet_path_bytes: u64,
+    /// The most bytes each part other than a table of texts may hold once
+    /// unzipped, [`crate::MAX_PART_BYTES`] outside the tests.
+    pub(crate) max_part_bytes: u64,
 }
 
 /// Reads every part of the zip `bytes` to its end, so that the zip crate
@@ -75,7 +79,8 @@ pub(crate) struct PartBounds {
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
 /// bounds of the parts calamine reads whole ("What xlsx_rs reads before
-/// calamine", point 3); "a part of the file is not in UTF-8" for one of
+/// calamine", point 3), and "a part of the file is too large" for any other
+/// part past `bounds.max_part_bytes` (point 5); "a part of the file is not in UTF-8" for one of
 /// them in another encoding (point 3); "the workbook lists too many sheets" when the
 /// paths of the sheets are counted past `bounds.max_sheet_path_bytes`
 /// (point 3); "too many merged ranges" for a part with more
@@ -151,25 +156,35 @@ impl PartKind {
     }
 
     /// The most bytes a part of this kind may hold unzipped, within
-    /// `bounds`, and the message of the error past it; `None` for a part
-    /// calamine does not hold whole.
-    fn bound_of_bytes(self, bounds: &PartBounds) -> Option<PartBound> {
+    /// `bounds`, and the message of the error past it: a table of texts has
+    /// a bound of its own, and every other part is held to the bound of
+    /// every part, a settings part to the bound of settings parts too
+    /// ("What xlsx_rs reads before calamine" of `docs/specs/read.md`,
+    /// points 3 and 5).
+    fn bound_of_bytes(self, bounds: &PartBounds) -> PartBound {
         match self {
             Self::PackageRelationships
             | Self::Workbook
             | Self::WorkbookRelationships
-            | Self::Styles => Some(PartBound {
-                max_bytes: bounds.max_settings_part_bytes,
-                message: "a part of the file is too large",
-            }),
-            Self::TextTable => Some(PartBound {
+            | Self::Styles => PartBound {
+                max_bytes: bounds.max_settings_part_bytes.min(bounds.max_part_bytes),
+                message: PART_TOO_LARGE,
+            },
+            Self::TextTable => PartBound {
                 max_bytes: bounds.max_text_table_bytes,
                 message: crate::TOO_MUCH_TEXT,
-            }),
-            Self::Other => None,
+            },
+            Self::Other => PartBound {
+                max_bytes: bounds.max_part_bytes,
+                message: PART_TOO_LARGE,
+            },
         }
     }
 }
+
+/// The message of [`ReadError::Unreadable`] for a part past the bound of
+/// its bytes, other than a table of texts.
+const PART_TOO_LARGE: &str = "a part of the file is too large";
 
 /// The most bytes a part may hold unzipped, and the message of the error
 /// past it.
@@ -198,8 +213,8 @@ struct UnzippedBytes {
 struct PartReader<'unzipped, Part> {
     /// The part, as the zip crate unzips it.
     part: Part,
-    /// The bound of the bytes of this part, if it has one.
-    bound: Option<PartBound>,
+    /// The bound of the bytes of this part.
+    bound: PartBound,
     /// The bytes of this part read so far.
     num_bytes: u64,
     /// The bytes of every part read so far.
@@ -221,7 +236,7 @@ impl<'unzipped, Part: Read> PartReader<'unzipped, Part> {
     /// `unzipped`, and whose merged ranges are held to `max_merged_ranges`.
     fn new(
         part: Part,
-        bound: Option<PartBound>,
+        bound: PartBound,
         unzipped: &'unzipped mut UnzippedBytes,
         max_merged_ranges: u64,
     ) -> Self {
@@ -296,10 +311,8 @@ impl<Part: Read> Read for PartReader<'_, Part> {
             );
             return Err(self.fail(ReadError::Unreadable(message)));
         }
-        if let Some(bound) = self.bound
-            && self.num_bytes > bound.max_bytes
-        {
-            return Err(self.fail(ReadError::Unreadable(bound.message.to_owned())));
+        if self.num_bytes > self.bound.max_bytes {
+            return Err(self.fail(ReadError::Unreadable(self.bound.message.to_owned())));
         }
         let bytes_read = buffer.get(..num_read).unwrap_or_default();
         self.merged_ranges.count_in(bytes_read);

@@ -23,8 +23,9 @@ use crate::bounds_tests::hand_written::{
 };
 use crate::parts::PartBounds;
 use crate::{
-    MAX_SETTINGS_PART_BYTES, MAX_SHEET_PATH_BYTES, MAX_TEXT_BYTES, MAX_TEXT_TABLE_BYTES, MAX_TEXTS,
-    MAX_UNZIPPED_BYTES, PART_BOUNDS, ReadError, Sheet, SheetCell, read_first_sheet_within,
+    MAX_PART_BYTES, MAX_SETTINGS_PART_BYTES, MAX_SHEET_PATH_BYTES, MAX_TEXT_BYTES,
+    MAX_TEXT_TABLE_BYTES, MAX_TEXTS, MAX_UNZIPPED_BYTES, PART_BOUNDS, ReadError, Sheet, SheetCell,
+    read_first_sheet_within,
 };
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
@@ -188,6 +189,7 @@ fn the_bounds_of_read_first_sheet_are_those_of_the_spec() {
     assert_eq!(MAX_TEXT_TABLE_BYTES, 400_000_000);
     assert_eq!(MAX_TEXTS, 10_000_000);
     assert_eq!(MAX_SHEET_PATH_BYTES, 100_000_000);
+    assert_eq!(MAX_PART_BYTES, 300_000_000);
 
     let PartBounds {
         max_unzipped_bytes,
@@ -195,12 +197,14 @@ fn the_bounds_of_read_first_sheet_are_those_of_the_spec() {
         max_text_table_bytes,
         max_texts,
         max_sheet_path_bytes,
+        max_part_bytes,
     } = PART_BOUNDS;
     assert_eq!(max_unzipped_bytes, 1_000_000_000);
     assert_eq!(max_settings_part_bytes, 50_000_000);
     assert_eq!(max_text_table_bytes, 400_000_000);
     assert_eq!(max_texts, 10_000_000);
     assert_eq!(max_sheet_path_bytes, 100_000_000);
+    assert_eq!(max_part_bytes, 300_000_000);
 }
 
 /// The parts of a workbook of the 1904 system whose sheet is one cell, A1,
@@ -478,4 +482,104 @@ fn a_part_of_relationships_in_a_folder_is_not_held_to_the_bound_of_settings_part
     );
 
     assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)]);
+}
+
+/// The number of bytes of the largest part of `parts`.
+fn largest_part_of(parts: &[(String, String)]) -> u64 {
+    parts
+        .iter()
+        .map(|(name, _)| bytes_of_part(parts, name))
+        .max()
+        .unwrap()
+}
+
+/// `parts` with the part `part_name` made one byte larger than the largest
+/// of them, by spaces after its declaration, or spaces alone for a part
+/// that has none; and that largest size, the bound it passes.
+fn with_largest_part(parts: &[(String, String)], part_name: &str) -> (Vec<(String, String)>, u64) {
+    let largest = largest_part_of(parts);
+    let mut padded_parts = parts.to_vec();
+    for (name, xml) in &mut padded_parts {
+        if name == part_name {
+            let num_spaces = usize::try_from(
+                largest
+                    .checked_sub(bytes_of_part(parts, part_name))
+                    .unwrap()
+                    .checked_add(1)
+                    .unwrap(),
+            )
+            .unwrap();
+            *xml = if xml.contains("?>") {
+                padded(xml, num_spaces)
+            } else {
+                format!("{xml}{}", " ".repeat(num_spaces))
+            };
+        }
+    }
+    (padded_parts, largest)
+}
+
+// A part calamine does not hold whole is bounded too, since one cell of the
+// sheet can hold a text as large as the sheet ("What xlsx_rs reads before
+// calamine", point 5); docProps/padding.xml is a part calamine never opens.
+#[test]
+fn a_part_other_than_a_table_of_texts_past_the_bound_is_too_large_and_one_at_it_read() {
+    let mut parts = parts_with_styles();
+    parts.push(("docProps/padding.xml".to_owned(), " ".repeat(100)));
+    for part_name in ["xl/worksheets/sheet1.xml", "docProps/padding.xml"] {
+        let (padded_parts, largest) = with_largest_part(&parts, part_name);
+
+        let past_bound = read_within(
+            &padded_parts,
+            bounds_with(|bounds| bounds.max_part_bytes = largest),
+        );
+        let at_bound = read_within(
+            &padded_parts,
+            bounds_with(|bounds| bounds.max_part_bytes = largest + 1),
+        );
+
+        assert_eq!(
+            past_bound,
+            Err(ReadError::Unreadable(
+                "a part of the file is too large".to_owned()
+            )),
+            "{part_name}"
+        );
+        assert_eq!(
+            at_bound.unwrap().cells,
+            [SheetCell::Number(7.0)],
+            "{part_name}"
+        );
+    }
+}
+
+#[test]
+fn a_settings_part_is_held_to_the_bound_of_every_part_too() {
+    let (padded_parts, largest) = with_largest_part(&parts_with_styles(), "xl/styles.xml");
+
+    let read = read_within(
+        &padded_parts,
+        bounds_with(|bounds| bounds.max_part_bytes = largest),
+    );
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "a part of the file is too large".to_owned()
+        ))
+    );
+}
+
+// A table of texts has its own bound, twice the most text of a read.
+#[test]
+fn a_table_of_texts_is_not_held_to_the_bound_of_every_part() {
+    let parts = parts_with_texts(shared_strings(r#"uniqueCount="2""#, &["id", "pop"]));
+    let (padded_parts, largest) = with_largest_part(&parts, "xl/sharedStrings.xml");
+
+    let read = read_within(
+        &padded_parts,
+        bounds_with(|bounds| bounds.max_part_bytes = largest),
+    );
+
+    assert_eq!(read.unwrap().cells, the_two_texts());
 }

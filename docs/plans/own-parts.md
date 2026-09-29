@@ -4,7 +4,7 @@ Written on 28 September 2026. It builds "What xlsx_rs reads before
 calamine" of `docs/specs/read.md`: xlsx_rs opens the zip itself, checks
 every part's checksum, takes the date system from the workbook, and
 bounds what calamine would otherwise read whole, before it gives the
-bytes to calamine. State: done on 28 September 2026; approved by the owner on 28 September 2026. Branch
+bytes to calamine. State: under way again, work package 3 added on 29 September 2026 by the owner's decision of Open 3; approved by the owner on 28 September 2026. Branch
 `plan/own-parts`, report `docs/reports/own-parts.md`. It comes before the
 first release, `js-v0.1.0-dev.1`, since without it every date of a
 workbook of the 1904 system saved by Excel 365 is four years and a day
@@ -114,6 +114,37 @@ the first cell, which ends popnei_web's light worker.
 **What could go wrong:** the time. If the read of 2,000,000 cells more
 than doubles, the owner is told before the plan ends, with where the
 time goes.
+
+## 3. Every part bounded
+
+Added on 29 September 2026, when the owner decided Open 3 of the spec:
+the trap of one cell fixed before the first release.
+
+**What it gives:** no cell of a sheet, however large, ends popnei_web's
+light worker; a file whose largest part holds more than 300,000,000
+bytes, or is in an encoding other than UTF-8, is refused with a message.
+
+**Deliverables:**
+
+1. The tests of "What xlsx_rs reads before calamine", point 5, listed at
+   the end of that section, pass; the review's file of one cell of
+   999,000,000 bytes is refused, natively and under node.
+2. Under node, a sheet of one cell of 300,000,000 bytes takes the wasm
+   to no more than about 2 GB and does not trap.
+3. The checks of the coding skill pass; the times of work package 2
+   measured again.
+
+**Stands on:** work packages 1 and 2.
+
+**Tasks:**
+
+- [ ] 3.1 `MAX_PART_BYTES` and the rule of UTF-8 by the bytes of every
+  part, replacing the check of point 3 through quick-xml's decoder, and
+  their tests. Serves 1 and 2.
+- [ ] 3.2 The measures under node. Serves 2 and 3.
+
+**What could go wrong:** the rule of UTF-8 refusing a file a user saves;
+every file of `tests/data/` is read as before, or the task stops.
 
 ## At the end
 

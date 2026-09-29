@@ -413,6 +413,8 @@ mod tests {
             br#"<<?xml encoding="latin1"?>"#,
             br#"<?xm<?xml encoding="latin1"?>"#,
             br#"<?xml fooencoding="latin1"?>"#,
+            br#"<?xml eencoding="latin1"?>"#,
+            br#"<?xml enencoding="latin1"?>"#,
             br#"<?xml encoding x="1" encoding="latin1"?>"#,
             br#"<?xml version="1.0"encoding="windows-1252"?>"#,
         ] {

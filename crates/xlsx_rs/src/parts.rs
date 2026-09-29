@@ -29,6 +29,7 @@ use zip::result::ZipError;
 use crate::ReadError;
 use crate::attrs::{RawAttrIter, attribute_of, attributes_of};
 use crate::date::DateSystem;
+use crate::encoding::EncodingCheck;
 
 /// The bounds of the parts of a read, which a test lowers so as to pass
 /// them with a file of a few KB.
@@ -80,8 +81,10 @@ pub(crate) struct PartBounds {
 /// file is too large", "too much text" and "too many texts", for the
 /// bounds of the parts calamine reads whole ("What xlsx_rs reads before
 /// calamine", point 3), and "a part of the file is too large" for any other
-/// part past `bounds.max_part_bytes` (point 5); "a part of the file is not in UTF-8" for one of
-/// them in another encoding (point 3); "the workbook lists too many sheets" when the
+/// part past `bounds.max_part_bytes`, counted three times when it is found
+/// in another encoding (point 5); "a part of the file is not in UTF-8" for
+/// one of the parts calamine reads whole found in another encoding by the
+/// rule of UTF-8 of point 5; "the workbook lists too many sheets" when the
 /// paths of the sheets are counted past `bounds.max_sheet_path_bytes`
 /// (point 3); "too many merged ranges" for a part with more
 /// merged ranges than `max_cells` (point 4); and "the part … cannot be read
@@ -180,11 +183,47 @@ impl PartKind {
             },
         }
     }
+
+    /// What an encoding other than UTF-8, found in a part of this kind by
+    /// the rule of UTF-8, does to the read ("What xlsx_rs reads before
+    /// calamine" of `docs/specs/read.md`, point 5).
+    fn other_encoding(self) -> OtherEncoding {
+        match self {
+            Self::PackageRelationships
+            | Self::Workbook
+            | Self::WorkbookRelationships
+            | Self::Styles
+            | Self::TextTable => OtherEncoding::Refused,
+            Self::Other => OtherEncoding::CountedThreeTimes,
+        }
+    }
 }
+
+/// What an encoding other than UTF-8 found in a part does to the read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OtherEncoding {
+    /// The file is refused, "a part of the file is not in UTF-8": a part
+    /// calamine holds whole, whose every bound, counted in the bytes of the
+    /// part, would hold three times as much once decoded.
+    Refused,
+    /// The bytes of the part are counted [`UTF_8_BYTES_PER_BYTE`] times
+    /// against the bound of its bytes, so that an image in SVG of an older
+    /// program, declared `iso-8859-1`, does not refuse the workbook it is in.
+    CountedThreeTimes,
+}
+
+/// The most bytes of UTF-8 calamine's decoding of a part in another
+/// encoding makes of each byte of the part: 3, for a byte `80` of
+/// windows-1252, `€`.
+const UTF_8_BYTES_PER_BYTE: u64 = 3;
 
 /// The message of [`ReadError::Unreadable`] for a part past the bound of
 /// its bytes, other than a table of texts.
 const PART_TOO_LARGE: &str = "a part of the file is too large";
+
+/// The message of [`ReadError::Unreadable`] for a part calamine holds whole
+/// found in an encoding other than UTF-8.
+const NOT_UTF_8: &str = "a part of the file is not in UTF-8";
 
 /// The most bytes a part may hold unzipped, and the message of the error
 /// past it.
@@ -215,6 +254,10 @@ struct PartReader<'unzipped, Part> {
     part: Part,
     /// The bound of the bytes of this part.
     bound: PartBound,
+    /// What an encoding other than UTF-8 found in this part does.
+    other_encoding: OtherEncoding,
+    /// The check of the rule of UTF-8 on the bytes of this part read so far.
+    encoding_check: EncodingCheck,
     /// The bytes of this part read so far.
     num_bytes: u64,
     /// The bytes of every part read so far.
@@ -232,17 +275,21 @@ struct PartReader<'unzipped, Part> {
 }
 
 impl<'unzipped, Part: Read> PartReader<'unzipped, Part> {
-    /// A reader of `part`, whose bytes are held to `bound` and counted in
-    /// `unzipped`, and whose merged ranges are held to `max_merged_ranges`.
+    /// A reader of `part`, of the kind `part_kind`, whose bytes are held to
+    /// the bound of its kind within `bounds` and counted in `unzipped`, and
+    /// whose merged ranges are held to `max_merged_ranges`.
     fn new(
         part: Part,
-        bound: PartBound,
+        part_kind: PartKind,
+        bounds: &PartBounds,
         unzipped: &'unzipped mut UnzippedBytes,
         max_merged_ranges: u64,
     ) -> Self {
         Self {
             part,
-            bound,
+            bound: part_kind.bound_of_bytes(bounds),
+            other_encoding: part_kind.other_encoding(),
+            encoding_check: EncodingCheck::new(),
             num_bytes: 0,
             unzipped,
             merged_ranges: ElementCounter::of_name(MERGED_RANGE_NAME),
@@ -311,10 +358,21 @@ impl<Part: Read> Read for PartReader<'_, Part> {
             );
             return Err(self.fail(ReadError::Unreadable(message)));
         }
-        if self.num_bytes > self.bound.max_bytes {
+        let bytes_read = buffer.get(..num_read).unwrap_or_default();
+        self.encoding_check.check(bytes_read);
+        let num_counted_bytes = match (self.other_encoding, self.encoding_check.is_other_encoding())
+        {
+            (OtherEncoding::Refused, true) => {
+                return Err(self.fail(ReadError::Unreadable(NOT_UTF_8.to_owned())));
+            }
+            (OtherEncoding::CountedThreeTimes, true) => {
+                self.num_bytes.saturating_mul(UTF_8_BYTES_PER_BYTE)
+            }
+            (OtherEncoding::Refused | OtherEncoding::CountedThreeTimes, false) => self.num_bytes,
+        };
+        if num_counted_bytes > self.bound.max_bytes {
             return Err(self.fail(ReadError::Unreadable(self.bound.message.to_owned())));
         }
-        let bytes_read = buffer.get(..num_read).unwrap_or_default();
         self.merged_ranges.count_in(bytes_read);
         if let Some(sheets) = &mut self.sheets {
             sheets.count_in(bytes_read);
@@ -476,7 +534,8 @@ fn read_every_part(
         let part_kind = PartKind::of_zip_name(part.name());
         let mut part_reader = PartReader::new(
             part,
-            part_kind.bound_of_bytes(&bounds),
+            part_kind,
+            &bounds,
             &mut unzipped,
             u64::from(max_cells),
         );
@@ -518,15 +577,9 @@ fn read_every_part(
 ///
 /// # Errors
 ///
-/// The error `on_event` gives, when it gives one, at once; the failure of
-/// `part_reader`, an error of the zip or a bound of its bytes passed; and
-/// [`ReadError::Unreadable`], "a part of the file is not in UTF-8", when
-/// quick-xml decodes the part with another encoding, from a byte order mark
-/// at its start or from the `encoding` of a declaration `<?xml … ?>`
-/// ("What xlsx_rs reads before calamine" of `docs/specs/read.md`, point
-/// 3). calamine decodes the texts of a part in the encoding it declares,
-/// where a byte of windows-1252 may be 3 bytes of UTF-8, so every bound
-/// counted in the bytes of the part would hold 3 times as much.
+/// The error `on_event` gives, when it gives one, at once; and the failure
+/// of `part_reader`: an error of the zip, a bound of its bytes passed, or
+/// an encoding other than UTF-8 found in it.
 fn read_xml_part<Part: Read>(
     part_reader: PartReader<'_, Part>,
     mut on_event: impl FnMut(&Event<'_>, u64) -> Result<(), ReadError>,
@@ -544,16 +597,9 @@ fn read_xml_part<Part: Read>(
             }
         }
     }
-    let is_utf_8 = xml_reader.decoder().encoding().name() == "UTF-8";
     let mut buffered_part = xml_reader.into_inner();
     let copy_result = io::copy(&mut buffered_part, &mut io::sink());
-    let part_counts = buffered_part.into_inner().finish(copy_result)?;
-    if !is_utf_8 {
-        return Err(ReadError::Unreadable(
-            "a part of the file is not in UTF-8".to_owned(),
-        ));
-    }
-    Ok(part_counts)
+    buffered_part.into_inner().finish(copy_result)
 }
 
 /// Reads the part of relationships that `part_reader` unzips as

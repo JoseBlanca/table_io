@@ -583,3 +583,116 @@ fn a_table_of_texts_is_not_held_to_the_bound_of_every_part() {
 
     assert_eq!(read.unwrap().cells, the_two_texts());
 }
+
+/// A second declaration of windows-1252, which quick-xml lets be after the
+/// first of UTF-8 and the rule of UTF-8 does not.
+const SECOND_DECLARATION: &str = r#"<?xml version="1.0" encoding="windows-1252"?>"#;
+
+/// The same behind a decoy, an `encoding` of UTF-8 in the value of another
+/// attribute.
+const DECOY_DECLARATION: &str =
+    r#"<?xml version="1.0" foo="encoding='utf-8'" encoding="windows-1252"?>"#;
+
+/// The parts of a workbook whose sheet holds A1, 7, and A2, 8, with
+/// `declaration` and `num_spaces` spaces between the two rows.
+fn parts_with_declaration_between_rows(
+    declaration: &str,
+    num_spaces: usize,
+) -> Vec<(String, String)> {
+    parts_of_worksheet(&format!(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row>{declaration}{}<row r="2"><c r="A2"><v>8</v></c></row></sheetData>"#,
+        " ".repeat(num_spaces)
+    ))
+}
+
+// A part other than those calamine holds whole is counted three times when
+// it is found in another encoding, since decoding makes at most 3 bytes of
+// UTF-8 of each byte ("What xlsx_rs reads before calamine", point 5).
+#[test]
+fn a_sheet_found_in_another_encoding_is_counted_three_times() {
+    let version_of_1_000_000_bytes = format!(
+        r#"<?xml version="{}" encoding="windows-1252"?>"#,
+        "1".repeat(1_000_000)
+    );
+    for declaration in [
+        SECOND_DECLARATION,
+        DECOY_DECLARATION,
+        &version_of_1_000_000_bytes,
+    ] {
+        let parts = parts_with_declaration_between_rows(declaration, 2_000);
+        let num_bytes = bytes_of_part(&parts, "xl/worksheets/sheet1.xml");
+
+        let at_bound = read_within(
+            &parts,
+            bounds_with(|bounds| bounds.max_part_bytes = 3 * num_bytes),
+        );
+        let past_bound = read_within(
+            &parts,
+            bounds_with(|bounds| bounds.max_part_bytes = 3 * num_bytes - 1),
+        );
+
+        assert_eq!(
+            at_bound.unwrap().cells,
+            [SheetCell::Number(7.0), SheetCell::Number(8.0)],
+            "{}",
+            declaration.get(..60).unwrap_or(declaration)
+        );
+        assert_eq!(
+            past_bound,
+            Err(ReadError::Unreadable(
+                "a part of the file is too large".to_owned()
+            )),
+            "{}",
+            declaration.get(..60).unwrap_or(declaration)
+        );
+    }
+}
+
+// An image of an older program declared iso-8859-1 does not refuse the
+// workbook it is in; it is counted three times.
+#[test]
+fn a_part_calamine_never_opens_found_in_another_encoding_is_counted_three_times() {
+    let mut parts = parts_with_styles();
+    parts.push((
+        "xl/media/a.svg".to_owned(),
+        format!(
+            r#"<?xml version="1.0" encoding="iso-8859-1"?><svg>{}</svg>"#,
+            " ".repeat(2_000)
+        ),
+    ));
+    let num_bytes = bytes_of_part(&parts, "xl/media/a.svg");
+
+    let at_bound = read_within(
+        &parts,
+        bounds_with(|bounds| bounds.max_part_bytes = 3 * num_bytes),
+    );
+    let past_bound = read_within(
+        &parts,
+        bounds_with(|bounds| bounds.max_part_bytes = 3 * num_bytes - 1),
+    );
+
+    assert_eq!(at_bound.unwrap().cells, [SheetCell::Number(7.0)]);
+    assert_eq!(
+        past_bound,
+        Err(ReadError::Unreadable(
+            "a part of the file is too large".to_owned()
+        ))
+    );
+}
+
+// A sheet in UTF-8 is counted once: at the bound it is read.
+#[test]
+fn a_sheet_in_utf_8_is_counted_once() {
+    let parts = parts_with_declaration_between_rows("", 2_000);
+    let num_bytes = bytes_of_part(&parts, "xl/worksheets/sheet1.xml");
+
+    let read = read_within(
+        &parts,
+        bounds_with(|bounds| bounds.max_part_bytes = num_bytes),
+    );
+
+    assert_eq!(
+        read.unwrap().cells,
+        [SheetCell::Number(7.0), SheetCell::Number(8.0)]
+    );
+}

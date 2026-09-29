@@ -5,8 +5,9 @@
 //! is a direct child of the root of the workbook, in the workbook that
 //! `_rels/.rels` names; the bounds of the parts calamine holds whole, found
 //! by the end of their names in any folder, each at its value; the merged
-//! ranges counted in every part; and the files of the review of 28
-//! September 2026 that trapped the package. The messages of the bounds are
+//! ranges counted in every part; the files of the review of 28 September
+//! 2026 that trapped the package; and the bound of every part, with the
+//! rule of UTF-8 by the bytes of a part. The messages of the bounds are
 //! also tested with small bounds in `src/bounds_tests.rs`.
 
 #[cfg(test)]
@@ -1696,7 +1697,7 @@ fn xlsx_of_sheet_of(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> {
 // 300,000,000 bytes of text is past the 200,000,000 bytes of text a read may
 // hold.
 #[test]
-#[ignore = "deflates and reads 600 MB, past 10 s in cargo test; run before each release"]
+#[ignore = "takes 16 s in cargo test, deflating and reading 600 MB, past 10 s; run before each release"]
 fn a_sheet_of_300_000_000_bytes_is_too_much_text_and_one_byte_more_too_large() {
     let at_bound = read_first_sheet(&xlsx_of_sheet_of(300_000_000).unwrap(), MAX_SHEET_CELLS);
     let past_bound = read_first_sheet(&xlsx_of_sheet_of(300_000_001).unwrap(), MAX_SHEET_CELLS);
@@ -1718,7 +1719,7 @@ fn a_sheet_of_300_000_000_bytes_is_too_much_text_and_one_byte_more_too_large() {
 // entity, in a zip of 972,578 bytes, which unzips to less than
 // 1,000,000,000 bytes.
 #[test]
-#[ignore = "deflates 999 MB, past 10 s in cargo test; run before each release"]
+#[ignore = "takes 17 s in cargo test, deflating 999 MB, past 10 s; run before each release"]
 fn a_cell_of_999_000_000_bytes_is_too_large() {
     let bytes =
         xlsx_of_one_long_cell(r#"<c r="A1" t="str"><v>"#, 999_000_000, "&amp;</v></c>").unwrap();
@@ -1751,7 +1752,7 @@ fn xlsx_with_padding_part_of(num_bytes: u64) -> Result<Vec<u8>, Box<dyn Error>> 
 // calamine never opens docProps/padding.xml; it is held to the bound of
 // every part all the same, as the stricter cases of the spec say.
 #[test]
-#[ignore = "deflates and reads 600 MB, past 10 s in cargo test; run before each release"]
+#[ignore = "takes 14 s in cargo test, deflating and reading 600 MB, past 10 s; run before each release"]
 fn a_part_other_than_the_sheet_of_300_000_000_bytes_is_read_and_one_byte_more_too_large() {
     let at_bound = read_first_sheet(
         &xlsx_with_padding_part_of(300_000_000).unwrap(),
@@ -1769,4 +1770,201 @@ fn a_part_other_than_the_sheet_of_300_000_000_bytes_is_read_and_one_byte_more_to
             "a part of the file is too large".to_owned()
         ))
     );
+}
+
+/// The parts calamine reads whole when it opens a file, the table of texts
+/// among them, in a workbook of the 1904 system whose sheet is one cell,
+/// A1, the number 7, with a table of texts of one text.
+fn parts_with_every_part_calamine_holds() -> Vec<(String, String)> {
+    let mut parts = parts_of_1904_worksheet(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row></sheetData>"#,
+        &[],
+    );
+    parts.push((
+        "xl/sharedStrings.xml".to_owned(),
+        shared_strings(r#"uniqueCount="1""#, &["id"]),
+    ));
+    parts
+}
+
+/// The five parts calamine reads whole when it opens a file.
+const PARTS_CALAMINE_HOLDS: [&str; 5] = [
+    "_rels/.rels",
+    "xl/workbook.xml",
+    "xl/_rels/workbook.xml.rels",
+    "xl/styles.xml",
+    "xl/sharedStrings.xml",
+];
+
+// quick-xml takes the encoding of the first declaration whose encoding it
+// knows, and so would read these in UTF-8; the rule of UTF-8 by the bytes
+// checks every declaration, and refuses them ("What xlsx_rs reads before
+// calamine" of docs/specs/read.md, point 5).
+#[test]
+fn a_part_calamine_reads_whole_with_a_second_declaration_of_windows_1252_is_unreadable() {
+    for part_name in PARTS_CALAMINE_HOLDS {
+        let mut parts = parts_with_every_part_calamine_holds();
+        let xml = xml_of(&mut parts, part_name).unwrap();
+        *xml = xml.replacen(
+            "?>",
+            r#"?><?xml version="1.0" encoding="windows-1252"?>"#,
+            1,
+        );
+
+        let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "a part of the file is not in UTF-8".to_owned()
+            )),
+            "{part_name}"
+        );
+    }
+}
+
+// A declaration inside a comment is found too, one of the files the rule
+// cannot tell from one in another encoding.
+#[test]
+fn a_part_calamine_reads_whole_with_a_declaration_in_a_comment_is_unreadable() {
+    for part_name in PARTS_CALAMINE_HOLDS {
+        let mut parts = parts_with_every_part_calamine_holds();
+        let xml = xml_of(&mut parts, part_name).unwrap();
+        *xml = xml.replacen("?>", r#"?><!-- <?xml encoding="latin1"?> -->"#, 1);
+
+        let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+        assert_eq!(
+            read,
+            Err(ReadError::Unreadable(
+                "a part of the file is not in UTF-8".to_owned()
+            )),
+            "{part_name}"
+        );
+    }
+}
+
+// The bytes 3C 00 at the start, `<` in UTF-16 little-endian, with no byte
+// order mark and no declaration.
+#[test]
+fn a_table_of_texts_that_starts_as_utf_16_with_no_mark_is_unreadable() {
+    let bytes = xlsx_with_texts_as(|xml| {
+        let (_, after_declaration) = xml.split_once("?>").unwrap();
+        after_declaration
+            .trim_start()
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect()
+    });
+
+    let read = read_first_sheet(&bytes, MAX_SHEET_CELLS);
+
+    assert_eq!(
+        read,
+        Err(ReadError::Unreadable(
+            "a part of the file is not in UTF-8".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn an_image_declared_in_iso_8859_1_in_a_file_otherwise_read_is_read() {
+    let mut parts = parts_of_one_number();
+    parts.push((
+        "xl/media/a.svg".to_owned(),
+        r#"<?xml version="1.0" encoding="iso-8859-1"?><svg xmlns="http://www.w3.org/2000/svg"/>"#
+            .to_owned(),
+    ));
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+    assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)]);
+}
+
+#[test]
+fn a_sheet_declared_in_utf8_with_spaces_in_its_value_is_read() {
+    let mut parts = parts_of_one_number();
+    let xml = xml_of(&mut parts, "xl/worksheets/sheet1.xml").unwrap();
+    *xml = xml.replace(r#"encoding="UTF-8""#, "encoding = ' UTF8 '");
+    assert!(xml.contains("' UTF8 '"));
+
+    let read = read_first_sheet(&xlsx_of_parts(&parts), MAX_SHEET_CELLS);
+
+    assert_eq!(read.unwrap().cells, [SheetCell::Number(7.0)]);
+}
+
+/// Where [`xlsx_with_declaration_between_rows`] writes its spaces.
+const SPACES_MARK: &str = "SPACES_BETWEEN_THE_ROWS";
+
+/// A zip of the parts of [`parts_of_worksheet`] whose sheet holds A1, 7,
+/// and A2, 8, with `declaration` and spaces between the two rows that make
+/// the part of the sheet `num_bytes` bytes long, deflated.
+fn xlsx_with_declaration_between_rows(
+    declaration: &str,
+    num_bytes: u64,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let parts = parts_of_worksheet(&format!(
+        r#"<sheetData><row r="1"><c r="A1"><v>7</v></c></row>{declaration}{SPACES_MARK}<row r="2"><c r="A2"><v>8</v></c></row></sheetData>"#
+    ));
+    let (_, sheet_xml) = parts
+        .iter()
+        .find(|(name, _)| name == "xl/worksheets/sheet1.xml")
+        .ok_or("no sheet")?;
+    let (head, tail) = sheet_xml.split_once(SPACES_MARK).ok_or("no mark")?;
+    let num_spaces = num_bytes
+        .checked_sub(u64::try_from(head.len().saturating_add(tail.len()))?)
+        .ok_or("fewer bytes than the sheet")?;
+    let mut repeated_parts = unrepeated(&parts);
+    let sheet = repeated_parts
+        .iter_mut()
+        .find(|part| part.name == "xl/worksheets/sheet1.xml")
+        .ok_or("no sheet")?;
+    sheet.head = head;
+    sheet.middle = " ";
+    sheet.num_middles = num_spaces;
+    sheet.tail = tail;
+    deflated_zip(&repeated_parts)
+}
+
+// A sheet in UTF-8 with a second declaration of windows-1252 between two
+// rows gave calamine the second row decoded in windows-1252, in a trial of
+// 29 September 2026; it is counted three times against the bound of
+// 300,000,000 bytes, and so is one whose declaration is behind a decoy or
+// a value of version of 1,000,000 bytes.
+#[test]
+#[ignore = "takes 15 s in cargo test, deflating and reading 600 MB, past 10 s; run before each release"]
+fn a_sheet_with_a_second_declaration_of_windows_1252_is_bounded_at_100_000_000_bytes() {
+    let version_of_1_000_000_bytes = format!(
+        r#"<?xml version="{}" encoding="windows-1252"?>"#,
+        "1".repeat(1_000_000)
+    );
+    for declaration in [
+        r#"<?xml version="1.0" encoding="windows-1252"?>"#,
+        r#"<?xml version="1.0" foo="encoding='utf-8'" encoding="windows-1252"?>"#,
+        &version_of_1_000_000_bytes,
+    ] {
+        let at_bound = read_first_sheet(
+            &xlsx_with_declaration_between_rows(declaration, 100_000_000).unwrap(),
+            MAX_SHEET_CELLS,
+        );
+        let past_bound = read_first_sheet(
+            &xlsx_with_declaration_between_rows(declaration, 100_000_001).unwrap(),
+            MAX_SHEET_CELLS,
+        );
+
+        assert_eq!(
+            at_bound.unwrap().cells,
+            [SheetCell::Number(7.0), SheetCell::Number(8.0)],
+            "{}",
+            declaration.get(..60).unwrap_or(declaration)
+        );
+        assert_eq!(
+            past_bound,
+            Err(ReadError::Unreadable(
+                "a part of the file is too large".to_owned()
+            )),
+            "{}",
+            declaration.get(..60).unwrap_or(declaration)
+        );
+    }
 }

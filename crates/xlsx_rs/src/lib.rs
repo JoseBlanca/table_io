@@ -8,6 +8,7 @@ mod attrs;
 mod bounds_tests;
 mod cell;
 mod date;
+mod encoding;
 mod parts;
 mod rectangle;
 
@@ -187,6 +188,10 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// 4.29 GB and a cell of 750,000,000 bytes trapped it. The largest sheet a
 /// zip of 20,000,000 bytes, popnei_web's limit, was found to hold is about
 /// 248 MB.
+///
+/// A part found in an encoding other than UTF-8, which calamine decodes
+/// into up to 3 bytes of UTF-8 for each byte, is counted three times, and
+/// so is refused past 100,000,000 bytes.
 pub const MAX_PART_BYTES: u64 = 300_000_000;
 
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
@@ -214,14 +219,20 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 ///   hold more than [`MAX_UNZIPPED_BYTES`] together;
 /// - "a part of the file is too large", for a settings part past
 ///   [`MAX_SETTINGS_PART_BYTES`], in any folder, and for any part other
-///   than a table of texts past [`MAX_PART_BYTES`], the sheet among them;
+///   than a table of texts past [`MAX_PART_BYTES`], the sheet among them,
+///   or past a third of it when the part is found in an encoding other
+///   than UTF-8, as the next message says;
 /// - "too much text", for a part whose name ends in `sharedStrings.xml`, a
 ///   table of texts, past [`MAX_TEXT_TABLE_BYTES`], in any folder; and
 ///   "too many texts", for one of more texts than [`MAX_TEXTS`], or whose
 ///   attribute `uniqueCount` passes it;
 /// - "a part of the file is not in UTF-8", for a settings part or a table
-///   of texts that quick-xml decodes with another encoding, from a byte
-///   order mark or from the `encoding` of its declaration;
+///   of texts found in another encoding by its bytes: its first two bytes
+///   `FF FE`, `FE FF`, `00 3C` or `3C 00`, or an `encoding` of a
+///   declaration `<?xml … ?>`, wherever it is in the part, whose value is
+///   not `utf-8` or `utf8`, ignoring case and spaces around it, or cannot
+///   be read; a part in UTF-8 with such a declaration inside a comment is
+///   refused too;
 /// - "too many merged ranges", for a part of the file with more merged
 ///   ranges than `max_cells`, counted as the bytes `mergeCell` right after
 ///   `<` or `:`, any sheet's and not only the one read;

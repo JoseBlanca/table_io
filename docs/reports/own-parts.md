@@ -7,39 +7,30 @@ section is for whoever next revises a skill or writes a plan.
 
 ## State
 
-Done, on the branch `plan/own-parts`, 40 commits after `main` at
-f0e4307; nothing is merged or pushed.
+Done on 29 September 2026. Work packages 1 and 2 were merged into
+`main` on 29 September 2026 by the owner's order, at b6a2fbe; work
+package 3, added the same day when the owner decided Open 3 of the spec,
+is on the branch `plan/own-parts`, 15 commits after that; nothing is
+pushed.
 
 What a user of popnei_web gets from it, once it is released: the dates of
 a workbook of the 1904 system saved by Excel 365, the owner's
 `excel_1904.xlsx` among them, are right, `2024-05-13` where the release
 before this plan would have given `2020-05-12`; a file damaged inside its
-compressed bytes is refused instead of read with cells missing; and
-files written by hand in the reviews, as small as 2.5 KB, that made
-calamine hold GBs are refused with a message instead of ending the light
-worker, the thread of popnei_web's tab that reads the user's files. A table of
-10,000 individuals is read in 1.20 times the time of `main`, and the
-package is 300,145 bytes gzipped, 15,275 more than `main`'s.
+compressed bytes is refused instead of read with cells missing; and no
+file found in four rounds of review, as small as 2.5 KB, ends the light
+worker, the thread of popnei_web's tab that reads the user's files: each
+is refused with a message. The largest memory a read was made to take
+is 2.25 GB of the wasm's 4.29 GB. A table of 10,000 individuals is read
+in about 1.2 times the time of the package before this plan, and the
+package is 300,646 bytes gzipped, 15,776 more than before it.
 
-What is left open: one cell of a sheet can still hold a text large enough
-to end the light worker, from a zip of 390 KB; popnei_web then tells the
-user the file could not be read, and the tab goes on. The spec accepted
-this before it was measured. It is now the third of the spec's open
-points, the decisions it leaves to the owner, "Open 3" at the end of
-`docs/specs/read.md`, and its fix would be a plan of its own.
-
-What is asked of the owner:
-
-1. The merge of `plan/own-parts` into `main`.
-2. Open 3: whether to leave that trap for now, as recommended, and bound
-   every part, the sheet among them, in a plan after the first release;
-   or to do it before the release, which then waits for that plan and
-   for the measure of the largest sheet a user saves.
-3. Whether to make the first release after the merge: `main` pushed to
-   `github.com/JoseBlanca/xlsx_rs`, where it is public, and the
-   pre-release `js-v0.1.0-dev.1` made from it, as `docs/architecture.md`,
-   section 5, says. popnei_web's stage 4 waits for it. Neither can be
-   undone once others have downloaded them.
+What the owner decided on 29 September 2026: the merge of work packages
+1 and 2; Open 3, one cell whose text could end the light worker, fixed
+before the first release, which work package 3 did; and the first
+release once the significant work of the plan is done. What is asked
+now: the merge of work package 3, and the push and the release, which
+cannot be undone once others have downloaded them.
 
 ## Work packages 1 and 2, built
 
@@ -149,10 +140,50 @@ At 247df4d, on the owner's Mac, 28 September 2026:
 - The `.wasm` is 564,714 bytes, 300,145 gzipped with `gzip -9`, against
   284,870 gzipped on `main`.
 
+## Work package 3, every part bounded
+
+Added on 29 September 2026 when the owner decided Open 3: one cell of a
+sheet could hold a text of up to 1,000,000,000 bytes, which calamine
+builds at 2 to 6.6 times its size before xlsx_rs sees it, and a zip of
+730,563 bytes ended the light worker so.
+
+- Measured first, on the owner's Mac under node 26.8.2, 29 September
+  2026: the largest sheet found in a zip of 20,000,000 bytes, popnei_web's
+  limit, is about 248 MB, of blank cells each with a fill, compressed as
+  Excel compresses; one cell of 300,000,000 bytes took the wasm to 1.71
+  GB. So every part is now refused past 300,000,000 bytes,
+  `MAX_PART_BYTES`, the table of texts among them, which had 400,000,000.
+  Whether Excel writes a formatted range of a million rows cell by cell
+  is not confirmed; such a sheet near 250 MB would be close to the bound.
+- quick-xml decodes a part in any encoding a declaration names, even one
+  in the middle of the part after a first declaration with none. So the
+  bytes of every part are scanned for such a declaration: a part
+  calamine holds whole, the workbook, its relationships, the styles, the
+  table of texts, is refused if one is found, "a part of the file is not
+  in UTF-8"; any other part is counted three times against the bound,
+  since decoding makes at most 3 bytes of each byte, so that an image in
+  SVG of an older program in `iso-8859-1` does not refuse its workbook.
+- 68aa0e7 and 9a320db built it; the spec's review before the code found
+  a declaration hidden behind a decoy attribute or a million bytes,
+  which took the wasm to 4.17 GB, and the review of the code, in three
+  categories, spec, tests and errors, found a sheet named as a table of
+  texts that had the larger bound, a test that could not fail for its
+  reason, a line no test guarded and a comment that said quick-xml takes
+  a later declaration always. 0a15197..f35ebf3 fixed them.
+- At f35ebf3: `cargo test` 202 passed, 19 ignored, the 11 at the real
+  bounds passing in release in 3.1 s; clippy, `cargo doc`, `cargo
+  wasm-check` clean; node 13 pass. Under node, the largest memory any
+  file within the bounds took is 2.25 GB, a sheet and a table of texts
+  of 300,000,000 bytes each made of runs of CDATA; no file of the four
+  reviews trapped. The times, the package of `main` at b6a2fbe and this
+  one read in turns with a load of 6: `individuals_10000.xlsx` 91 ms and
+  94 ms, the sheet of 100,000 rows × 20 columns 1,249 ms and 1,303 ms.
+  The `.wasm` is 565,045 bytes, 300,646 gzipped.
+
 ## At the end
 
 `npm pack` in `js/xlsx_rs` built, tested and packed `xlsx_rs-0.1.0.tgz`,
-314,456 bytes, 8 files: `LICENSE`, `README.md`, `package.json`,
+314,949 bytes at f35ebf3, 8 files: `LICENSE`, `README.md`, `package.json`,
 `THIRD_PARTY_LICENSES.md`, and in `wasm/` the `.wasm`, its JavaScript
 and two files of declarations. `THIRD_PARTY_LICENSES.md` is new: the
 notices of the 29 crates compiled into the `.wasm`, all permissive,
@@ -172,7 +203,6 @@ the declarations popnei_web reads changed.
 
 For the issues of xlsx_rs, once its repository is on GitHub:
 
-- Open 3 of the spec, one cell of the sheet that ends the worker.
 - The zip crate reserves room for the number of parts a zip says it has
   (`zip-8.6.0`, `read/zip_archive.rs`, lines 184 to 200), and a zip that
   says 8,000,000 could ask for about 2 GB in the wasm; suspected by the
@@ -216,6 +246,11 @@ The owner can stop reading here.
   the two last tasks, about 59,000 more. The review cost twice the code
   it reviewed, and found one defect that gives a wrong cell, three
   untested, and the trap of Open 3.
+- **Work package 3, in the same tokens:** the measures before the spec,
+  106,000; the spec's review, 145,000; the code and its six fixes,
+  281,000; the review of the code in three categories, 352,000. The
+  measures first, then a spec reviewer asked to build a file that passes
+  the new bound, found the one trap that remained before any code.
 - **This session ran from popnei_web**, whose subagents are its own; the
   subagents of xlsx_rs were run as `general-purpose` agents told to follow
   their definition in `.claude/agents/`. It worked, and a session of

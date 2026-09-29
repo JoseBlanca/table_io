@@ -4,7 +4,7 @@ Written on 28 September 2026. It builds "What xlsx_rs reads before
 calamine" of `docs/specs/read.md`: xlsx_rs opens the zip itself, checks
 every part's checksum, takes the date system from the workbook, and
 bounds what calamine would otherwise read whole, before it gives the
-bytes to calamine. State: under way again, work package 3 added on 29 September 2026 by the owner's decision of Open 3; approved by the owner on 28 September 2026. Branch
+bytes to calamine. State: done on 29 September 2026, work package 3 added that day by the owner's decision of Open 3; approved by the owner on 28 September 2026. Branch
 `plan/own-parts`, report `docs/reports/own-parts.md`. It comes before the
 first release, `js-v0.1.0-dev.1`, since without it every date of a
 workbook of the 1904 system saved by Excel 365 is four years and a day
@@ -138,10 +138,10 @@ bytes, or is in an encoding other than UTF-8, is refused with a message.
 
 **Tasks:**
 
-- [ ] 3.1 `MAX_PART_BYTES` and the rule of UTF-8 by the bytes of every
+- [x] 3.1 `MAX_PART_BYTES` and the rule of UTF-8 by the bytes of every
   part, replacing the check of point 3 through quick-xml's decoder, and
   their tests. Serves 1 and 2.
-- [ ] 3.2 The measures under node. Serves 2 and 3.
+- [x] 3.2 The measures under node. Serves 2 and 3.
 
 **What could go wrong:** the rule of UTF-8 refusing a file a user saves;
 every file of `tests/data/` is read as before, or the task stops.

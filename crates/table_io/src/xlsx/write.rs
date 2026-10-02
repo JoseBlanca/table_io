@@ -234,7 +234,7 @@ impl CellWriter for XlsxWriter<'_> {
 #[cfg(test)]
 mod tests {
     use super::{exact_float, sheet_place};
-    use crate::CellPlace;
+    use crate::{CellPlace, ExportError};
 
     #[test]
     fn an_integer_is_its_float_from_minus_2_to_the_53_to_2_to_the_53_and_none_beyond() {
@@ -255,13 +255,16 @@ mod tests {
     fn a_place_is_the_row_as_it_is_and_the_column_less_1_and_none_past_the_sheet() {
         assert_eq!(sheet_place(CellPlace { column: 1, row: 0 }), Ok((0, 0)));
         assert_eq!(sheet_place(CellPlace { column: 3, row: 7 }), Ok((7, 2)));
-        assert!(sheet_place(CellPlace { column: 0, row: 0 }).is_err());
-        assert!(
+        let past_sheet = Err(ExportError::Failed(
+            "a cell past the last row or column of a sheet".to_owned(),
+        ));
+        assert_eq!(sheet_place(CellPlace { column: 0, row: 0 }), past_sheet);
+        assert_eq!(
             sheet_place(CellPlace {
                 column: 65_537,
                 row: 0
-            })
-            .is_err()
+            }),
+            past_sheet
         );
     }
 }

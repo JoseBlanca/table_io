@@ -263,9 +263,9 @@ value reads back as itself or is refused with its place.
 
 **Tasks.**
 
-- [ ] 5.1 The types of the export, its refusals that a CSV can meet in
+- [x] 5.1 The types of the export, its refusals that a CSV can meet in
   their order, and the writer of a CSV. Deliverable 1.
-- [ ] 5.2 The round trip of a CSV. Deliverable 2. Needs 5.1.
+- [x] 5.2 The round trip of a CSV. Deliverable 2. Needs 5.1.
 
 ## 6. The export of an xlsx
 

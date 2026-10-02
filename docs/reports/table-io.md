@@ -191,7 +191,13 @@ numbers, api, architecture and package:
   mark written once (api); the names `NA` and `-`, the tabs at the ends
   of a cell, and numbers as names beyond small whole ones, untested
   (tests, each shown by a change of the code no test caught).
-- Fixed in the binding: listed with its commit below.
+- Fixed in the binding at 3130e08: the index checked as a whole number
+  from 0 to the last column, 2^32, 1.5, `undefined`, −1, NaN and the
+  number of columns each thrown; the decimal mark taken from the
+  library; a test under node of a table at C3, `namesNumber` 3 and the
+  columns 4 and 5, which no test of a table at A1 could see (tests); the
+  README says the bytes are a `Uint8Array`. `npm test`: 35 passed, 3
+  skipped; `cargo test --workspace`: 339 passed, 20 ignored.
 - Not taken: where the binding writes a place as a line or a row, from
   the format the library gives, which is a translation and not a rule
   about a cell (architecture); refusing an `ArrayBuffer` in the package,

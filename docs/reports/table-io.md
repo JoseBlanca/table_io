@@ -45,3 +45,24 @@ Changed in the plan: deliverable 4 leaves the whole of `read.md` out of
 the grep, not only its top, since its note of 2 October 2026 keeps its
 text as approved. The root `README.md`, which no task named, was renamed
 by task 1.1 and given what table_io is by the orchestrator.
+
+The review, on 2 October 2026, at e1d968d, by the categories spec,
+tests, package and architecture:
+
+- Fixed: 15 comments, the citation of `read.md`'s heading split over two
+  lines, still named it "What table_io reads before calamine", a heading
+  that does not exist, and two sentences of the past gave table_io what
+  xlsx_rs had done (spec); the builds of one feature passed warnings, so
+  the coding skill runs clippy with warnings denied on each (architecture);
+  nothing failed when a crate of the xlsx lost its `optional`, so the
+  skill's checks gain `cargo tree` with `-e normal` and a grep that fails
+  then (tests, which made zip not optional and saw every other check
+  pass); the plan's command of deliverable 2 named zip through the
+  dev-dependency rust_xlsxwriter, and now has `-e normal` (spec). Commit
+  084f82b and the one after it.
+- Not taken: none. The package reviewer found nothing: the `.tgz` holds
+  its 8 files, was built from e1d968d byte for byte, and its test of the
+  declarations fails when they change.
+- For work package 6: the feature `deflate` of zip turns on
+  `deflate-zopfli`, a compressor the reading never uses; its size is
+  measured when the export comes (architecture reviewer).

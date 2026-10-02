@@ -323,6 +323,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo wasm-check
 cargo clippy -p table_io --no-default-features --features csv --all-targets -- -D warnings
 cargo clippy -p table_io --no-default-features --features xlsx --all-targets -- -D warnings
+! cargo tree -p table_io -e normal --no-default-features --features csv | grep -E 'calamine|zip|quick-xml'
 cd js/table_io && npm run build && npm test
 ```
 
@@ -331,9 +332,11 @@ the moment the package exists. The two runs of clippy with one feature
 each check that a format left out takes nothing with it that the other
 needs, and that no code is left that only the other format uses, which
 a `cargo build` would pass with a warning; a run with the defaults sees
-neither. `cargo tree -p table_io -e normal --no-default-features
---features csv` names no crate of the xlsx; without `-e normal` it shows
-the zip that rust_xlsxwriter, a dev-dependency, brings to the tests. `cargo doc` fails on a broken
+neither. The line of `cargo tree` fails when a build of `csv` alone
+compiles a crate of the xlsx, a dependency that lost its `optional`,
+which the clippy of `csv` alone passes; without `-e normal` it would
+show the zip that rust_xlsxwriter, a dev-dependency, brings to the
+tests. `cargo doc` fails on a broken
 link or a malformed doc comment, which clippy does not read. `cargo
 test` prints how many tests were ignored: the report says which files
 they wait for. `cargo wasm-check`, an alias of `.cargo/config.toml`,

@@ -107,6 +107,25 @@ mod written {
             .unwrap_or(Data::Empty)
     }
 
+    /// The cells of the first sheet of `bytes` as calamine reads them, row
+    /// by row from A1 to the last cell that holds a value.
+    fn calamine_rows(bytes: &[u8]) -> Vec<Vec<Data>> {
+        let (_, range) = calamine_sheet(bytes);
+        let (last_row, last_column) = range.end().unwrap();
+        (0..=last_row)
+            .map(|row| {
+                (0..=last_column)
+                    .map(|column| calamine_cell(&range, row, column))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// A text cell of calamine.
+    fn text_cell(text: &str) -> Data {
+        Data::String(text.to_owned())
+    }
+
     /// The table of "How it is verified": `id`, `h`, `n`, `ok`, `pop` over
     /// two rows, `A`, 1.5, 3, true, `P1` and `B`, missing, −2, false,
     /// `x;y`, with a column `big` of 2^53 and −2^53.
@@ -292,6 +311,10 @@ mod written {
 
         let table = read_back(&bytes).unwrap();
 
+        assert_eq!(
+            calamine_rows(&bytes),
+            [[text_cell("id")], [text_cell("a")], [text_cell("b")]]
+        );
         assert_eq!(table.names.header, "id");
         assert_eq!(table.names.names, ["a", "b"]);
         assert!(table.columns.is_empty());
@@ -351,8 +374,20 @@ mod written {
             ColumnValues::Boolean(vec![Some(true), None, Some(false), None]),
         )];
 
-        let table = read_back(&xlsx_of(&names, &columns)).unwrap();
+        let bytes = xlsx_of(&names, &columns);
 
+        let table = read_back(&bytes).unwrap();
+
+        assert_eq!(
+            calamine_rows(&bytes),
+            [
+                [text_cell("id"), text_cell("x")],
+                [text_cell("#N/A"), Data::Bool(true)],
+                [text_cell("NA"), Data::Empty],
+                [text_cell("-"), Data::Bool(false)],
+                [text_cell("#VALUE!"), Data::Empty],
+            ]
+        );
         assert_eq!(table.names.names, ["#N/A", "NA", "-", "#VALUE!"]);
         assert_eq!(
             table.columns[0].values,
@@ -370,8 +405,37 @@ mod written {
             column("b", texts(&[Some("TRUE"), Some("false"), None])),
         ];
 
-        let table = read_back(&xlsx_of(&names, &columns)).unwrap();
+        let bytes = xlsx_of(&names, &columns);
 
+        let table = read_back(&bytes).unwrap();
+
+        assert_eq!(
+            calamine_rows(&bytes),
+            [
+                ["id", "code", "f", "c", "b"].map(text_cell),
+                [
+                    text_cell("a"),
+                    text_cell("001"),
+                    text_cell("1.5"),
+                    text_cell("1,5"),
+                    text_cell("TRUE")
+                ],
+                [
+                    text_cell("b"),
+                    text_cell("002"),
+                    text_cell("1e3"),
+                    text_cell("2"),
+                    text_cell("false")
+                ],
+                [
+                    text_cell("c"),
+                    Data::Empty,
+                    text_cell("2"),
+                    text_cell("3"),
+                    Data::Empty
+                ],
+            ]
+        );
         assert_eq!(
             table.columns[0].values,
             ColumnValues::Integer(vec![Some(1), Some(2), None])
@@ -409,8 +473,19 @@ mod written {
             ColumnValues::Integer(vec![None, None, Some(-9_007_199_254_740_993)]),
         )];
 
-        let table = read_back(&xlsx_of(&names, &written)).unwrap();
+        let bytes = xlsx_of(&names, &written);
 
+        let table = read_back(&bytes).unwrap();
+
+        assert_eq!(
+            calamine_rows(&bytes),
+            [
+                [text_cell("id"), text_cell("n")],
+                [text_cell("a"), Data::Float(9_007_199_254_740_992.0)],
+                [text_cell("b"), Data::Float(-9_007_199_254_740_992.0)],
+                [text_cell("c"), Data::Empty],
+            ]
+        );
         assert_eq!(
             table.columns[0].values,
             ColumnValues::Integer(vec![
@@ -515,7 +590,16 @@ mod written {
             );
         }
         let inside = [column("x y", texts(&[Some("p q"), Some("r\ts")]))];
-        let table = read_back(&xlsx_of(&names, &inside)).unwrap();
+        let bytes = xlsx_of(&names, &inside);
+        let table = read_back(&bytes).unwrap();
+        assert_eq!(
+            calamine_rows(&bytes),
+            [
+                [text_cell("id"), text_cell("x y")],
+                [text_cell("a"), text_cell("p q")],
+                [text_cell("b"), text_cell("r\ts")],
+            ]
+        );
         assert_eq!(table.columns[0].name, "x y");
         assert_eq!(table.columns[0].values, texts(&[Some("p q"), Some("r\ts")]));
     }
@@ -570,8 +654,18 @@ mod written {
         let too_long = "a".repeat(32_768);
         let too_long_emoji = "😀".repeat(16_384);
 
-        let table = read_back(&xlsx_of(&names, &written)).unwrap();
+        let bytes = xlsx_of(&names, &written);
 
+        let table = read_back(&bytes).unwrap();
+
+        assert_eq!(
+            calamine_rows(&bytes),
+            [
+                [text_cell("id"), text_cell("x")],
+                [text_cell("a"), text_cell(&longest)],
+                [text_cell("b"), text_cell(&longest_emoji)],
+            ]
+        );
         assert_eq!(
             table.columns[0].values,
             texts(&[Some(&longest), Some(&longest_emoji)])
@@ -748,8 +842,14 @@ mod written {
         let mut too_many = columns.clone();
         too_many.push(column("c16385", ColumnValues::Integer(vec![Some(1)])));
 
-        let table = read_back(&xlsx_of(&names, &columns)).unwrap();
+        let bytes = xlsx_of(&names, &columns);
 
+        let table = read_back(&bytes).unwrap();
+
+        let (_, range) = calamine_sheet(&bytes);
+        assert_eq!(range.end(), Some((1, 16_383)));
+        assert_eq!(calamine_cell(&range, 0, 16_383), text_cell("c16384"));
+        assert_eq!(calamine_cell(&range, 1, 16_383), Data::Float(1.0));
         assert_eq!(table.columns.len(), 16_383);
         assert_eq!(table.columns[16_382].name, "c16384");
         assert_eq!(
@@ -908,8 +1008,17 @@ mod written {
         let names = names_of("\u{FEFF}#CHROM", &["a"]);
         let columns = [column("ő", texts(&[Some("€")]))];
 
-        let table = read_back(&xlsx_of(&names, &columns)).unwrap();
+        let bytes = xlsx_of(&names, &columns);
 
+        let table = read_back(&bytes).unwrap();
+
+        assert_eq!(
+            calamine_rows(&bytes),
+            [
+                [text_cell("\u{FEFF}#CHROM"), text_cell("ő")],
+                [text_cell("a"), text_cell("€")],
+            ]
+        );
         assert_eq!(table.names.header, "\u{FEFF}#CHROM");
         assert_eq!(table.columns[0].name, "ő");
         assert_eq!(table.columns[0].values, texts(&[Some("€")]));
@@ -917,7 +1026,8 @@ mod written {
 }
 
 // The round trip of "What reads back" of docs/specs/export.md, for an
-// xlsx, over the tables of the round trip of a CSV.
+// xlsx, over the tables of the round trip of a CSV, some of their texts
+// replaced by texts only an xlsx is tried with.
 #[cfg(test)]
 mod round_trip {
     use table_io::{
@@ -941,6 +1051,64 @@ mod round_trip {
     const EXCEL_ERRORS: [&str; 7] = [
         "#N/A", "#DIV/0!", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!",
     ];
+
+    /// The seed of the generator of the texts only an xlsx is tried with,
+    /// apart from the generator of the tables, so that the tables of the
+    /// CSV stay as they are.
+    const XLSX_SEED: u64 = 0x05EE_D0FE_7CE1;
+
+    /// The texts only an xlsx is tried with: the seven errors of Excel;
+    /// controls rust_xlsxwriter writes as `_xHHHH_`, after `_x` and four
+    /// digits of hexadecimal, refused, and elsewhere, written; and a text
+    /// that is such an escape.
+    const XLSX_TEXTS: [&str; 15] = [
+        "#N/A",
+        "#DIV/0!",
+        "#NAME?",
+        "#NULL!",
+        "#NUM!",
+        "#REF!",
+        "#VALUE!",
+        "p_x0041\r",
+        "_x00ff\u{1}q",
+        "_xAbC9\u{1F}",
+        "_x004\r",
+        "_x0041_\r",
+        "a\u{1}b",
+        "\u{1F}",
+        "_x0041_",
+    ];
+
+    /// Replaces, in 1 in 12, a name of the header or of an individual, or a
+    /// text value, of the table by one of [`XLSX_TEXTS`].
+    fn with_xlsx_texts(names: &mut NameColumn, columns: &mut [Column], generator: &mut Generator) {
+        let mut replace = |text: &mut String| {
+            if generator.one_in(12) {
+                *text = (*generator.one_of(&XLSX_TEXTS)).to_owned();
+            }
+        };
+        replace(&mut names.header);
+        names.names.iter_mut().for_each(&mut replace);
+        for column in columns.iter_mut() {
+            replace(&mut column.name);
+            if let ColumnValues::Text(texts) = &mut column.values {
+                texts.iter_mut().flatten().for_each(&mut replace);
+            }
+        }
+    }
+
+    /// Whether `character` at `index` of `text` is one an xlsx cannot
+    /// carry: U+FFFE, U+FFFF, or a control of U+0000 to U+0008 or U+000B to
+    /// U+001F right after `_x` and four digits of hexadecimal.
+    fn cannot_carry(text: &str, index: usize, character: char) -> bool {
+        let is_after_escape_digits = match text.as_bytes()[..index].last_chunk::<6>() {
+            Some([b'_', b'x', digits @ ..]) => digits.iter().all(u8::is_ascii_hexdigit),
+            Some(_) | None => false,
+        };
+        matches!(character, '\u{FFFE}' | '\u{FFFF}')
+            || (matches!(character, '\u{0}'..='\u{8}' | '\u{B}'..='\u{1F}')
+                && is_after_escape_digits)
+    }
 
     /// Asserts that `refusal` of `names` and `columns`, exported as an
     /// xlsx, is due by the rule of the spec it names.
@@ -977,9 +1145,11 @@ mod round_trip {
                     }
                 }
                 ExportRefusal::CannotCarry { place, character } => {
-                    text_of(*place).chars().find(|&text_character| {
-                        text_character == '\u{FFFE}' || text_character == '\u{FFFF}'
-                    }) == Some(*character)
+                    let text = text_of(*place);
+                    text.char_indices()
+                        .find(|&(index, text_character)| cannot_carry(&text, index, text_character))
+                        .map(|(_, text_character)| text_character)
+                        == Some(*character)
                 }
                 ExportRefusal::FormatNotBuilt
                 | ExportRefusal::NoIndividual
@@ -1027,6 +1197,7 @@ mod round_trip {
     #[test]
     fn a_table_exported_as_an_xlsx_reads_back_as_itself() {
         let mut generator = Generator { state: SEED };
+        let mut xlsx_generator = Generator { state: XLSX_SEED };
         let options = ImportOptions {
             max_bytes: 20_000_000,
             max_cells: 2_000_000,
@@ -1040,8 +1211,14 @@ mod round_trip {
         let mut num_no_individual = 0_u32;
         let mut num_repaired = 0_u32;
         let mut num_narrowed = 0_u32;
+        // The refusals only an xlsx gives, each to be met: spaces at the
+        // ends, an integer too large, U+FFFE or U+FFFF, an error of Excel
+        // as a name, one as a text value, and a control after `_x` and four
+        // digits of hexadecimal.
+        let mut num_xlsx_refusals = [0_u32; 6];
         for _ in 0..NUM_TABLES {
             let (mut names, mut columns) = generated_table(&mut generator);
+            with_xlsx_texts(&mut names, &mut columns, &mut xlsx_generator);
             let mut num_repairs = 0_u32;
             let bytes = loop {
                 match export_table(&names, &columns, &ExportFormat::Xlsx) {
@@ -1051,6 +1228,32 @@ mod round_trip {
                         num_repairs += 1;
                         assert!(num_repairs <= MAX_REPAIRS, "{refusal:?}");
                         assert_due(&names, &columns, &refusal);
+                        let kind = match &refusal {
+                            ExportRefusal::SpacesAtEnds { .. } => Some(0),
+                            ExportRefusal::IntegerTooLarge { .. } => Some(1),
+                            ExportRefusal::CannotCarry { character, .. } => {
+                                Some(if character.is_control() { 5 } else { 2 })
+                            }
+                            ExportRefusal::ErrorAsName { .. } => Some(3),
+                            ExportRefusal::ReadsAsMissing { place } => {
+                                let text = text_at(&mut names, &mut columns, *place);
+                                EXCEL_ERRORS.contains(&text.as_str()).then_some(4)
+                            }
+                            ExportRefusal::FormatNotBuilt
+                            | ExportRefusal::NoIndividual
+                            | ExportRefusal::WrongLength { .. }
+                            | ExportRefusal::EmptyName { .. }
+                            | ExportRefusal::DuplicateName { .. }
+                            | ExportRefusal::EmptyIndividual { .. }
+                            | ExportRefusal::DuplicateIndividual { .. }
+                            | ExportRefusal::NotFinite { .. }
+                            | ExportRefusal::TextTooLong { .. }
+                            | ExportRefusal::TooLargeForSheet { .. }
+                            | ExportRefusal::ReadsAsVariantsFile => None,
+                        };
+                        if let Some(kind) = kind {
+                            num_xlsx_refusals[kind] += 1;
+                        }
                         repaired(&mut names, &mut columns, &refusal, num_repairs);
                     }
                     Err(error) => panic!("{error:?} of {names:?} {columns:?}"),
@@ -1089,10 +1292,16 @@ mod round_trip {
         // was met.
         assert_eq!(num_exported + num_no_individual, NUM_TABLES);
         assert!(num_no_individual > 0 && num_repaired > 100 && num_narrowed > 100);
+        assert!(
+            num_xlsx_refusals.iter().all(|&count| count > 0),
+            "{num_xlsx_refusals:?}"
+        );
         println!(
             "{NUM_TABLES} tables exported as an xlsx: {num_exported} read back, {num_repaired} \
              of them made again after a refusal, {num_no_individual} refused for no \
-             individual; {num_narrowed} columns read back as another type"
+             individual; {num_narrowed} columns read back as another type; refusals of spaces \
+             at the ends, an integer too large, U+FFFE or U+FFFF, an error as a name, an \
+             error as a value and a control after an escape: {num_xlsx_refusals:?}"
         );
     }
 }

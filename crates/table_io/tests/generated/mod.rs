@@ -40,7 +40,7 @@ impl Generator {
     }
 
     /// A number from 0 to `below` − 1.
-    fn below(&mut self, below: usize) -> usize {
+    pub fn below(&mut self, below: usize) -> usize {
         usize::try_from(
             self.next_number()
                 .checked_rem(u64::try_from(below).unwrap())
@@ -50,12 +50,12 @@ impl Generator {
     }
 
     /// Whether a chance of 1 in `chances` came.
-    fn one_in(&mut self, chances: usize) -> bool {
+    pub fn one_in(&mut self, chances: usize) -> bool {
         self.below(chances) == 0
     }
 
     /// One of `choices`.
-    fn one_of<'choice, T>(&mut self, choices: &'choice [T]) -> &'choice T {
+    pub fn one_of<'choice, T>(&mut self, choices: &'choice [T]) -> &'choice T {
         &choices[self.below(choices.len())]
     }
 }

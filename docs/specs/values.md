@@ -196,7 +196,12 @@ below the header being row 1, and its text. That row is the table's and
 not the file's: an application that shows a line or a row of the sheet
 keeps that number itself. So the user reads "12
 values are not numbers, such as 'n.d.' in row 40", in the application's
-words. A missing value stays missing and never fails. The row is a
+words. A missing value stays missing and never fails. Missing is `None`
+alone: a value a caller holds as the text `NA`, `-` or the empty text is
+a value, and fails to convert to a number, since an import never gives
+one, every such cell of a file being `None` already; an application that
+makes a column of texts the user typed reads each with `is_missing`
+first. The row is a
 number of 32 bits, as a row of a sheet is, so that a first value past
 row 4,294,967,295, in a column of more rows than that which a caller
 made and no import gives, is named as row 4,294,967,295, a choice made
@@ -251,6 +256,8 @@ impl ColumnValues {
     pub fn column_type(&self) -> ColumnType;
     /// The number of rows.
     pub fn len(&self) -> usize;
+    /// Whether the column has no row, which clippy asks for beside len.
+    pub fn is_empty(&self) -> bool;
 }
 
 /// The mark between the whole part and the decimals of a number.
@@ -346,10 +353,18 @@ At `float_text`, with the point: 1 `"1"`, 1.5 `"1.5"`, 0.1 + 0.2
 `"1e+21"`, 1.2345678901234568 × 10^21 `"1.2345678901234568e+21"`,
 10^−6 `"0.000001"`, 10^−7 `"1e-7"`, 1.5 × 10^−7 `"1.5e-7"`, −0 `"0"`,
 5 × 10^−324 `"5e-324"`, the largest float `"1.7976931348623157e+308"`,
-infinity `"Infinity"`, NaN `"NaN"`; with the comma, 1.5 `"1,5"` and
+infinity `"Infinity"`, minus infinity `"-Infinity"`, NaN `"NaN"`; with the comma, 1.5 `"1,5"` and
 1.5 × 10^−7 `"1,5e-7"`; −1.5 `"-1.5"`, −1.5 × 10^−7 `"-1.5e-7"`; the
 ties 100000000000000.125 `"100000000000000.12"` and 12345678901234.0625
-`"12345678901234.062"`. Each of these is what node 26.8.2 prints for
+`"12345678901234.062"`; and floats whose shortest digits round to a
+halfway point that their exact value is not, or whose lower digits would
+not read back as the same float, so that each check of the tie is held
+by a test, as the review of work package 2 of `plans/table-io.md` found
+none was: 1.8774474796234095 × 10^−7 `"1.8774474796234095e-7"`,
+0.00008012601628271273 `"0.00008012601628271273"`, 94861526562499990000
+`"94861526562499990000"`, 2.0372681319713593 × 10^−10
+`"2.0372681319713593e-10"`, and 2^−24, a power of two, `"5.960464477539063e-8"`,
+each given in the test by the bits of the float node printed. Each of these is what node 26.8.2 prints for
 `String(x)` on the owner's Mac, which the test of the package checks
 again (`specs/package.md`).
 
@@ -362,6 +377,12 @@ At `convert_column`, each a column literal and the target:
 | text `"1,5"`, `"2"` with the comma | float | 1.5, 2 |
 | text `"TRUE"`, `"no"` | boolean | 1 failed, row 2, `"no"` |
 | integer 3, missing | float | 3, missing |
+| integer 1, −3, −9,223,372,036,854,775,808, missing | text | `"1"`, `"-3"`, `"-9223372036854775808"`, missing |
+| text `"a"`, missing | text | `"a"`, missing |
+| float 1 | boolean | 1 failed, row 1, `"1"` |
+| boolean true | float | 1 failed, row 1, `"TRUE"` |
+| float 3.5, with the comma | integer | 1 failed, row 1, `"3,5"` |
+| text `"x"`, `"NA"`, `""`, missing | float | 3 failed, row 1, `"x"` |
 | integer 9,007,199,254,740,993 | float | 9,007,199,254,740,992 |
 | integer 9,007,199,254,740,994 | float | 9,007,199,254,740,994 |
 | float 2, 3.5, with the point | integer | 1 failed, row 2, `"3.5"` |

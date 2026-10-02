@@ -133,10 +133,10 @@ a column, which Vavilov Explorer calls when the user changes a type.
 
 **Tasks.**
 
-- [ ] 2.1 The module `value`: the rules of "What a text holds" and "The
+- [x] 2.1 The module `value`: the rules of "What a text holds" and "The
   text of a value", `float_text` with ECMAScript's layout and its ties
   to the even digit. Deliverable 1.
-- [ ] 2.2 The module `types`: `ColumnType`, `ColumnValues`,
+- [x] 2.2 The module `types`: `ColumnType`, `ColumnValues`,
   `ConversionFailure` and `convert_column`, by "The conversion of a
   column", with the bound of 2^63 checked as the spec says. Deliverable
   2. Needs 2.1.

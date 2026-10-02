@@ -41,6 +41,18 @@ Nothing waits on the owner to go on. At the end the report asks for
 the merge, and tells the owner of the note far to the left of a table,
 in the section on work package 3.
 
+## The rename of the repository on GitHub
+
+The owner renamed the repository `github.com/JoseBlanca/table_io` on 2
+October 2026. The address of `origin` in the main checkout was already
+the new one, and `git ls-remote origin` answers from it, with `main` at
+8bb8982 and the tag `js-v0.1.0-dev.1`. The old URL that popnei_web's
+`package-lock.json` installs,
+`https://github.com/JoseBlanca/xlsx_rs/releases/download/js-v0.1.0-dev.1/xlsx_rs-0.1.0.tgz`,
+downloaded with `curl -L` the same day, gives 314,955 bytes whose
+sha512 equals the lockfile's `integrity`, so popnei_web's `npm ci` is
+not affected by the rename.
+
 ## Work package 1: the rename
 
 Built on 2 October 2026 in commits 7df5adc (task 1.1), dea97e0 (task

@@ -230,10 +230,10 @@ of the `.wasm`, raw and gzipped, for work package 6.
 
 **Tasks.**
 
-- [ ] 4.1 The decoding of `specs/text-files.md`, "The bytes and the
+- [x] 4.1 The decoding of `specs/text-files.md`, "The bytes and the
   encoding": the marks, cut short, not text, Windows-1252 by its table,
   the line not decoded. Deliverable 1.
-- [ ] 4.2 The split and the finding of the separator and the decimal
+- [x] 4.2 The split and the finding of the separator and the decimal
   mark, "A variants file", "The lines, the quotes and the cells", "The
   separator", "The decimal mark", and the ragged row of the table step.
   Deliverables 2, 3 and 5. Needs 4.1.

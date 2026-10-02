@@ -237,7 +237,7 @@ of the `.wasm`, raw and gzipped, for work package 6.
   mark, "A variants file", "The lines, the quotes and the cells", "The
   separator", "The decimal mark", and the ragged row of the table step.
   Deliverables 2, 3 and 5. Needs 4.1.
-- [ ] 4.3 The no-panic test and the package's tests of a CSV. Deliverables
+- [x] 4.3 The no-panic test and the package's tests of a CSV. Deliverables
   4 and 6. Needs 4.2.
 
 **What could go wrong.** The order of the checks against popnei_web's

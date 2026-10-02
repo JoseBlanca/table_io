@@ -1,4 +1,22 @@
-# xlsx_rs: an xlsx read into cells
+# table_io: an xlsx read into cells
+
+Revised on 2 October 2026, when xlsx_rs became table_io
+(`docs/architecture.md`): this spec is now that of the module `xlsx` of
+table_io's library crate, behind the feature `xlsx`, which gives the
+import of `specs/import.md` the cells of the first visible sheet of an
+xlsx. What it says of the cells, the sheet, the merged ranges, the
+refusals of an xlsx and what is read before calamine holds as written.
+Four things change, and where the text below says otherwise these hold:
+`read_first_sheet` and its types are private to the library, since an
+application calls `import_table`; the package, its `readXlsx`, the
+struct `XlsxRead` and their declarations, "The Rust interface" and "The
+package", are replaced by `specs/package.md`, and the owner decided that
+nothing of them is kept; a file that is not a zip is no longer refused as
+`NotXlsx`, since the import reads it as a text file (`specs/import.md`,
+"The format"); and what the cells become, the header, the missing values
+and the types, is no longer popnei_web's but `specs/import.md`'s and
+`specs/values.md`'s. The text below is kept as it was approved, with its
+history.
 
 Written on 27 September 2026, for stage 4 of popnei_web's `docs/build-order.md`, the
 Individuals step and the PCA, and revised the same day to agree with the

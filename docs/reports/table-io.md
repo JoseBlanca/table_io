@@ -12,10 +12,12 @@ objectives, the architecture, the specs and the plan were put on `main`
 by the owner's order the same day, at 8bb8982; nothing of the code is on
 `main`, and nothing is pushed.
 
-Work packages 1 to 4 are done, reviewed and written below; work
-package 5, the export of a CSV, is next.
+Work packages 1 to 5 are done, reviewed and written below; work
+package 6, the export of an xlsx, is next.
 
-One question waits on the owner, and nothing of the plan rests on it.
+Two questions wait on the owner, and nothing of the plan rests on them.
+
+The first. 
 A file of UTF-8 without the mark of its encoding, cut short in the
 middle of an accented letter, as an interrupted copy leaves it, is not
 valid UTF-8, so it is read as Windows-1252, and every accented letter of
@@ -34,8 +36,39 @@ same way today, and `specs/text-files.md` says so. The options:
 
 The recommendation is to keep it so: a file cut in the middle of a
 letter is also cut in the middle of a row, which the user sees as a row
-of the wrong length or a value missing at the end, and the difference
+of the wrong length or its last value cut short, and the difference
 from popnei_web would be one more for its move to table_io.
+
+The second. The import looks at the first bytes of a file to know what
+it is, and the export of a CSV writes the first name of the header
+there. Five first names, written as they are, make the file read back as
+something else: in Windows-1252, a name that starts with `ÿþ` or `þÿ` is
+read as a file of UTF-16, which is then empty, and one that starts with
+`ï»¿` loses those three characters, read as the mark of UTF-8; in any
+encoding, `PK` and the control characters 3 and 4 make it read as an
+xlsx, which then cannot be read, and the eight characters that start an
+old Excel file make it refused as one. The spec already refuses the two
+cases of the kind it names, a header that reads as a variants file and a
+mark of UTF-8 at the start of the first name; the latter is refused even
+when the name is quoted, where it would read back as itself. The
+options:
+
+- Refuse the five, as a header that reads back as another format, a new
+  refusal of `specs/export.md` and of `ExportRefusal`, and add to it,
+  when the owner wants it, the column of the name, which the refusal of
+  a variants file does not carry either. The user who names a column so
+  is told to rename it.
+- Quote the first name when it starts with any of these, so that the
+  file starts with `"` and reads back as itself, and the mark of UTF-8
+  with them, which then is no longer refused. No refusal is added; the
+  file holds one pair of quotes Excel shows no sign of.
+
+The recommendation is to quote: every such table is then exported and
+reads back, in table_io and in Excel, and the rule is one line of the
+writer and one of the spec. A name that starts with one of these
+sequences has not been seen in a file of the owner's, so either choice
+changes nothing a user does today; until the owner decides, they are
+written as they are, and the round trip leaves them out.
 
 ## The rename of the repository on GitHub
 
@@ -357,6 +390,83 @@ errors, api, architecture and package:
   are not counted.
 - For the owner: a UTF-8 file cut short in the middle of an accented
   letter, below.
+
+## Work package 5: the export of a CSV
+
+Built on 2 October 2026 by one subagent, both tasks: b815f5b (the spec:
+a row, a column or a count of a refusal past 4,294,967,295 given as
+4,294,967,295), 7721dca (task 5.1) and fa60d95 (task 5.2).
+
+The deliverables, checked by the orchestrator at fa60d95 and again after
+the review's fixes at 096f900:
+
+1. `cargo test -p table_io --test export_csv`: 43 passed at fa60d95, 52
+   at 096f900; every case of `specs/export.md`, "How it is verified",
+   for a CSV, as its literal bytes or its literal refusal, each refusal
+   with a column and a row that differ.
+2. The round trip of "What reads back": 2,000 tables made with a fixed
+   seed, each exported with the 36 combinations of separator, decimal
+   mark, encoding and text of a missing value, 72,000 exports. 65,916
+   read back as themselves; 35,584 of those were made again after a
+   refusal, with a value made missing or a name changed, and each
+   refusal is now checked to be due by its rule; 6,084 tables were
+   refused as having no individual; 25,134 columns read back as the
+   narrower type the spec allows, a text of whole numbers as integers.
+
+`cargo test --workspace`: 508 passed, 26 ignored at 096f900. `npm test`:
+46 passed, 1 skipped; the package does not change, the export not being
+in it.
+
+Changed in the plan: nothing. The export of an xlsx, asked of any build
+before work package 6, is refused as a format not built.
+
+What the owner should know:
+
+- The floats: 306,312 floats, the smallest and the largest among them,
+  and 100,006 integers were exported with each of the 12 combinations
+  of separator, decimal mark and text of a missing value, and read back
+  bit for bit, −0 as 0, as the spec says (numbers reviewer).
+- A CSV exported with the decimal comma and read back without the mark
+  set may lose its float columns: the import guesses the mark by
+  counting the cells written with each, and two text columns of numbers
+  with the point, `1.5`, outnumber one float column of `1,5`. The spec
+  promises the round trip only when the import is given the mark the
+  export used, so Vavilov Explorer sets the mark when it opens a CSV it
+  wrote; the same holds of the encoding.
+- Five first names make the file the export writes read back as
+  something else, the question below.
+
+The review, at fa60d95, by the categories spec, tests, numbers, errors,
+api and architecture; the package was not touched:
+
+- Fixed, the tests: the round trip made every refused table valid and
+  exported it again, so a refusal given for no reason passed it; three
+  such changes of the code, a subnormal float refused as not finite, the
+  character U+FFFE refused in UTF-8, and every header that starts with
+  `#` taken as a variants file, passed all 43 tests (tests). The order of
+  "no individual" before "a variants file", and of a variants file
+  before a mark at the start of the header, had no test (tests, spec).
+  Eight literal tests added, each seen to fail under its change.
+- Fixed, for work package 6: the writer of the cells could give a
+  refusal and not the failure of rust_xlsxwriter, which the spec gives
+  as an export that failed; the check of the shape of the table, a
+  column of the wrong length, was inside the CSV's path, and an xlsx
+  writer that missed it would have filled the short column with missing
+  values (architecture, errors).
+- Fixed, the interface: `Display` and `std::error::Error` for
+  `ExportError`, as the import has them, so that Vavilov Explorer passes
+  it on with `?` (api, errors, spec: three reviewers; a sentence added
+  to the spec). The errors of `export_table` listed in order; how a
+  column of a refusal is counted against the columns given (api).
+- Fixed, the code: the characters removed at the ends of a cell and the
+  quoting of a cell written once, shared with the import; the bytes of
+  the file given back at their length, 16,911,682 bytes where the
+  buffer had grown to 33,554,432 (architecture). The architecture and
+  the coding skill name the modules of the export (architecture).
+- Not taken: building the header line once (architecture); the check of
+  a variants file must come before the refusals of the header's cells,
+  which are found as the header is written, so the line is built twice
+  by one function.
 
 ## The issues to open
 

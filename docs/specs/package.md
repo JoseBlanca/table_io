@@ -87,8 +87,10 @@ defect of the caller, thrown as an `Error`.
 
 `TableRead` holds a table or a refusal. The **column of the names** is
 the first column of the file, which names the individuals and has no
-type (`specs/import.md`). With a table, `refusal` is `""`;
-`format` the format found; `encoding`, `separator`, `decimal` and
+type (`specs/import.md`). `format` is the format found, with a table and
+with every refusal, so that a refusal's line, row and column are written
+as the format has them, a column of an xlsx with Excel's letters. With a
+table, `refusal` is `""`; `encoding`, `separator`, `decimal` and
 `undecodedLine` how a text file was read, the line `undefined` when every
 character was decoded; `sheet` the sheet of an xlsx; `namesHeader`,
 `namesNumber` and `names` the column of the names; `numColumns` the
@@ -105,13 +107,13 @@ words need are filled, the others 0 or `""`:
 |---|---|
 | `unreadable` | `text`, the zip crate's, calamine's or table_io's message |
 | `tooLarge` | `size`, in bytes |
-| `formatNotBuilt` | `text`, `"text"` or `"xlsx"` |
+| `formatNotBuilt` | none but `format` |
 | `oldExcel`, `encrypted`, `cutShort`, `notText`, `variantsFile`, `empty` | none |
 | `emptySheet` | `sheet` |
 | `cellError` | `text`, the error, `#GETTING_DATA` |
 | `sheetTooLarge` | `sheet`, `row` and `column`, the first of the rectangle, `sheetRows`, `sheetColumns` |
 | `unclosedQuote` | `line`, `separator` |
-| `tooManyCells` | `line` |
+| `tooManyCells`, only by Open 2 of `specs/import.md` | `line` |
 | `headerError` | `row`, `column`, of the sheet, `text`, the error |
 | `unnamedColumn` | `column` |
 | `raggedRow` | `line`, `expected`, `found`, `separator` |

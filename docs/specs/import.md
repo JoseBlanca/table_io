@@ -40,25 +40,33 @@ The format is found from the first bytes of the file, not from its name,
 as the owner decided on 2 October 2026 (`docs/architecture.md`, section
 2):
 
-1. A file larger than the caller's limit of bytes is refused as **too
-   large**, with its size and the limit, before anything else is read.
-2. A file that starts with `PK`, as every zip does, is read as an xlsx,
-   by `specs/read.md`.
-3. A file that starts with the eight bytes `D0 CF 11 E0 A1 B1 1A E1`, the
+1. A file that starts with the four bytes `50 4B 03 04`, `PK` and two
+   bytes that open the first part of a zip, as `read_first_sheet` checks
+   today, is an xlsx, read by `specs/read.md`.
+2. A file that starts with the eight bytes `D0 CF 11 E0 A1 B1 1A E1`, the
    compound file of the old Office, is an old `.xls` or an xlsx saved
-   with a password, which Excel encrypts inside such a file, and is
-   refused as **old Excel** or **encrypted** by `specs/read.md`, "The
-   refusals".
-4. Any other file is read as a text file, by `specs/text-files.md`, the
-   empty file among them.
+   with a password, which Excel encrypts inside such a file: it is of
+   the format xlsx, and is refused as **old Excel** or **encrypted** by
+   `specs/read.md`, "The refusals", or as a format not built in a build
+   without the feature `xlsx`.
+3. Any other file is a text file, read by `specs/text-files.md`, the
+   empty file among them, and a CSV whose header starts with `PK`; an
+   empty zip, `50 4B 05 06`, is not text there, having bytes 0.
+
+Then a file larger than the caller's limit of bytes is refused as **too
+large**, with its size and the limit, before anything more of it is
+read.
 
 So a CSV saved with the name `.xlsx`, which popnei_web refuses today with
 words that ask the user to rename it, is read as the CSV it is, and the
 table says it was read as a text file. A zip that holds no workbook, a
-`.docx` or a `.zip` of other files, is not read: `specs/read.md` gives an
-error, "the file names no workbook", which the application shows as a
-file that could not be read, until the owner decides otherwise (**Open
-1**, below). A build without the feature of the format
+`.docx` or a `.zip` of other files, is not read: it is an unreadable
+file, with calamine's message for a `.docx`, "File not found
+'word/_rels/workbook.xml.rels'", and `specs/read.md`'s, "the file names
+no workbook", for a zip with no package relationships, the part that
+says which part is the workbook (tried on 2 October 2026), which the
+application shows as a file that could not be read, until the owner
+decides otherwise (**Open 1**, below). A build without the feature of the format
 found refuses the file as **a format not built**, naming the format, so
 that the application can say which reader it lacks.
 
@@ -110,8 +118,10 @@ The same rules for the rows of every format:
   as column 3 having values and no name, and not as line 2 having 2 cells
   where the header has 3.
 - **Two columns of one name** are refused, as a **duplicate column**,
-  with the name and the first two columns by position that have it, so
-  that
+  with the first name that repeats one before it, reading the header from
+  left to right, its column and the column of the name it repeats, so
+  that `id,a,b,b,a` is refused for `b`, columns 3 and 4, as popnei_web's
+  `firstRepeated` has it, and so
   the user reads "the name 'height' is used by columns 4 and 9"
   (Vavilov Explorer's `docs/design.md`, section 5). Names are compared
   exactly.
@@ -166,13 +176,13 @@ row, from 1.
 The caller gives with each import the largest number of cells it accepts,
 popnei_web 2,000,000 today. An xlsx is refused as **sheet too large** at
 the first cell that makes the rectangle of its values larger, by
-`specs/read.md`. A text file is refused as **too many cells** at the line
-where the cells it has split so far, the blank rows' among them, pass
-the limit, with that line and the limit, so that a text file never holds more cells than the caller
-allowed. A CSV of 20 MB, popnei_web's largest, holds about 1,800,000
-cells of ten characters and a separator, so 2,000,000 lets a text file
-hold a table as large as popnei_web's limit of bytes does: an estimate,
-as popnei_web's own is.
+`specs/read.md`. A text file is bounded by its bytes, as popnei_web has
+it today, which bound its cells to at most half its bytes and one, a
+cell and its separator taking two bytes at least; whether it is bounded
+by the limit of cells too, refused as **too many cells** at the line
+where the cells split so far pass it, is **Open 2**, below. Meanwhile it
+is not, and the parts of this spec and of `specs/text-files.md` about too
+many cells wait for the answer.
 
 ### The types and the table
 
@@ -189,11 +199,13 @@ order, popnei_web's with the kinds this spec adds:
 1. too large;
 2. a format not built;
 3. the refusals of an xlsx before its rows, by `specs/read.md`: old
-   Excel, encrypted, an empty first sheet, an error calamine does not
-   know, a sheet too large; or those of a text file before its rows, by
+   Excel, encrypted, then the first met in the order of the file of an
+   error calamine does not know and a sheet too large, and an empty first
+   sheet once every cell is read; or those of a text file before its rows, by
    `specs/text-files.md`: cut short, not text, a variants file, and then,
-   as the text is split, the first of an unclosed quote and too many
-   cells that is met;
+   as the text is split, an unclosed quote, or the first of an unclosed
+   quote and too many cells that is met if the owner's answer to Open 2
+   adds the second;
 4. a header error, an error of Excel in the header of an xlsx, the first
    by position;
 5. no row below the header, **empty**, also for a text file with no line
@@ -221,7 +233,7 @@ What each carries, for the words the application writes:
 | not text | none | a binary file picked by mistake |
 | variants file | none | a VCF picked by mistake |
 | unclosed quote | the line where the cell starts, the separator | a wrong separator |
-| too many cells | the line, the limit | a file far larger than the table |
+| too many cells, by Open 2 | the line, the limit | a file far larger than the table |
 | header error | the row and the column of the sheet, the error | a formula that failed |
 | empty | none | a file of a header alone |
 | unnamed column | the column | a value in a column with no name |
@@ -285,33 +297,28 @@ pub enum HowRead {
 pub fn import_table(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError>;
 ```
 
-What an import that gives no table gives. A refusal says the format by
-its kind where only one format meets it, a ragged row a text file's, a
-header error an xlsx's, and by `RowPlace` where both can, so that the
-application, which does not know the format of a refused file, can word
-it:
+What an import that gives no table gives. A refusal comes with the
+format found, so that the application, which knows the format of a file
+only from what the import says, writes a line or a row of the sheet, and
+a column as its number or as Excel's letters, as the user will look for
+it: a row of an empty or a duplicate individual is a line of a text file
+and a row of the sheet of an xlsx, and a column of an unnamed or a
+duplicate column the place in the row of a text file and the column of
+the sheet of an xlsx.
 
 ```rust
 pub enum ImportError {
-    Refused(Refusal),
+    Refused { format: Format, refusal: Refusal },
     /// The zip crate's, calamine's or table_io's message, for whoever
     /// reports the problem.
     Unreadable(String),
-}
-
-/// A row as the user finds it.
-pub enum RowPlace {
-    /// A line of a text file, from 1, as an editor counts it.
-    Line(u32),
-    /// A row of the sheet of an xlsx, from 1, as Excel numbers it.
-    SheetRow(u32),
 }
 
 pub enum Format { Text, Xlsx }
 
 pub enum Refusal {
     TooLarge { size: u64, max_bytes: u64 },
-    FormatNotBuilt { format: Format },
+    FormatNotBuilt,
     // An xlsx, specs/read.md:
     OldExcel,
     Encrypted,
@@ -323,15 +330,15 @@ pub enum Refusal {
     NotText,
     VariantsFile,
     UnclosedQuote { line: u32, separator: Separator },
-    TooManyCells { line: u32, max_cells: u32 },
+    TooManyCells { line: u32, max_cells: u32 },   // only by Open 2's answer
     // Every format:
     HeaderError { row: u32, column: u32, error: String },  // of the sheet
     Empty,
     UnnamedColumn { column: u32 },
     RaggedRow { line: u32, expected: u32, found: u32, separator: Separator },
     DuplicateColumn { name: String, first_column: u32, second_column: u32 },
-    EmptyIndividual { row: RowPlace },
-    DuplicateIndividual { name: String, first_row: RowPlace, second_row: RowPlace },
+    EmptyIndividual { row: u32 },
+    DuplicateIndividual { name: String, first_row: u32, second_row: u32 },
 }
 ```
 
@@ -367,9 +374,7 @@ An import holds the bytes the caller gave, the rows of cells of the file,
 and the table, and lets each go when the next is made. For an xlsx the
 rows are the rectangle of `specs/read.md`, at most the caller's limit of
 cells; for a text file, the text and its cells (`specs/text-files.md`,
-"How it runs"). The table holds one value of 8 to 24 bytes, an
-`Option<i64>` or an `Option<String>` and its characters, for each cell
-below the header.
+"How it runs").
 
 ## How it is verified
 
@@ -412,9 +417,9 @@ carry what this spec adds:
 | `﻿id,pop\nA,P1\n` | the names headed `id`, not `﻿id` |
 | `id;n\tx\nA;1\t2\n` | the tab, by the order of a tie |
 | `id,pop\nA,P1\nB,P2,P3\n` | ragged row, line 3, expected 2, found 3, `,` |
-| `id,n\nA,"x\ny"\nB,1,2\n` | ragged row, line 4 |
+| `id,n\nA,"x\ny"\nB,1,2\n` | ragged row, line 4, expected 2, found 3, `,` |
 | `only\nA\nB\n` | `,`; the names `A`, `B` and no other column |
-| `id,x\nA,1\nB,2\nC,3\n`, the limit of cells 7 | too many cells, line 4, 7 |
+| `id,x\nA,1\nB,2\nC,3\n`, the limit of cells 7 | by Open 2: the table meanwhile; too many cells, line 4, 7, if the owner answers (a) |
 
 | cells of the sheet, from A1 unless said | gives |
 |---|---|
@@ -426,7 +431,7 @@ carry what this spec adds:
 | `id`, 2024 / `A`, 1 | the column `2024`, integer 1 |
 | `id`, `pop` / `A`, ` P1 ` / `B`, `NA` / `C`, `  ` | `pop` text `P1`, missing, missing |
 | `id`, `pop` / nothing / `A`, `P1` | the blank row skipped |
-| `id`, `pop` and C1 empty / `A`, `P1` | columns `id`, `pop` |
+| `id`, `pop`, C1 empty / `A`, `P1`, C2 `"  "` | columns `id`, `pop`: the third column of the rectangle, with no name and a cell of spaces, dropped |
 | at C5: `id`, empty, `pop` / `A`, `x`, `P1` | unnamed column 4, the column D of the sheet |
 | at A5: `id`, `pop` / empty, `P1` | empty individual, sheet row 6 |
 | `id`, `pop` / 1, `P1` / `1`, `P2` | duplicate individual `1`, sheet rows 2 and 3 |
@@ -444,10 +449,13 @@ And, of this spec alone: a text file's `read` gives its encoding,
 separator, decimal mark and line not decoded, an xlsx's its sheet; the
 bytes of an xlsx with the limit of bytes one less than their length, too
 large, with the size and the limit; a text file of `id,pop\nA,P1\n` read
-by a build of the feature `xlsx` alone, `cargo test --no-default-features
---features xlsx`, a format not built, text, and an xlsx by a build of
-`csv` alone, `cargo test --no-default-features --features csv`, xlsx; the compound file of `specs/read.md`'s tests, old
-Excel and encrypted; and the order of the refusals, each pair of the list
+by a build of the feature `xlsx` alone, `cargo test -p table_io
+--no-default-features --features xlsx`, a format not built, text, and an
+xlsx and `excel97.xls` by a build of `csv` alone, `cargo test -p table_io
+--no-default-features --features csv`, a format not built, xlsx; at the
+root of the workspace without `-p` the binding crate turns both features
+on again; the compound files of `specs/read.md`'s tests, old Excel and
+encrypted; a CSV whose header starts with `PK`, a table; and the order of the refusals, each pair of the list
 above that one file can hold, `#REF!` in the header of a sheet of one
 row among them, giving the one first in the list.
 
@@ -473,8 +481,25 @@ The owner decides these; until then the implementer follows the
    but not an Excel workbook". Recommended: (b), since the user did
    nothing to damage the file and can act on the words; it adds a kind
    to the refusals and a check, of the package relationships
-   `specs/read.md` already reads, of which part they name. Meanwhile,
-   (a).
+   `specs/read.md` already reads, of which part they name: a zip with
+   none, or whose relationships name no workbook, `xl/workbook.xml` in a
+   file of Excel, is not a workbook. Meanwhile, (a).
+2. **A limit of cells for a text file.** popnei_web bounds a CSV by its
+   bytes alone, 20 MB, and the cells by 2,000,000 in an xlsx only. This
+   spec bounds the cells of a text file too, by the same limit, so that
+   a read never holds more cells than the caller allowed
+   (`docs/architecture.md`, section 6). A CSV of 20 MB holds about
+   1,800,000 cells of ten characters and a separator, but 10,000,000 of
+   one character, `0,`, so with 2,000,000 popnei_web would refuse a
+   table of short cells it reads today. The options: (a) the limit of
+   cells for both formats, the caller choosing one that fits both, which
+   for popnei_web would be 10,000,000 or two imports' worth of thought;
+   (b) the limit of cells for an xlsx alone, a text file bounded by its
+   bytes, as popnei_web has it, its cells at most half its bytes plus
+   one; (c) two limits, one for each format. Recommended: (b), since the
+   bytes already bound a text file's cells, which a zip does not, and it
+   keeps popnei_web's rule. Meanwhile, (b): too many cells is not given,
+   and its tests wait for the answer.
 
 ## Not in this spec
 

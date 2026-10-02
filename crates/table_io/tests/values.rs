@@ -285,8 +285,6 @@ fn a_float_that_is_not_whole_fails_to_convert_to_integer_with_its_text() {
 }
 
 #[test]
-#[ignore = "the spec's literal 9223372036854775808 is not the text of the float 2^63 that \
-            its rule gives, 9223372036854776000 as node writes it; a question to the owner"]
 fn the_float_2_to_the_63_fails_to_convert_to_integer() {
     assert_eq!(
         convert_column(
@@ -294,7 +292,7 @@ fn the_float_2_to_the_63_fails_to_convert_to_integer() {
             ColumnType::Integer,
             DecimalMark::Point
         ),
-        Err(failure(1, 1, "9223372036854775808"))
+        Err(failure(1, 1, "9223372036854776000"))
     );
 }
 

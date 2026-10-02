@@ -305,6 +305,79 @@ mod written {
         );
     }
 
+    #[test]
+    fn the_smallest_and_the_largest_floats_are_written_with_their_shortest_digits() {
+        let names = names_of("id", &["a", "b"]);
+        let columns = [column(
+            "x",
+            ColumnValues::Float(vec![Some(5e-324), Some(f64::MAX)]),
+        )];
+
+        assert_eq!(
+            export_table(&names, &columns, &plain(Separator::Comma)),
+            Ok(b"id,x\r\na,5e-324\r\nb,1.7976931348623157e+308\r\n".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_text_holding_u_fffe_is_written_in_utf8() {
+        assert_eq!(
+            written_text("a\u{FFFE}", Separator::Comma),
+            Ok("id,t\r\na,a\u{FFFE}\r\n".as_bytes().to_vec())
+        );
+    }
+
+    #[test]
+    fn a_first_name_starting_with_a_hash_that_is_not_a_variants_file_is_written() {
+        let names = names_of("#x", &["a"]);
+
+        assert_eq!(
+            export_table(&names, &[], &plain(Separator::Tab)),
+            Ok(b"#x\r\na\r\n".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_text_column_comes_back_integer_float_or_boolean_when_every_value_is_one() {
+        let names = names_of("id", &["a", "b"]);
+        let columns = [
+            column("whole", texts(&[Some("+5"), Some("-0")])),
+            column("number", texts(&[Some("1,5"), None])),
+            column("boolean", texts(&[Some("True"), Some("false")])),
+        ];
+        let format = csv(
+            Separator::Semicolon,
+            DecimalMark::Comma,
+            CsvEncoding::Utf8,
+            MissingText::Na,
+        );
+        let bytes = export_table(&names, &columns, &format).unwrap();
+
+        assert_eq!(
+            bytes,
+            b"id;whole;number;boolean\r\na;+5;1,5;True\r\nb;-0;NA;false\r\n".to_vec()
+        );
+        let read_values: Vec<ColumnValues> = read_back(
+            &bytes,
+            Separator::Semicolon,
+            DecimalMark::Comma,
+            Encoding::Utf8,
+        )
+        .unwrap()
+        .columns
+        .into_iter()
+        .map(|read_column| read_column.values)
+        .collect();
+        assert_eq!(
+            read_values,
+            vec![
+                ColumnValues::Integer(vec![Some(5), Some(0)]),
+                ColumnValues::Float(vec![Some(1.5), None]),
+                ColumnValues::Boolean(vec![Some(true), Some(false)]),
+            ]
+        );
+    }
+
     // The quoting.
 
     /// The bytes of the table of one value, the text `text`, with
@@ -378,6 +451,22 @@ mod written {
         assert_eq!(
             written_text("\tx", Separator::Comma),
             Ok(b"id,t\r\na,\"\tx\"\r\n".to_vec())
+        );
+    }
+
+    #[test]
+    fn a_tab_at_the_end_is_quoted_with_every_separator() {
+        assert_eq!(
+            written_text("x\t", Separator::Tab),
+            Ok(b"id\tt\r\na\t\"x\t\"\r\n".to_vec())
+        );
+        assert_eq!(
+            written_text("x\t", Separator::Semicolon),
+            Ok(b"id;t\r\na;\"x\t\"\r\n".to_vec())
+        );
+        assert_eq!(
+            written_text("x\t", Separator::Comma),
+            Ok(b"id,t\r\na,\"x\t\"\r\n".to_vec())
         );
     }
 
@@ -908,6 +997,27 @@ mod written {
     }
 
     #[test]
+    fn a_table_with_no_individual_is_refused_before_a_header_that_reads_as_a_variants_file() {
+        let names = names_of("", &[]);
+        let columns = [column("#CHROM", texts(&[]))];
+
+        assert_eq!(
+            export_table(&names, &columns, &plain(Separator::Tab)),
+            refused(ExportRefusal::NoIndividual)
+        );
+    }
+
+    #[test]
+    fn a_first_name_of_a_byte_order_mark_and_chrom_reads_as_a_variants_file() {
+        let names = names_of("\u{FEFF}#CHROM", &["a"]);
+
+        assert_eq!(
+            export_table(&names, &[], &plain(Separator::Comma)),
+            refused(ExportRefusal::ReadsAsVariantsFile)
+        );
+    }
+
+    #[test]
     fn a_header_that_starts_as_a_variants_file_is_refused_before_a_refusal_of_a_cell() {
         let names = names_of("#CHROM", &["a", "a"]);
         let columns = [column("", texts(&[Some(""), Some("x")]))];
@@ -1033,9 +1143,9 @@ mod written {
 mod round_trip {
     use table_io::{
         CellPlace, Column, ColumnType, ColumnValues, CsvEncoding, CsvExport, DecimalMark, Encoding,
-        ExportError, ExportFormat, ExportRefusal, ImportOptions, MissingText, NameColumn,
-        Separator, TextOptions, convert_column, export_table, import_table, parse_boolean,
-        parse_float, parse_integer,
+        ExportError, ExportFormat, ExportRefusal, ImportError, ImportOptions, MissingText,
+        NameColumn, Refusal, Separator, TextOptions, convert_column, export_table, import_table,
+        is_missing, parse_boolean, parse_float, parse_integer,
     };
 
     /// The number of tables the property is tried on, each exported with
@@ -1340,6 +1450,162 @@ mod round_trip {
         }
     }
 
+    /// The characters of Windows-1252 for the bytes `80` to `9F`, by the
+    /// index of the Encoding Standard, the five controls it keeps among
+    /// them; every other byte but 0 is the character of its number.
+    const WINDOWS_1252_80_TO_9F: &str = "€\u{81}‚ƒ„…†‡ˆ‰Š‹Œ\u{8D}Ž\u{8F}\u{90}‘’“”•–—˜™š›œ\u{9D}žŸ";
+
+    /// Whether Windows-1252 has `character`.
+    fn is_in_windows_1252(character: char) -> bool {
+        matches!(u32::from(character), 0x01..=0x7F | 0xA0..=0xFF)
+            || WINDOWS_1252_80_TO_9F.contains(character)
+    }
+
+    /// Whether a CSV with `csv_export` cannot carry `character` of the
+    /// text `text` at `place`: U+0000, a U+FEFF at the start of the first
+    /// name of the header, or in Windows-1252 a character it has not.
+    fn cannot_carry(character: char, text: &str, place: CellPlace, csv_export: &CsvExport) -> bool {
+        character == '\0'
+            || (character == '\u{FEFF}'
+                && place == (CellPlace { column: 1, row: 0 })
+                && text.starts_with('\u{FEFF}'))
+            || (csv_export.encoding == CsvEncoding::Windows1252 && !is_in_windows_1252(character))
+    }
+
+    /// The character of `separator`.
+    fn separator_character(separator: Separator) -> char {
+        match separator {
+            Separator::Tab => '\t',
+            Separator::Semicolon => ';',
+            Separator::Comma => ',',
+        }
+    }
+
+    /// `cell` as "A CSV" of the spec writes it with `separator`: in
+    /// quotes, each quote doubled, when it holds the separator, a quote or
+    /// a line break, or a space or a tab at its ends.
+    fn written_cell(cell: &str, separator: Separator) -> String {
+        let needs_quotes = cell.contains([separator_character(separator), '"', '\n', '\r'])
+            || cell.starts_with([' ', '\t'])
+            || cell.ends_with([' ', '\t']);
+        if needs_quotes {
+            format!("\"{}\"", cell.replace('"', "\"\""))
+        } else {
+            cell.to_owned()
+        }
+    }
+
+    /// Whether the import refuses as a variants file a file whose header is
+    /// that of `names` and `columns`, written with `separator`; its
+    /// characters U+0000, which the import refuses first as not text, left
+    /// out.
+    fn reads_as_variants_file(
+        names: &NameColumn,
+        columns: &[Column],
+        separator: Separator,
+    ) -> bool {
+        let line = std::iter::once(names.header.as_str())
+            .chain(columns.iter().map(|column| column.name.as_str()))
+            .map(|name| written_cell(name, separator))
+            .collect::<Vec<_>>()
+            .join(&separator_character(separator).to_string())
+            .replace('\0', "");
+        let options = ImportOptions {
+            max_bytes: 20_000_000,
+            max_cells: 2_000_000,
+            text: TextOptions {
+                encoding: Some(Encoding::Utf8),
+                separator: Some(separator),
+                decimal: None,
+            },
+        };
+        matches!(
+            import_table(format!("{line}\r\nz\r\n").as_bytes(), &options),
+            Err(ImportError::Refused {
+                refusal: Refusal::VariantsFile,
+                ..
+            })
+        )
+    }
+
+    /// Asserts that `refusal` of `names` and `columns`, exported with
+    /// `csv_export`, is due by the rule of the spec it names.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a refusal of a value names a column from 2 and a row from 1"
+    )]
+    fn assert_due(
+        names: &NameColumn,
+        columns: &[Column],
+        refusal: &ExportRefusal,
+        csv_export: &CsvExport,
+    ) {
+        let mut names_copy = names.clone();
+        let mut columns_copy = columns.to_vec();
+        let mut text_of =
+            |place: CellPlace| text_at(&mut names_copy, &mut columns_copy, place).clone();
+        let header_place = |column: u32| CellPlace { column, row: 0 };
+        let name_place = |row: u32| CellPlace { column: 1, row };
+        let is_due = match refusal {
+            ExportRefusal::EmptyName { column } => {
+                text_of(header_place(*column)).is_empty() && (*column != 1 || columns.is_empty())
+            }
+            ExportRefusal::DuplicateName {
+                name,
+                first_column,
+                second_column,
+            } => {
+                first_column < second_column
+                    && text_of(header_place(*first_column)) == *name
+                    && text_of(header_place(*second_column)) == *name
+            }
+            ExportRefusal::EmptyIndividual { row } => text_of(name_place(*row)).is_empty(),
+            ExportRefusal::DuplicateIndividual {
+                name,
+                first_row,
+                second_row,
+            } => {
+                first_row < second_row
+                    && text_of(name_place(*first_row)) == *name
+                    && text_of(name_place(*second_row)) == *name
+            }
+            ExportRefusal::ReadsAsMissing { place } => is_missing(&text_of(*place)),
+            ExportRefusal::NotFinite { place } => {
+                let row = usize::try_from(place.row).unwrap() - 1;
+                match &columns[usize::try_from(place.column).unwrap() - 2].values {
+                    ColumnValues::Float(floats) => {
+                        floats[row].is_some_and(|float| !float.is_finite())
+                    }
+                    ColumnValues::Integer(_) | ColumnValues::Boolean(_) | ColumnValues::Text(_) => {
+                        false
+                    }
+                }
+            }
+            ExportRefusal::CannotCarry { place, character } => {
+                let text = text_of(*place);
+                let first = text.chars().find(|&text_character| {
+                    cannot_carry(text_character, &text, *place, csv_export)
+                });
+                first == Some(*character)
+            }
+            ExportRefusal::ReadsAsVariantsFile => {
+                reads_as_variants_file(names, columns, csv_export.separator)
+            }
+            ExportRefusal::FormatNotBuilt
+            | ExportRefusal::NoIndividual
+            | ExportRefusal::WrongLength { .. }
+            | ExportRefusal::ErrorAsName { .. }
+            | ExportRefusal::SpacesAtEnds { .. }
+            | ExportRefusal::IntegerTooLarge { .. }
+            | ExportRefusal::TextTooLong { .. }
+            | ExportRefusal::TooLargeForSheet { .. } => false,
+        };
+        assert!(
+            is_due,
+            "a refusal not due: {refusal:?} of {csv_export:?} {names:?} {columns:?}"
+        );
+    }
+
     /// The table made again without what `refusal` names: a name given
     /// that of a repair, `fix` and a number, a value made missing, or the
     /// character that cannot be carried removed.
@@ -1484,6 +1750,7 @@ mod round_trip {
                         Err(ExportError::Refused(refusal)) => {
                             num_repairs += 1;
                             assert!(num_repairs <= MAX_REPAIRS, "{refusal:?}");
+                            assert_due(&names, &columns, &refusal, csv_export);
                             repaired(&mut names, &mut columns, &refusal, num_repairs);
                         }
                         Err(error) => panic!("{error:?} of {names:?} {columns:?}"),

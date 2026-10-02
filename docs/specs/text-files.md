@@ -136,7 +136,11 @@ file, and the check costs them nothing (its
   versions of Excel for Mac wrote. A line number counts every line of the
   file from 1, the header's included, the blank ones and the lines
   inside a quoted cell too, so that it is the number an editor shows. A
-  text that ends with a line break has no line after it.
+  text that ends with a line break has no line after it. A text with a
+  line past line 4,294,967,295, the largest number a line is given in,
+  or a row of more cells than that, which no file within the limits of
+  either application has, is an unreadable file, with table_io's
+  message (`specs/import.md`, "The Rust interface").
 - **Quotes** are those of RFC 4180, the standard of CSV, as Excel writes
   them. A cell that starts with `"`, once the spaces before it are
   removed, goes on to the next `"` that is not doubled, and may hold the
@@ -179,7 +183,9 @@ and every row as many cells as the header. A row with more cells than the
 header fits too when every cell it has past the whole header, its empty
 cells at the end included, is empty; a separator with which a
 quote is never closed does not fit, since whether a `"` opens a cell
-depends on the separator before it. Of the separators that fit, the one
+depends on the separator before it, and its header is counted from the
+rows split up to that quote, the cell the quote opens being the last, as
+popnei_web's `findSeparator` counts it. Of the separators that fit, the one
 that gives the header the most cells is taken, and on a tie the tab, then
 `;`, then `,`, since a tab is the least likely of the three to be inside
 a value. When none fits, the one that gives the header the most cells is

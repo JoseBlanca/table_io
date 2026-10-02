@@ -170,9 +170,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnName)]
-    pub fn column_name(&self, index: u32) -> Result<String, JsError> {
+    pub fn column_name(&self, index: f64) -> Result<String, JsError> {
         Ok(self.column(index)?.name.clone())
     }
 
@@ -181,9 +182,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnNumber)]
-    pub fn column_number(&self, index: u32) -> Result<u32, JsError> {
+    pub fn column_number(&self, index: f64) -> Result<u32, JsError> {
         Ok(self.column(index)?.number)
     }
 
@@ -192,9 +194,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnType)]
-    pub fn column_type(&self, index: u32) -> Result<String, JsError> {
+    pub fn column_type(&self, index: f64) -> Result<String, JsError> {
         Ok(column_type_code(self.column(index)?.column_type).to_owned())
     }
 
@@ -203,9 +206,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnMissing)]
-    pub fn column_missing(&self, index: u32) -> Result<Vec<u8>, JsError> {
+    pub fn column_missing(&self, index: f64) -> Result<Vec<u8>, JsError> {
         Ok(self.column(index)?.arrays.missing.clone())
     }
 
@@ -215,9 +219,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnIntegers)]
-    pub fn column_integers(&self, index: u32) -> Result<Vec<i64>, JsError> {
+    pub fn column_integers(&self, index: f64) -> Result<Vec<i64>, JsError> {
         Ok(self.column(index)?.arrays.integers.clone())
     }
 
@@ -227,9 +232,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnFloats)]
-    pub fn column_floats(&self, index: u32) -> Result<Vec<f64>, JsError> {
+    pub fn column_floats(&self, index: f64) -> Result<Vec<f64>, JsError> {
         Ok(self.column(index)?.arrays.floats.clone())
     }
 
@@ -239,9 +245,10 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnBooleans)]
-    pub fn column_booleans(&self, index: u32) -> Result<Vec<u8>, JsError> {
+    pub fn column_booleans(&self, index: f64) -> Result<Vec<u8>, JsError> {
         Ok(self.column(index)?.arrays.booleans.clone())
     }
 
@@ -251,18 +258,32 @@ impl TableRead {
     ///
     /// # Errors
     ///
-    /// Throws an `Error` for an index that is not below `numColumns`.
+    /// Throws an `Error` for an index that is not a whole number from 0 to
+    /// `numColumns` − 1.
     #[wasm_bindgen(js_name = columnTexts)]
-    pub fn column_texts(&self, index: u32) -> Result<Vec<String>, JsError> {
+    pub fn column_texts(&self, index: f64) -> Result<Vec<String>, JsError> {
         Ok(self.column(index)?.arrays.texts.clone())
     }
 }
 
 impl TableRead {
-    /// The column `index`, from 0, or the `Error` of an index out of range.
-    fn column(&self, index: u32) -> Result<&ColumnRead, JsError> {
-        usize::try_from(index)
-            .ok()
+    /// The column `index`, from 0, or the `Error` of an index that is not a
+    /// whole number below `numColumns`: taken as a `u32`, JavaScript would
+    /// wrap it modulo 2^32, and 2^32, 1.9 or undefined, which is NaN here,
+    /// would give a column.
+    fn column(&self, index: f64) -> Result<&ColumnRead, JsError> {
+        let last_index = f64::from(self.num_columns) - 1.0;
+        let position = if is_whole_from_zero_to(index, last_index) {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a whole number from 0 to numColumns - 1, which a usize holds exactly"
+            )]
+            Some(index as usize)
+        } else {
+            None
+        };
+        position
             .and_then(|position| self.columns.get(position))
             .ok_or_else(|| {
                 JsError::new(&format!(
@@ -755,16 +776,16 @@ fn read_of_table(table: Table) -> TableRead {
         columns,
         read,
     } = table;
-    let (format, encoding, separator, decimal, undecoded_line, sheet) = match read {
+    let decimal = read.decimal();
+    let (format, encoding, separator, undecoded_line, sheet) = match read {
         HowRead::Text(text_read) => (
             Format::Text,
             found_encoding_code(text_read.encoding),
             separator_code(text_read.separator),
-            text_read.decimal,
             text_read.undecoded_line,
             String::new(),
         ),
-        HowRead::Xlsx { sheet } => (Format::Xlsx, "", "", DecimalMark::Point, None, sheet),
+        HowRead::Xlsx { sheet } => (Format::Xlsx, "", "", None, sheet),
     };
     let columns: Vec<ColumnRead> = columns
         .into_iter()

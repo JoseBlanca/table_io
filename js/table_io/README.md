@@ -16,8 +16,12 @@ github.com/JoseBlanca/table_io, the rules of a value and of a conversion in
   or a bundler resolves it. Under node, whose `fetch` does not read a
   file, give it the bytes: `init({ module_or_path: bytes })`.
 - `importTable(bytes, max_bytes, max_cells, encoding, separator, decimal)`,
-  which reads the `Uint8Array` of a file, its format found from its first
-  bytes, and returns a `TableRead`. `max_bytes` is the largest file
+  which reads the bytes of a file, its format found from its first
+  bytes, and returns a `TableRead`. The bytes must be a `Uint8Array`, as
+  `new Uint8Array(await file.arrayBuffer())` gives them: an `ArrayBuffer`
+  or a `DataView` given in its place is read as no bytes, an empty file,
+  with no `Error`, which TypeScript refuses from the declarations but
+  JavaScript does not. `max_bytes` is the largest file
   accepted, in bytes, a whole number from 0 to 2^53; `max_cells` the
   largest rectangle of the values of an xlsx, in cells, a whole number
   from 0 to 4,294,967,295. `encoding` is `""` to find it, `"utf-8"` or
@@ -54,7 +58,8 @@ github.com/JoseBlanca/table_io, the rules of a value and of a conversion in
 
 Every function throws an `Error` only for a defect of the caller: a limit
 that is not a whole number in its range, an option or a type that is not
-one of its strings, an index of a column out of range, or a column given
+one of its strings, an index of a column that is not a whole number from
+0 to `numColumns` − 1, or a column given
 to `convertColumn` whose arrays do not match. A file refused or that
 cannot be read is never thrown.
 

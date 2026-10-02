@@ -213,6 +213,28 @@ test("an integer of an xlsx past 2^53, 2^60 + 1 written as text, is exact in its
     assert.deepEqual(fields.columns, [column("n", 2, "integer", [1152921504606846977n, -3n])]);
 });
 
+test("a table whose header starts at C3 gives the columns of the sheet, C for the names", () => {
+    const bytes = xlsxOf([
+        [],
+        [],
+        [null, null, "id", "h", "pop"],
+        [null, null, "A", 1.5, "P1"],
+        [null, null, "B", 2.5, "P2"],
+    ]);
+
+    const fields = fieldsOfImport(bytes);
+
+    assert.deepEqual(fields, {
+        ...XLSX_TABLE,
+        sheet: "Sheet1",
+        namesHeader: "id",
+        namesNumber: 3,
+        names: ["A", "B"],
+        numColumns: 2,
+        columns: [column("h", 4, "float", [1.5, 2.5]), column("pop", 5, "text", ["P1", "P2"])],
+    });
+});
+
 test("written.csv is read as its table", { skip: WAITS_FOR_TEXT }, () => {});
 
 test("a ragged row of a text file is refused with its line, its cells, the header's and the separator", { skip: WAITS_FOR_TEXT }, () => {});
@@ -461,6 +483,36 @@ test("a column of an index out of range throws an Error, and the package goes on
         assert.throws(() => read.columnName(1), { name: "Error", message: "no column 1: the table has 1 columns" });
         assert.throws(() => read.columnIntegers(7), { name: "Error" });
         assert.equal(read.columnName(0), "pop");
+    } finally {
+        read.free();
+    }
+});
+
+test("an index of a column that is not a whole number from 0 to numColumns − 1 throws an Error", () => {
+    const read = importTable(xlsxOf([["id", "a", "b"], ["A", 1, "x"]]), MAX_BYTES, MAX_CELLS, "", "", "");
+    try {
+        assert.equal(read.numColumns, 2);
+        const methods = [
+            "columnName",
+            "columnNumber",
+            "columnType",
+            "columnMissing",
+            "columnIntegers",
+            "columnFloats",
+            "columnBooleans",
+            "columnTexts",
+        ];
+        for (const index of [2 ** 32, 1.5, undefined, -1, 2, Number.NaN, Infinity]) {
+            for (const method of methods) {
+                assert.throws(() => read[method](index), { name: "Error" }, `${method}(${index})`);
+            }
+        }
+        assert.throws(() => read.columnName(2 ** 32), {
+            name: "Error",
+            message: "no column 4294967296: the table has 2 columns",
+        });
+        assert.throws(() => read.columnName(1.5), { message: "no column 1.5: the table has 2 columns" });
+        assert.equal(read.columnName(1), "b");
     } finally {
         read.free();
     }

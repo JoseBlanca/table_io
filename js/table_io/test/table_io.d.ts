@@ -68,7 +68,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnBooleans(index: number): Uint8Array;
     /**
@@ -78,7 +79,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnFloats(index: number): Float64Array;
     /**
@@ -88,7 +90,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnIntegers(index: number): BigInt64Array;
     /**
@@ -97,7 +100,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnMissing(index: number): Uint8Array;
     /**
@@ -105,7 +109,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnName(index: number): string;
     /**
@@ -114,7 +119,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnNumber(index: number): number;
     /**
@@ -124,7 +130,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnTexts(index: number): string[];
     /**
@@ -133,7 +140,8 @@ export class TableRead {
      *
      * # Errors
      *
-     * Throws an `Error` for an index that is not below `numColumns`.
+     * Throws an `Error` for an index that is not a whole number from 0 to
+     * `numColumns` − 1.
      */
     columnType(index: number): string;
     /**

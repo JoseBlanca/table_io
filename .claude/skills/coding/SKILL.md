@@ -316,7 +316,19 @@ spec corrected where the crate changed.
   export writes.
 - An export is tested with the import: a table exported with each
   choice of the CSV and as an xlsx, and imported again, gives its names,
-  values and types back, as `specs/export.md` lists.
+  values and types back, as `specs/export.md` lists. An xlsx is also
+  read back cell by cell with calamine, since the import gives the same
+  integer for a text cell `001` and a number cell 1, and a writer that
+  put a number where the spec says a text passed eight tests read back
+  by the import alone (review of work package 6 of `plans/table-io.md`).
+- A property that repairs a table after a refusal and tries again
+  asserts that each refusal is due by its rule: otherwise a refusal
+  given for no reason is repaired away, as three such changes of the
+  export passed every test (review of work package 5 of
+  `plans/table-io.md`).
+- A test that times a function asserts its whole result, each column's
+  type, length and name, since an import that loses its values is fast
+  too.
 - The name of a test says the behaviour and the outcome:
   `a_date_a_hundredth_of_a_millisecond_before_midnight_is_the_next_day`.
 

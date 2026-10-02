@@ -83,7 +83,8 @@ xlsx with `readXlsx` as before, imported as `table_io`.
    declarations kept as `test/table_io.d.ts`; `npm pack` gives
    `table_io-0.2.0.tgz`.
 4. `git grep -n xlsx_rs` outside `docs/plans/`, `docs/reports/`, the
-   history at the top of `docs/specs/read.md`, and the sentences of
+   whole of `docs/specs/read.md`, whose text is kept as the owner approved
+   it, as its note of 2 October 2026 says, and the sentences of
    `docs/objectives.md`, `docs/architecture.md` and the specs that say
    xlsx_rs became table_io or what xlsx_rs released, gives nothing; the
    list of what it gives at the start is written in the report.

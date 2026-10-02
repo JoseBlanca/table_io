@@ -5,9 +5,14 @@
 //! with a quoted cell over two lines are each cut short at every length
 //! and have each of their bytes changed in turn to every other of the 256
 //! values, and every copy, under `std::panic::catch_unwind`, gives a
-//! table, a refusal or an error. The copies of a file are shared among
+//! table, a refusal or an error. The CSV is also taken in UTF-8 with its
+//! mark, in UTF-16 with its mark, and with `##` before it, so that the
+//! copies reach the decoding of each encoding, the line not decoded and
+//! the check of a variants file. The copies of a file are shared among
 //! threads, each taking one position of a byte at a time, since the xlsx
-//! alone makes some hundreds of thousands of them.
+//! alone makes 1,446,144 of them.
+
+#![cfg(any(feature = "csv", feature = "xlsx"))]
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -172,21 +177,48 @@ fn no_copy_of_a_small_xlsx_cut_short_or_with_a_byte_changed_panics() {
     );
 }
 
+/// [`SMALL_CSV`] as each of its files: in Windows-1252; in UTF-8 after the
+/// mark `EF BB BF`; in UTF-16 little endian after the mark `FF FE`; and in
+/// Windows-1252 after `##`, which the check of a variants file looks at.
+#[cfg(feature = "csv")]
+fn small_csv_files() -> [(&'static str, Vec<u8>); 4] {
+    // Every byte of SMALL_CSV that is not ASCII, 0xF3 and 0xED, is the
+    // character of Unicode of its number in Windows-1252.
+    let text: String = SMALL_CSV.iter().map(|&byte| char::from(byte)).collect();
+    let utf8 = [&[0xEF, 0xBB, 0xBF], text.as_bytes()].concat();
+    let utf16: Vec<u8> = [0xFF, 0xFE]
+        .into_iter()
+        .chain(text.encode_utf16().flat_map(u16::to_le_bytes))
+        .collect();
+    let after_hashes = [b"##", SMALL_CSV].concat();
+    [
+        ("Windows-1252", SMALL_CSV.to_vec()),
+        ("UTF-8 with its mark", utf8),
+        ("UTF-16 with its mark", utf16),
+        ("Windows-1252 after ##", after_hashes),
+    ]
+}
+
 #[cfg(feature = "csv")]
 #[test]
 fn no_copy_of_a_small_csv_cut_short_or_with_a_byte_changed_panics() {
-    assert!(
-        import_table(SMALL_CSV, &OPTIONS).is_ok(),
-        "the CSV itself is a table"
-    );
+    for (encoding, csv) in small_csv_files() {
+        assert!(
+            import_table(&csv, &OPTIONS).is_ok(),
+            "the CSV in {encoding} itself is a table"
+        );
 
-    let panicked = copies_that_panic(SMALL_CSV).unwrap();
+        let panicked = copies_that_panic(&csv).unwrap();
 
-    let num_copies = SMALL_CSV.len().checked_mul(256).unwrap();
-    println!("{num_copies} copies of a CSV of {} bytes", SMALL_CSV.len());
-    assert!(
-        panicked.is_empty(),
-        "{} copies panicked: {panicked:?}",
-        panicked.len()
-    );
+        let num_copies = csv.len().checked_mul(256).unwrap();
+        println!(
+            "{num_copies} copies of a CSV in {encoding} of {} bytes",
+            csv.len()
+        );
+        assert!(
+            panicked.is_empty(),
+            "{} copies of the CSV in {encoding} panicked: {panicked:?}",
+            panicked.len()
+        );
+    }
 }

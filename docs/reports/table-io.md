@@ -1,74 +1,160 @@
 # The report of table_io
 
 The work report of `docs/plans/table-io.md`, carried out on the branch
-`plan/table-io` from 2 October 2026: a section for each work package,
-with its deliverables, what its review found and what changed. The last
-section is for whoever next revises a skill or writes a plan.
+`plan/table-io` on 2 October 2026: what is done and what is asked of the
+owner, then a section for each work package, with its deliverables,
+what its review found and what changed, and the issues to open. The
+last section is for whoever next revises a skill or writes a plan.
 
 ## State
 
-Under way since 2 October 2026, when the owner approved the plan. The
-objectives, the architecture, the specs and the plan were put on `main`
-by the owner's order the same day, at 8bb8982; nothing of the code is on
-`main`, and nothing is pushed.
+The plan is carried out, on the branch `plan/table-io`, with one of
+its deliverables not met: the package's `.wasm` is 138 bytes larger
+than the plan allowed, for a reason below that only the owner can
+settle. Nothing is merged into `main`, nothing is pushed, and no release
+is made. Every check of the coding skill passes at the last commit of
+the branch: `cargo test --workspace` 538 tests passed and 27 ignored,
+`npm test` in `js/table_io` 46 passed and 1 skipped.
 
-Work packages 1 to 6 are done, reviewed and written below, but for
-deliverable 3 of work package 6, which waits on the owner; work package
-7, the end, is next.
+What exists now that did not:
 
-Two questions wait on the owner, and nothing of the plan rests on them.
+- The library table_io, in `crates/table_io`, which imports a CSV, a TSV
+  or an xlsx as a table of typed columns, integer, float, boolean or
+  text, or refuses it with the reason and the place, by the rules of
+  popnei_web's reader; and which exports such a table as a CSV, with any
+  separator, decimal mark, encoding and text of a missing value, or as an
+  xlsx of one sheet, every value reading back as itself or refused with
+  its place. Vavilov Explorer can take it as a crate.
+- The package `table_io` 0.2.0, in `js/table_io`, for popnei_web: the
+  import, the conversion of a column and the rules of a value, without
+  the export. `npm pack` gives `table_io-0.2.0.tgz`, 360,468 bytes, which
+  under node reads `tests/data/written.csv` and `written.xlsx`. Its
+  `.wasm` is 651,456 bytes, 330,388 with `gzip -9`, against 565,045 and
+  300,646 for xlsx_rs's release `js-v0.1.0-dev.1`, which popnei_web
+  installs today.
+- The speed, on the owner's Mac, an Apple M5 Pro: a CSV of 100,000 rows
+  and 50 columns, 36,197,015 bytes in Windows-1252 as a Spanish Excel
+  saves it, is imported in 0.505 s natively, the median of 7 runs. Under
+  node through the package, as popnei_web would run it, the first import
+  in a fresh process takes 1.04 to 1.07 s, over the target of one second
+  of `docs/objectives.md`, and the later ones 0.519 s, since the engine
+  first runs the wasm compiled quickly and then compiled well. As the
+  plan says, this is reported and not worked on; popnei_web refuses a
+  file of more than 20,000,000 bytes, so this file is larger than it
+  takes.
+- The memory: a CSV of 20,000,000 bytes takes from 335.8 MB of the wasm's
+  memory, for rows of numbers, to 610.5 MB, the most found, for 2,500,000
+  short rows (work package 4). An export of an xlsx takes about 7.5 times
+  the table it writes (work package 6).
 
-The first. A file of UTF-8 without the mark of its encoding, cut short in the
-middle of an accented letter, as an interrupted copy leaves it, is not
-valid UTF-8, so it is read as Windows-1252, and every accented letter of
-the file is shown wrong: `España` becomes `EspaÃ±a`, with only the line
-"Read as Windows-1252" for the user to see why. popnei_web reads it the
-same way today, and `specs/text-files.md` says so. The options:
+What is asked of the owner:
 
-- Keep it so. table_io and popnei_web read the file alike; the user who
-  sees the wrong letters can set UTF-8 and gets every letter right but
-  the last, cut, one.
-- Read a file whose only fault as UTF-8 is a character cut at its end
-  as UTF-8, its last character not decoded and its line given as the
-  line not decoded. Every letter but the cut one is right with no
-  action of the user, and table_io then differs from popnei_web there,
-  a change of `specs/text-files.md` and a few lines of `csv.rs`.
+1. The merge of `plan/table-io` into `main`, when the questions below
+   are answered or set aside.
+2. The 138 bytes, and the clock of rust_xlsxwriter. Linking
+   rust_xlsxwriter, the crate that writes an xlsx, into the package makes
+   the `.wasm` 651,456 bytes where it was 651,318, 330,388 gzipped where
+   it was 330,332: a second copy of one function of Rust's standard
+   library, which no setting of the build tried removes; the package
+   holds none of the export's code. Separately, rust_xlsxwriter reads
+   the computer's clock to date each file it makes, and in a build for
+   the web that read stops the program, so the export of an xlsx could
+   not go into the package as it is. The options:
+   - (a) Accept the 138 bytes, 0.02% of the `.wasm`, and settle the
+     clock when the export enters the package, with rust_xlsxwriter's
+     setting for the web.
+   - (b) Leave the writer of an xlsx out of every build for the web: the
+     `.wasm` goes back to 651,318 bytes, measured, and an export of an
+     xlsx in such a build is refused as a format not built, where today
+     it would stop the program. Vavilov Explorer is not built for the
+     web and loses nothing; section 5 of `docs/architecture.md` gains
+     the rule.
+   - (c) A feature of its own for the export, which the package leaves
+     off; a change of section 5 too, and of every build that exports.
 
-The recommendation is to keep it so: a file cut in the middle of a
-letter is also cut in the middle of a row, which the user sees as a row
-of the wrong length or its last value cut short, and the difference
-from popnei_web would be one more for its move to table_io.
+   The recommendation is (b): it meets the plan's bound, and it turns a
+   stop of the program into a refusal in the one kind of build where the
+   writer cannot work.
+3. An integer past 2^53 in an export of an xlsx. The owner decided that
+   such an integer is refused, since a cell of Excel would hold it as the
+   nearest float. But the import makes integers of a column of whole
+   numbers of an xlsx up to 2^63, and a number such as 2^60, which a cell
+   holds exactly, then cannot be saved again as an xlsx: the user opens
+   a file, saves it, and is refused for a value that came from it. The
+   options: keep the refusal of every integer past 2^53; or refuse only
+   the integers that a cell cannot hold exactly, 2^53 + 1 refused and
+   2^60 written. The recommendation is the second, so that every table
+   read from an xlsx can be written as an xlsx.
+4. A text that holds `_x` and four hexadecimal digits followed by a
+   control character, such as a carriage return, is written by
+   rust_xlsxwriter so that it reads back as another text: `_x0041` and
+   a carriage return become `Ax000D_`, a wrong value or a wrong name of
+   an individual with no warning. table_io refuses such a text, as a
+   character the file cannot carry, which the spec says is the default
+   until the owner decides. The recommendation is to keep the refusal,
+   and to report the fault to rust_xlsxwriter's repository, which is
+   the owner's to do, since it is outside this project; the text of the
+   issue is under "The issues to open".
+5. A file of UTF-8 without the mark of its encoding, cut short in the
+   middle of an accented letter, as an interrupted copy leaves it, is not
+   valid UTF-8, so it is read as Windows-1252, and every accented letter of
+   the file is shown wrong: `España` becomes `EspaÃ±a`, with only the line
+   "Read as Windows-1252" for the user to see why. popnei_web reads it the
+   same way today, and `specs/text-files.md` says so. The options:
+   
+   - Keep it so. table_io and popnei_web read the file alike; the user who
+     sees the wrong letters can set UTF-8 and gets every letter right but
+     the last, cut, one.
+   - Read a file whose only fault as UTF-8 is a character cut at its end
+     as UTF-8, its last character not decoded and its line given as the
+     line not decoded. Every letter but the cut one is right with no
+     action of the user, and table_io then differs from popnei_web there,
+     a change of `specs/text-files.md` and a few lines of `csv.rs`.
+   
+   The recommendation is to keep it so: a file cut in the middle of a
+   letter is also cut in the middle of a row, which the user sees as a row
+   of the wrong length or its last value cut short, and the difference
+   from popnei_web would be one more for its move to table_io.
+6. The import looks at the first bytes of a file to know what
+   it is, and the export of a CSV writes the first name of the header
+   there. Five first names, written as they are, make the file read back as
+   something else: in Windows-1252, a name that starts with `ÿþ` or `þÿ` is
+   read as a file of UTF-16, which is then empty, and one that starts with
+   `ï»¿` loses those three characters, read as the mark of UTF-8; in any
+   encoding, `PK` and the control characters 3 and 4 make it read as an
+   xlsx, which then cannot be read, and the eight characters that start an
+   old Excel file make it refused as one. The spec already refuses the two
+   cases of the kind it names, a header that reads as a variants file and a
+   mark of UTF-8 at the start of the first name; the latter is refused even
+   when the name is quoted, where it would read back as itself. The
+   options:
+   
+   - Refuse the five, as a header that reads back as another format, a new
+     refusal of `specs/export.md` and of `ExportRefusal`, and add to it,
+     when the owner wants it, the column of the name, which the refusal of
+     a variants file does not carry either. The user who names a column so
+     is told to rename it.
+   - Quote the first name when it starts with any of these, so that the
+     file starts with `"` and reads back as itself, and the mark of UTF-8
+     with them, which then is no longer refused. No refusal is added; the
+     file holds one pair of quotes Excel shows no sign of.
+   
+   The recommendation is to quote: every such table is then exported and
+   reads back, in table_io and in Excel, and the rule is one line of the
+   writer and one of the spec. A name that starts with one of these
+   sequences has not been seen in a file of the owner's, so either choice
+   changes nothing a user does today; until the owner decides, they are
+   written as they are, and the round trip leaves them out.
 
-The second. The import looks at the first bytes of a file to know what
-it is, and the export of a CSV writes the first name of the header
-there. Five first names, written as they are, make the file read back as
-something else: in Windows-1252, a name that starts with `ÿþ` or `þÿ` is
-read as a file of UTF-16, which is then empty, and one that starts with
-`ï»¿` loses those three characters, read as the mark of UTF-8; in any
-encoding, `PK` and the control characters 3 and 4 make it read as an
-xlsx, which then cannot be read, and the eight characters that start an
-old Excel file make it refused as one. The spec already refuses the two
-cases of the kind it names, a header that reads as a variants file and a
-mark of UTF-8 at the start of the first name; the latter is refused even
-when the name is quoted, where it would read back as itself. The
-options:
-
-- Refuse the five, as a header that reads back as another format, a new
-  refusal of `specs/export.md` and of `ExportRefusal`, and add to it,
-  when the owner wants it, the column of the name, which the refusal of
-  a variants file does not carry either. The user who names a column so
-  is told to rename it.
-- Quote the first name when it starts with any of these, so that the
-  file starts with `"` and reads back as itself, and the mark of UTF-8
-  with them, which then is no longer refused. No refusal is added; the
-  file holds one pair of quotes Excel shows no sign of.
-
-The recommendation is to quote: every such table is then exported and
-reads back, in table_io and in Excel, and the rule is one line of the
-writer and one of the spec. A name that starts with one of these
-sequences has not been seen in a file of the owner's, so either choice
-changes nothing a user does today; until the owner decides, they are
-written as they are, and the round trip leaves them out.
+Also for the owner: the owner's text files that tests wait for,
+`excel_es.csv`, `excel_es_utf8.csv`, `excel_mac.csv`,
+`excel_unicode.txt` and `libreoffice.csv` (`specs/text-files.md`, "How
+it is verified"), and the look in Excel of the files of an export, the
+smallest and the largest floats among them (`specs/export.md`), are
+still to be made; their tests are ignored until then. What popnei_web
+and Vavilov Explorer change to take table_io is in
+`docs/architecture.md`, sections 8 and 9, and is done from their own
+sessions.
 
 ## The rename of the repository on GitHub
 
@@ -554,6 +640,60 @@ The review, at 44e39f8, by all seven categories:
   shows the smallest and the largest floats as written, added to the file
   the owner opens in Excel when it is made (numbers).
 
+## Work package 7: the end
+
+Built on 2 October 2026 by one subagent: 27950be (task 7.1), 4b45bf5
+(the notice of dlmalloc), and after the review bf97208, d6efd34 and
+1d39ed4.
+
+The deliverables, checked by the orchestrator at 1d39ed4:
+
+1. The sizes after `npm run build`: `wasm/table_io_bg.wasm` 651,456
+   bytes, 330,388 with `gzip -9`; `wasm/table_io.js` 37,489 and 6,758.
+   xlsx_rs's `.wasm` of `js-v0.1.0-dev.1` was 565,045 and 300,646, so
+   table_io's is 86,411 bytes larger, 29,742 gzipped: the table step, the
+   types, the reader of a text file and the new binding.
+2. `cargo test -p table_io --release --test speed -- --ignored`, on a
+   Mac17,9, Apple M5 Pro: a CSV written by the test, 100,000 rows of a
+   name, 20 integers, 20 floats with the decimal comma and 9 texts such
+   as `España7`, in Windows-1252 with `;`, 36,197,015 bytes, every
+   option left to be found; 7 runs, median 0.505 s, from 0.492 to 0.529.
+   Under node 26.8.2 through the package: the first import in a fresh
+   process 1.038, 1.065 and 1.067 s in 3 processes; 7 later imports in
+   one process, median 0.519 s, from 0.512 to 0.526. The test asserts
+   every column's name, type and length and the first and last rows.
+3. `THIRD_PARTY_LICENSES.md` made again: the 30 crates of `cargo tree -p
+   table_io_js -e normal,no-proc-macro --target wasm32-unknown-unknown`,
+   rust_xlsxwriter 0.99.1 now among them, and what Rust's standard
+   library compiles into the `.wasm`, core, alloc and std, dlmalloc
+   0.2.13, compiler_builtins 0.1.160 with libm 0.2.16, which the file
+   had never listed. The README of the package says what it exports,
+   each refusal with its fields; the crate's description says it imports
+   and exports a table.
+4. `npm pack` gives `table_io-0.2.0.tgz`, 360,468 bytes, of 8 files,
+   `LICENSE`, `README.md`, `THIRD_PARTY_LICENSES.md`, `package.json` and
+   in `wasm/` the `.wasm`, its JavaScript and two files of declarations;
+   unpacked in a scratch folder and imported under node, it reads
+   `written.csv` as text in Windows-1252 with `;`, 4 columns, and
+   `written.xlsx`, 4 columns.
+
+The review, at 4b45bf5, by the categories spec, tests and package, and
+the README read by the first-reader as a session of popnei_web that has
+never seen table_io:
+
+- Fixed: the README sent its reader to the spec for the fields of each
+  refusal, how a column is counted and what `convertColumn` accepts, and
+  said that a text file cut short is unreadable, where it is `cutShort`
+  (first-reader, spec); the reader, sent again, answered its five
+  questions from the README alone. The speed test checked three columns
+  of one row, and passed an import that cut every column to one value,
+  in 0.413 s; it now checks every column, and its file is in
+  Windows-1252, as its comment says a Spanish Excel writes it, which
+  costs about 10% more than the ASCII file it was (tests). The time
+  under node was the first import alone (tests). The notices of
+  compiler_builtins and libm (package).
+- Not taken: none.
+
 ## The issues to open
 
 When the repository's issues are used for table_io, these are opened:
@@ -573,3 +713,47 @@ When the repository's issues are used for table_io, these are opened:
   carriage return is read back as `Ax000D_` by calamine and, by the rule
   of the format, by Excel; table_io refuses such a text meanwhile. For
   rust_xlsxwriter's repository (review of work package 6, spec).
+
+## How the work went, for whoever next revises a skill or writes a plan
+
+This section is not for the owner, who can stop here. The tokens below
+are those the `Agent` tool reported for each subagent, a resumed one's
+being its total.
+
+- The review cost more than the building, in every work package of
+  this session, and found what the building missed:
+
+  | work package | building and fixes | the review | reviewers |
+  |---|---|---|---|
+  | 4, text files | 395,000 tokens, two subagents | 695,000 | 7 |
+  | 5, export of a CSV | 263,000 | 417,000 | 6 |
+  | 6, export of an xlsx | 303,000 | 513,000 | 7 |
+  | 7, the end | 183,000 | 152,000 | 3 and the first-reader |
+
+  The reviewer of tests found the most in each, by changing the code and
+  seeing which test failed: 7 of 42 changes passed every test in work
+  package 4, 6 of 30 in work package 5, and 3 of 38 in work package 6.
+  A plan of this kind can count a review at about twice its building.
+- A subagent that wrote a work package fixed its own review's findings,
+  given each with its evidence and the orchestrator's verdict, in one
+  message, and none had to be sent twice; the fixes took 60,000 to
+  98,000 tokens in work packages 4 to 6, about a third of the building.
+- The deliverable "no larger than" the size of the `.wasm` at an
+  earlier commit, with no margin, could not be held for a reason that
+  had nothing to do with what it guards: linking a crate changed how
+  the linker kept one function of Rust's standard library, 138 bytes.
+  What the deliverable meant to keep out, the code of the export, was
+  checked otherwise, by the names of the functions in the `.wasm`. A
+  bound of size in a plan names what it guards and checks that, with
+  the size in bytes as a number to report.
+- Three rules of the coding skill were missing and were added on 2
+  October 2026, each with the review that showed it: an xlsx exported
+  is read back by calamine as well as by the import; a property that
+  repairs a refused table checks that each refusal is due; a test of
+  speed checks its whole result.
+- The reviewers of architecture and of errors found that a dependency,
+  rust_xlsxwriter, reads the clock, by running a build for the web under
+  node: the check `cargo wasm-check` compiles for the web and runs
+  nothing.
+  A plan that adds a dependency to a crate compiled for the web asks for
+  one call of it run under node, not only compiled.

@@ -8,7 +8,8 @@ specs `docs/specs/values.md`, `text-files.md`, `import.md`, `export.md`,
 `package.md` and `read.md`, whose open points the owner answered the same
 day. The owner approved the breakdown into seven work packages on 2
 October 2026, and the plan is written from it. State: approved by the
-owner on 2 October 2026, under way.
+owner on 2 October 2026, carried out the same day but for deliverable 3
+of work package 6, which waits on the owner (`docs/reports/table-io.md`).
 
 The work is on the branch `plan/table-io`, in the worktree
 `.claude/worktrees/table-io`, which already holds the documents and the

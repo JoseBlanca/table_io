@@ -308,8 +308,11 @@ pub(crate) fn read_first_sheet_within(
     let date_system = match parts::read_parts(bytes, max_cells, bounds)? {
         PackageWorkbook::Found(date_system) => date_system,
         // calamine then finds no sheet, or not the relationships of the
-        // workbook.
-        PackageWorkbook::Missing => DateSystem::Excel1900,
+        // workbook, once every part is bounded as it would have been.
+        PackageWorkbook::Missing => {
+            parts::read_every_part_of(bytes, max_cells, bounds)?;
+            DateSystem::Excel1900
+        }
         PackageWorkbook::NotNamed => {
             return Err(ReadError::Unreadable(
                 "the file names no workbook".to_owned(),

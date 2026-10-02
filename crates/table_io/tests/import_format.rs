@@ -404,3 +404,159 @@ fn an_xlsx_without_its_workbook_is_refused_as_not_a_workbook() {
 
     assert_eq!(import, Err(refused(Format::Xlsx, Refusal::NotWorkbook)));
 }
+
+// A zip that holds no workbook is not a workbook whatever its other parts
+// hold: its package relationships are read first, and no other part is
+// read or bounded once they name no workbook in it.
+
+/// The method of compression of a part of a zip: 8, deflate, which the
+/// zip crate reads, and 12, bzip2, which the build of table_io does not.
+const DEFLATE: u16 = 8;
+/// See [`DEFLATE`].
+const BZIP2: u16 = 12;
+
+/// The flag of a part of a zip saved with a password, bit 0 of its
+/// general purpose flags.
+const ENCRYPTED: u16 = 1;
+
+/// A zip of one part named `name`, whose bytes in the zip are `stored`,
+/// compressed by `method` with the flags `flags`, and which unzip to
+/// `size` bytes of CRC-32 `crc`: a local header and its bytes, the central
+/// directory that lists it, and the record that ends the zip.
+fn zip_of_one_part(
+    name: &str,
+    method: u16,
+    flags: u16,
+    stored: &[u8],
+    size: u32,
+    crc: u32,
+) -> Result<Vec<u8>, std::num::TryFromIntError> {
+    let name_length = u16::try_from(name.len())?;
+    let stored_size = u32::try_from(stored.len())?;
+    // Version 2.0, the flags and the method, a time of 0 and 1 January 1980,
+    // then the checksum and the two sizes.
+    let mut fields = Vec::new();
+    fields.extend(flags.to_le_bytes());
+    fields.extend(method.to_le_bytes());
+    fields.extend([0, 0, 0x21, 0]);
+    fields.extend(crc.to_le_bytes());
+    fields.extend(stored_size.to_le_bytes());
+    fields.extend(size.to_le_bytes());
+    fields.extend(name_length.to_le_bytes());
+
+    let mut zip = Vec::new();
+    zip.extend(0x0403_4b50_u32.to_le_bytes());
+    zip.extend([20, 0]);
+    zip.extend(&fields);
+    zip.extend(0_u16.to_le_bytes());
+    zip.extend(name.as_bytes());
+    zip.extend(stored);
+    let directory_offset = u32::try_from(zip.len())?;
+
+    let mut directory = Vec::new();
+    directory.extend(0x0201_4b50_u32.to_le_bytes());
+    directory.extend([20, 0, 20, 0]);
+    directory.extend(&fields);
+    // No extra field, no comment, disk 0, no attributes, offset 0.
+    directory.extend([0; 16]);
+    directory.extend(name.as_bytes());
+    let directory_size = u32::try_from(directory.len())?;
+
+    zip.extend(directory);
+    zip.extend(0x0605_4b50_u32.to_le_bytes());
+    zip.extend([0, 0, 0, 0, 1, 0, 1, 0]);
+    zip.extend(directory_size.to_le_bytes());
+    zip.extend(directory_offset.to_le_bytes());
+    zip.extend(0_u16.to_le_bytes());
+    Ok(zip)
+}
+
+/// The number of copies of 258 bytes after the first two in
+/// [`deflated_zeros_and_commas`], which make 310,000,160 bytes.
+const NUM_COPIES: u32 = 1_201_551;
+
+/// A deflate stream, of one block of the fixed codes, of `0,` repeated to
+/// 2 + 258 × [`NUM_COPIES`] bytes: the literals `0` and `,`, then each copy
+/// of 258 bytes from 2 bytes back, 13 bits, and the end of the block; about
+/// 2 MB for 310 MB.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "a bit buffer of fewer than 64 bits, shifted by fewer than 64"
+)]
+fn deflated_zeros_and_commas() -> Vec<u8> {
+    let mut stream = Vec::new();
+    let mut buffer: u64 = 0;
+    let mut num_bits: u32 = 0;
+    // A Huffman code is written from its highest bit, the other fields
+    // from their lowest.
+    let mut push = |value: u64, length: u32, is_code: bool| {
+        let bits = if is_code {
+            value.reverse_bits() >> (64 - length)
+        } else {
+            value
+        };
+        buffer |= bits << num_bits;
+        num_bits += length;
+        while num_bits >= 8 {
+            stream.push(buffer.to_le_bytes()[0]);
+            buffer >>= 8;
+            num_bits -= 8;
+        }
+    };
+    // The last block, of the fixed codes.
+    push(1, 1, false);
+    push(1, 2, false);
+    // `0` and `,`, the literals 0x30 and 0x2C, codes 0x30 + literal.
+    push(0x60, 8, true);
+    push(0x5C, 8, true);
+    for _ in 0..NUM_COPIES {
+        // The length 258, code 285, and the distance 2, code 1.
+        push(0xC5, 8, true);
+        push(1, 5, true);
+    }
+    // The end of the block, code 256, and the last bits.
+    push(0, 7, true);
+    push(0, 7, false);
+    stream
+}
+
+#[cfg(feature = "xlsx")]
+#[test]
+fn a_zip_of_one_csv_that_unzips_past_the_bound_of_a_part_is_not_a_workbook() {
+    // 310,000,160 bytes, past the 300,000,000 of a part; its checksum is
+    // 0, since a read that reached it would have passed the bound first.
+    let size = 2 + 258 * NUM_COPIES;
+    let bytes = zip_of_one_part(
+        "geno.csv",
+        DEFLATE,
+        0,
+        &deflated_zeros_and_commas(),
+        size,
+        0,
+    )
+    .unwrap();
+
+    let import = import_table(&bytes, &options_with_max_bytes(MAX_BYTES));
+
+    assert_eq!(import, Err(refused(Format::Xlsx, Refusal::NotWorkbook)));
+}
+
+#[cfg(feature = "xlsx")]
+#[test]
+fn a_zip_of_one_part_in_bzip2_is_not_a_workbook() {
+    let bytes = zip_of_one_part("geno.csv", BZIP2, 0, b"BZh9", 4, 0).unwrap();
+
+    let import = import_table(&bytes, &options_with_max_bytes(MAX_BYTES));
+
+    assert_eq!(import, Err(refused(Format::Xlsx, Refusal::NotWorkbook)));
+}
+
+#[cfg(feature = "xlsx")]
+#[test]
+fn a_zip_of_one_part_saved_with_a_password_is_not_a_workbook() {
+    let bytes = zip_of_one_part("geno.csv", 0, ENCRYPTED, &[0; 20], 8, 0).unwrap();
+
+    let import = import_table(&bytes, &options_with_max_bytes(MAX_BYTES));
+
+    assert_eq!(import, Err(refused(Format::Xlsx, Refusal::NotWorkbook)));
+}

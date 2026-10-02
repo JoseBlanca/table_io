@@ -53,10 +53,14 @@ pub(crate) struct PartBounds {
     pub(crate) max_part_bytes: u64,
 }
 
-/// Reads every part of the zip `bytes` to its end, so that the zip crate
+/// Reads the package relationships of the zip `bytes`, `_rels/.rels`,
+/// within the bound of a settings part, and, when they name a workbook
+/// that is in the zip, every part to its end, so that the zip crate
 /// checks its checksum, and bounds what calamine could hold of each within
 /// `bounds`, and the merged ranges of each within `max_cells`; then gives
-/// the date system of the workbook. The zip is let go of before it
+/// the date system of the workbook. A zip whose relationships name no
+/// workbook in it has no other part read, so that none of them makes it
+/// unreadable (`docs/specs/import.md`, "The format"). The zip is let go of before it
 /// returns, so that calamine does not open the file while table_io holds
 /// the list of its parts. A file whose package relationships, `_rels/.rels`,
 /// are missing or name no workbook, which calamine refuses too, gives
@@ -91,8 +95,11 @@ pub(crate) fn read_parts(
     bounds: PartBounds,
 ) -> Result<PackageWorkbook, ReadError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
-    read_every_part(&mut archive, max_cells, bounds)?;
     let part_names = PartNames::of_archive(&archive);
+    // The package relationships alone first, bounded, so that a zip of
+    // other files is not a workbook whatever its other parts hold
+    // ("The format" of docs/specs/import.md).
+    read_package_relationships(&mut archive, &part_names, max_cells, bounds)?;
     let Some(workbook_folder) = workbook_folder_of(&mut archive, &part_names)? else {
         return Ok(PackageWorkbook::NotNamed);
     };
@@ -100,7 +107,56 @@ pub(crate) fn read_parts(
     if !part_names.holds(&workbook_path) {
         return Ok(PackageWorkbook::Missing);
     }
+    read_every_part(&mut archive, max_cells, bounds)?;
     date_system_of(&mut archive, &part_names, &workbook_path).map(PackageWorkbook::Found)
+}
+
+/// Reads every part of the zip `bytes` to its end, within `bounds` and
+/// `max_cells`, as [`read_parts`] does once the package relationships name
+/// a workbook in the zip: for [`crate::xlsx::read_first_sheet`], which
+/// gives a workbook named but missing to calamine.
+///
+/// # Errors
+///
+/// Those of [`read_parts`] for the parts.
+#[cfg(test)]
+pub(crate) fn read_every_part_of(
+    bytes: &[u8],
+    max_cells: u32,
+    bounds: PartBounds,
+) -> Result<(), ReadError> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
+    read_every_part(&mut archive, max_cells, bounds)
+}
+
+/// Reads the package relationships, `_rels/.rels`, to their end within
+/// the bound of a settings part, so that the zip crate checks their
+/// checksum and [`workbook_folder_of`] reads no more than the bound; a zip
+/// without them reads nothing.
+fn read_package_relationships(
+    archive: &mut Archive<'_>,
+    part_names: &PartNames,
+    max_cells: u32,
+    bounds: PartBounds,
+) -> Result<(), ReadError> {
+    let part = match archive.by_name(part_names.zip_name_of(PACKAGE_RELATIONSHIPS_PATH)) {
+        Ok(part) => part,
+        Err(ZipError::FileNotFound) => return Ok(()),
+        Err(zip_error) => return Err(unreadable_of_zip_error(zip_error)),
+    };
+    let mut unzipped = UnzippedBytes {
+        num_bytes: 0,
+        max_bytes: bounds.max_unzipped_bytes,
+    };
+    let mut part_reader = PartReader::new(
+        part,
+        PartKind::PackageRelationships,
+        &bounds,
+        &mut unzipped,
+        u64::from(max_cells),
+    );
+    let copy_result = io::copy(&mut part_reader, &mut io::sink());
+    part_reader.finish(copy_result).map(|_| ())
 }
 
 /// The workbook the package relationships name, as calamine finds it: the

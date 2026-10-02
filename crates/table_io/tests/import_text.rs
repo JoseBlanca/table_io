@@ -1018,11 +1018,14 @@ fn a_doubled_quote_after_a_cell_without_quotes_gives_the_cells_a_and_b_quote_c()
 
 #[test]
 fn a_text_with_no_line_break_at_its_end_and_one_ending_in_crlf_give_the_same_table() {
-    assert_eq!(
-        import(b"id,n\r\nA,x\r\nB,y"),
-        import(b"id,n\r\nA,x\r\nB,y\r\n")
-    );
-    assert_eq!(names_of(&import(b"id,n\r\nA,x\r\nB,y")), Ok(vec!["A", "B"]));
+    let expected = Ok(table(
+        "id",
+        &["A", "B"],
+        vec![column("n", 2, texts(&[Some("x"), Some("y")]))],
+        utf8(Separator::Comma, DecimalMark::Point),
+    ));
+    assert_eq!(import(b"id,n\r\nA,x\r\nB,y"), expected);
+    assert_eq!(import(b"id,n\r\nA,x\r\nB,y\r\n"), expected);
 }
 
 #[test]
@@ -1509,13 +1512,18 @@ fn when_the_semicolon_and_the_comma_both_fit_with_two_cells_the_semicolon_is_tak
 
 #[test]
 fn the_separator_is_found_with_the_header_counted_without_its_empty_cells() {
+    // With `;` the header has four cells, two of them empty and dropped, so
+    // it is counted as two, fewer than the three of `,`.
     assert_eq!(
-        import(b"a;b,c;;\nx;y,z\n"),
+        import(b"a;b,c,d;;\nx;y,z,w;;\n"),
         Ok(table(
-            "a",
-            &["x"],
-            vec![column("b,c", 2, texts(&[Some("y,z")]))],
-            utf8(Separator::Semicolon, DecimalMark::Point),
+            "a;b",
+            &["x;y"],
+            vec![
+                column("c", 2, texts(&[Some("z")])),
+                column("d;;", 3, texts(&[Some("w;;")])),
+            ],
+            utf8(Separator::Comma, DecimalMark::Point),
         ))
     );
 }
@@ -1557,6 +1565,154 @@ fn a_file_with_no_header_takes_its_first_individual_for_the_names_of_the_columns
 #[test]
 fn a_text_file_read_in_a_build_with_csv_is_a_table_and_not_unreadable() {
     assert_eq!(names_of(&import(b"id,pop\nA,P1\n")), Ok(vec!["A"]));
+}
+
+#[test]
+fn a_cell_past_the_header_that_is_not_empty_keeps_a_separator_from_fitting() {
+    // With `,` the row has a fourth cell, `4;5`, past the three of the
+    // header, so `,` does not fit and `;` is taken.
+    assert_eq!(
+        import(b"a,b,c;d\n1,2,3,4;5\n"),
+        Ok(table(
+            "a,b,c",
+            &["1,2,3,4"],
+            vec![column("d", 2, integers(&[Some(5)]))],
+            utf8(Separator::Semicolon, DecimalMark::Point),
+        ))
+    );
+    // With `;` the row has a third cell, `w`, past the two of the header,
+    // so `;` does not fit, and `,`, which fits, is taken against the tie.
+    assert_eq!(
+        import(b"a,b;c\nx,y;z;w\n"),
+        Ok(table(
+            "a",
+            &["x"],
+            vec![column("b;c", 2, texts(&[Some("y;z;w")]))],
+            utf8(Separator::Comma, DecimalMark::Point),
+        ))
+    );
+}
+
+#[test]
+fn a_quote_never_closed_in_the_header_is_an_unclosed_quote_at_line_1_with_the_separator_of_the_header()
+ {
+    assert_eq!(
+        import(b"id;pop;\"n\nA;P1;2\n"),
+        refused(Refusal::UnclosedQuote {
+            line: 1,
+            separator: Separator::Semicolon,
+        })
+    );
+    assert_eq!(
+        import(b"a;b;\"c\nx;y\n"),
+        refused(Refusal::UnclosedQuote {
+            line: 1,
+            separator: Separator::Semicolon,
+        })
+    );
+}
+
+#[test]
+fn an_unclosed_quote_after_a_quoted_cell_over_two_lines_is_at_the_line_where_its_cell_starts() {
+    assert_eq!(
+        import(b"id,n,m\nA,\"x\ny\",\"z\nB,1,2\n"),
+        refused(Refusal::UnclosedQuote {
+            line: 3,
+            separator: Separator::Comma,
+        })
+    );
+}
+
+#[test]
+fn a_carriage_return_alone_ends_a_line_for_the_line_not_decoded() {
+    assert_eq!(
+        read_of(&import("id,pop\rA,P1\rB,Espa\u{FFFD}a\r".as_bytes())),
+        Ok(&utf8_with_undecoded(
+            Separator::Comma,
+            DecimalMark::Point,
+            3
+        ))
+    );
+    assert_eq!(
+        read_of(&import_with(
+            b"id;n\rA;\xFF\r",
+            encoding_set(Encoding::Utf8)
+        )),
+        Ok(&utf8_with_undecoded(
+            Separator::Semicolon,
+            DecimalMark::Point,
+            2
+        ))
+    );
+}
+
+/// How a text file of UTF-8 was read, with `separator` and `decimal`, its
+/// first character not decoded on `line`.
+fn utf8_with_undecoded(separator: Separator, decimal: DecimalMark, line: u32) -> HowRead {
+    read_as(FoundEncoding::Utf8, separator, decimal, Some(line))
+}
+
+#[test]
+fn a_carriage_return_alone_inside_quotes_is_a_line_so_the_row_after_it_is_on_line_4() {
+    assert_eq!(
+        import(b"id,n\rA,\"x\ry\"\rB,1,2\r"),
+        refused(Refusal::RaggedRow {
+            line: 4,
+            expected: 2,
+            found: 3,
+            separator: Separator::Comma,
+        })
+    );
+}
+
+#[test]
+fn an_empty_quoted_cell_followed_by_text_is_that_text() {
+    assert_eq!(
+        import(b"id,n\nA,\"\"y\nB,z\n"),
+        Ok(table(
+            "id",
+            &["A", "B"],
+            vec![column("n", 2, texts(&[Some("y"), Some("z")]))],
+            utf8(Separator::Comma, DecimalMark::Point),
+        ))
+    );
+}
+
+#[test]
+fn the_order_of_the_refusals_a_ragged_row_before_an_empty_individual_and_a_duplicate_column() {
+    assert_eq!(
+        import(b"id,pop\n,P1\nB\n"),
+        refused(Refusal::RaggedRow {
+            line: 3,
+            expected: 2,
+            found: 1,
+            separator: Separator::Comma,
+        })
+    );
+    assert_eq!(
+        import(b"id,pop,pop\nA,1,2\nB\n"),
+        refused(Refusal::RaggedRow {
+            line: 3,
+            expected: 3,
+            found: 1,
+            separator: Separator::Comma,
+        })
+    );
+}
+
+#[test]
+fn the_text_after_an_empty_quoted_cell_names_a_column_and_so_decides_the_separator() {
+    // With `;` the header's second cell is `x`, from what follows `""`, so
+    // the header is counted as two cells and `;` fits.
+    assert_eq!(
+        import(b"a;\"\"x\nb;\n"),
+        Ok(table(
+            "a",
+            &["b"],
+            vec![column("x", 2, texts(&[None]))],
+            utf8(Separator::Semicolon, DecimalMark::Point),
+        ))
+    );
 }
 
 // The round trip of a table written as a CSV, "How it is verified" of

@@ -66,7 +66,12 @@ that it is a zip and not an Excel workbook, which the user can act on.
 It is found from the package relationships, the part `_rels/.rels` of
 the zip that names its main part, which `specs/read.md` already reads:
 a zip without them, or whose relationships name no workbook, is not a
-workbook. Without this refusal such a file was an unreadable one, with
+workbook. The relationships name no workbook when none of them is of the
+type `officeDocument` with a target, or when the folder of that target,
+`xl/` in a workbook Excel saves, holds no part `workbook.xml`, its name
+compared ignoring case, which is the part calamine reads as the workbook
+whatever the target's own name: a `.docx` names `word/document.xml`, and
+`word/` holds no `workbook.xml`. Without this refusal such a file was an unreadable one, with
 calamine's message for a `.docx`, "File not found
 'word/_rels/workbook.xml.rels'", and `specs/read.md`'s, "the file names
 no workbook", for a zip with no relationships (tried on 2 October 2026),
@@ -458,8 +463,9 @@ xlsx and `excel97.xls` by a build of `csv` alone, `cargo test -p table_io
 --no-default-features --features csv`, a format not built, xlsx; at the
 root of the workspace without `-p` the binding crate turns both features
 on again; the compound files of `specs/read.md`'s tests, old Excel and
-encrypted; a `.docx` written by the test as a zip of its parts, and a zip
-holding one CSV, not a workbook; a CSV whose header starts with `PK`, a
+encrypted; a `.docx` written by the test as a zip of its parts, a zip
+holding one CSV, and an xlsx without its part `xl/workbook.xml`, not a
+workbook; a CSV whose header starts with `PK`, a
 table; and the order of the refusals, each pair of the list
 above that one file can hold, `#REF!` in the header of a sheet of one
 row among them, giving the one first in the list.

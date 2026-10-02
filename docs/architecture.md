@@ -523,7 +523,11 @@ dependency is set only by the workspace that builds it, so this line
 holds in table_io's builds and not in Vavilov Explorer's: its release
 build wraps as the package does, and its development build would stop
 at such a panic, for a damaged xlsx, unless its own `Cargo.toml` has the
-same line, which is asked of it (section 8).
+same line, which is asked of it (section 8). The dependencies are
+optimized in those builds, `[profile.dev.package."*"] opt-level = 2`,
+with their checks of overflow kept, so that the no-panic test of section
+12 takes 52 s and not 108 s; table_io itself is not optimized there, and
+the package, built with the release profile, is not changed.
 
 The release profile is `opt-level = 3`, LTO and one codegen unit, as
 popnei_web's `docs/technology.md` measured it.

@@ -54,3 +54,13 @@ codegen-units = 1
 # a test of a damaged file meets what the package does
 # (docs/architecture.md, section 6).
 overflow-checks = false
+
+[profile.dev.package."*"]
+# The dependencies, calamine, zip and quick-xml among them, optimized in
+# the builds of the tests: the no-panic test of docs/specs/import.md
+# imports 1,470,000 copies of an xlsx and a CSV, which took 108 s of the
+# 126 s of `cargo test --workspace` on the owner's Mac unoptimized, and 52 s
+# so. Their checks of overflow stay on, but for calamine's line above, and
+# table_io is not optimized. The package is built with the release profile,
+# which this does not change.
+opt-level = 2

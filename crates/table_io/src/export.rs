@@ -318,26 +318,38 @@ pub fn export_table(
     columns: &[Column],
     format: &ExportFormat,
 ) -> Result<Vec<u8>, ExportError> {
+    let is_built = match format {
+        ExportFormat::Csv(_) => cfg!(feature = "csv"),
+        ExportFormat::Xlsx => false,
+    };
+    if !is_built {
+        return Err(ExportError::Refused(ExportRefusal::FormatNotBuilt));
+    }
+    // The shape is checked here, for every format, so that no writer
+    // meets a column shorter than the names, whose values past its end
+    // would be written as missing.
+    if let Some(refusal) = crate::export_cells::shape_refusal(names, columns) {
+        return Err(ExportError::Refused(refusal));
+    }
     match format {
         ExportFormat::Csv(csv_export) => csv_file(names, columns, csv_export),
         ExportFormat::Xlsx => Err(ExportError::Refused(ExportRefusal::FormatNotBuilt)),
     }
 }
 
-/// The bytes of the CSV of the table, with the choices `csv_export`.
+/// The bytes of the CSV of the table, whose shape is checked, with the
+/// choices `csv_export`.
 #[cfg(feature = "csv")]
 fn csv_file(
     names: &NameColumn,
     columns: &[Column],
     csv_export: &CsvExport,
 ) -> Result<Vec<u8>, ExportError> {
-    if let Some(refusal) = crate::export_cells::shape_refusal(names, columns) {
-        return Err(ExportError::Refused(refusal));
-    }
     crate::csv::csv_of_table(names, columns, csv_export)
 }
 
-/// The refusal of a CSV in a build without the feature `csv`.
+/// The refusal of a CSV in a build without the feature `csv`, which
+/// [`export_table`] gives before it calls this.
 #[cfg(not(feature = "csv"))]
 fn csv_file(
     _names: &NameColumn,

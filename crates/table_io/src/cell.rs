@@ -3,6 +3,7 @@
 use calamine::{CellErrorType, DataRef};
 
 use crate::date::{DateSystem, cell_of_date};
+use crate::value::{DecimalMark, float_text};
 use crate::xlsx::SheetCell;
 
 /// The cell of `calamine_value`, as "Each cell" gives it, a date in the
@@ -41,12 +42,8 @@ fn cell_of_text(cell_text: &str) -> SheetCell {
 pub(crate) fn cell_of_number(number: f64) -> SheetCell {
     if number.is_finite() {
         SheetCell::Number(number)
-    } else if number.is_nan() {
-        SheetCell::Text("NaN".to_owned())
-    } else if number.is_sign_positive() {
-        SheetCell::Text("Infinity".to_owned())
     } else {
-        SheetCell::Text("-Infinity".to_owned())
+        SheetCell::Text(float_text(number, DecimalMark::Point))
     }
 }
 

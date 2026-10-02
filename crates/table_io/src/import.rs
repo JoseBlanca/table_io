@@ -237,11 +237,17 @@ pub enum Refusal {
 /// [`Refusal::SheetTooLarge`] in the order of the file, and
 /// [`Refusal::EmptySheet`].
 ///
+/// Then the refusals of the rows of `docs/specs/import.md`, "The rows":
+/// [`Refusal::HeaderError`], [`Refusal::Empty`], [`Refusal::UnnamedColumn`]
+/// for the run of empty names at the end of the header, then
+/// [`Refusal::UnnamedColumn`] elsewhere and [`Refusal::DuplicateColumn`],
+/// then row by row [`Refusal::EmptyIndividual`] and
+/// [`Refusal::DuplicateIndividual`].
+///
 /// [`ImportError::Unreadable`] for an xlsx that cannot be read, with the
-/// messages of `docs/specs/read.md`; and, in this version, for every file
-/// that is not refused before its rows, since the table is not made of
-/// them yet: "the table of an xlsx is not built yet" and "the reading of a
-/// text file is not built yet".
+/// messages of `docs/specs/read.md`; and, in this version, for every text
+/// file that is not refused before its rows, since it is not read yet:
+/// "the reading of a text file is not built yet".
 pub fn import_table(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError> {
     let format = format_of(bytes);
     // A slice holds at most isize::MAX bytes, which a u64 holds on every
@@ -281,17 +287,78 @@ fn format_of(bytes: &[u8]) -> Format {
     }
 }
 
-/// The message of [`ImportError::Unreadable`] for an xlsx whose sheet was
-/// read, until the module `table` makes the table of its rows.
-#[cfg(feature = "xlsx")]
-const TABLE_NOT_BUILT: &str = "the table of an xlsx is not built yet";
-
 /// The table of the xlsx `bytes`, a zip or a compound file of the old
 /// Office, within `options.max_cells`.
 #[cfg(feature = "xlsx")]
 fn table_of_xlsx(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError> {
-    let _sheet = crate::xlsx::import_sheet(bytes, options.max_cells)?;
-    Err(ImportError::Unreadable(TABLE_NOT_BUILT.to_owned()))
+    let sheet = crate::xlsx::import_sheet(bytes, options.max_cells)?;
+    let crate::xlsx::Sheet {
+        name,
+        first_row,
+        first_column,
+        num_rows,
+        num_columns,
+        cells,
+    } = sheet;
+    let rows = rows_of_rectangle(first_row, num_rows, num_columns, cells)?;
+    crate::table::table_of_rows(
+        crate::table::Rows {
+            origin: crate::table::Origin::Xlsx,
+            first_column,
+            rows,
+        },
+        HowRead::Xlsx { sheet: name },
+    )
+}
+
+/// The message of [`ImportError::Unreadable`] for a sheet whose rectangle
+/// does not hold its cells, or passes row 4,294,967,295, which no sheet
+/// read by `docs/specs/read.md` does.
+#[cfg(feature = "xlsx")]
+const RECTANGLE_NOT_ITS_CELLS: &str = "the rectangle of the sheet does not hold its cells";
+
+/// The rows of the rectangle of a sheet, `num_rows` rows of `num_columns`
+/// of `cells` from the row `first_row` of the sheet, each with its row.
+///
+/// # Errors
+///
+/// [`ImportError::Unreadable`] when `cells` are not `num_rows` ×
+/// `num_columns`, or a row passes 4,294,967,295.
+#[cfg(feature = "xlsx")]
+fn rows_of_rectangle(
+    first_row: u32,
+    num_rows: u32,
+    num_columns: u32,
+    cells: Vec<crate::xlsx::SheetCell>,
+) -> Result<Vec<crate::table::Row>, ImportError> {
+    let not_its_cells = || ImportError::Unreadable(RECTANGLE_NOT_ITS_CELLS.to_owned());
+    let num_cells = u64::from(num_rows).checked_mul(u64::from(num_columns));
+    if num_cells != u64::try_from(cells.len()).ok() {
+        return Err(not_its_cells());
+    }
+    let row_length = usize::try_from(num_columns).map_err(|_| not_its_cells())?;
+    let mut cells = cells.into_iter().map(cell_of_sheet_cell);
+    let mut rows = Vec::new();
+    for row_offset in 0..num_rows {
+        rows.push(crate::table::Row {
+            place: first_row
+                .checked_add(row_offset)
+                .ok_or_else(not_its_cells)?,
+            cells: cells.by_ref().take(row_length).collect(),
+        });
+    }
+    Ok(rows)
+}
+
+/// The cell of the table of a cell of the sheet.
+#[cfg(feature = "xlsx")]
+fn cell_of_sheet_cell(sheet_cell: crate::xlsx::SheetCell) -> crate::table::Cell {
+    match sheet_cell {
+        crate::xlsx::SheetCell::Empty => crate::table::Cell::Empty,
+        crate::xlsx::SheetCell::Text(cell_text) => crate::table::Cell::Text(cell_text),
+        crate::xlsx::SheetCell::Number(number) => crate::table::Cell::Number(number),
+        crate::xlsx::SheetCell::Bool(is_true) => crate::table::Cell::Boolean(is_true),
+    }
 }
 
 /// The refusal of an xlsx in a build without the feature `xlsx`.

@@ -15,7 +15,23 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg_attr(
+    not(feature = "xlsx"),
+    expect(
+        dead_code,
+        reason = "the table of a text file is made in work package 4 of docs/plans/table-io.md; until then only an xlsx is"
+    )
+)]
+mod guess;
 mod import;
+#[cfg_attr(
+    not(feature = "xlsx"),
+    expect(
+        dead_code,
+        reason = "the table of a text file is made in work package 4 of docs/plans/table-io.md; until then only an xlsx is"
+    )
+)]
+mod table;
 mod text_options;
 mod types;
 mod value;

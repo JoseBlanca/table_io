@@ -168,7 +168,7 @@ fn nearest_float(integer: i64) -> f64 {
 
 /// The integer a float is, when it is whole and from −2^63 to 2^63 − 1,
 /// or None; never an integer made by a cast that saturates.
-fn integer_of_float(float: f64) -> Option<i64> {
+pub(crate) fn integer_of_float(float: f64) -> Option<i64> {
     let is_integer = float.is_finite()
         && float.fract() == 0.0
         && (-TWO_TO_THE_63..TWO_TO_THE_63).contains(&float);
@@ -181,7 +181,7 @@ fn integer_of_float(float: f64) -> Option<i64> {
 }
 
 /// The text of a boolean, `TRUE` or `FALSE`, as Excel shows it.
-fn boolean_text(is_true: bool) -> String {
+pub(crate) fn boolean_text(is_true: bool) -> String {
     if is_true { "TRUE" } else { "FALSE" }.to_owned()
 }
 

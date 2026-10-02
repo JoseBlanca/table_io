@@ -228,6 +228,13 @@ pub enum ExportError {
     Failed(String),
 }
 
+/// A refusal or a failed export, written for whoever reports the
+/// problem, in English and with its fields, not as the words a user
+/// reads, which are the application's: Display and std::error::Error, so
+/// that a caller passes it on with `?`.
+impl std::fmt::Display for ExportError;
+impl std::error::Error for ExportError;
+
 /// The bytes of a new file holding the table.
 pub fn export_table(names: &NameColumn, columns: &[Column], format: &ExportFormat)
     -> Result<Vec<u8>, ExportError>;

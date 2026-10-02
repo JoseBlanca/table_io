@@ -1,20 +1,20 @@
-//! The binding of xlsx_rs to JavaScript: the one exported function,
+//! The binding of table_io to JavaScript: the one exported function,
 //! `readXlsx`, a thin wrapper over the library crate.
 //!
 //! It is compiled for `wasm32-unknown-unknown`, and the `wasm-bindgen`
 //! command line writes from it the JavaScript and the declarations of the
-//! package `js/xlsx_rs`. It holds no rule about a cell: it copies the sheet
-//! or the refusal that `xlsx_rs::read_first_sheet` gives into [`XlsxRead`],
+//! package `js/table_io`. It holds no rule about a cell: it copies the sheet
+//! or the refusal that `table_io::read_first_sheet` gives into [`XlsxRead`],
 //! and turns a file that cannot be read into a JavaScript `Error` with the
-//! message of the zip crate, of calamine or of xlsx_rs, whichever failed.
+//! message of the zip crate, of calamine or of table_io, whichever failed.
 //!
 //! wasm-bindgen copies the doc comments of the exported items into the
-//! declarations, `wasm/xlsx_rs.d.ts`, which the test of the package
-//! compares with `js/xlsx_rs/test/xlsx_rs.d.ts`: a change of one of them is
+//! declarations, `wasm/table_io.d.ts`, which the test of the package
+//! compares with `js/table_io/test/table_io.d.ts`: a change of one of them is
 //! a change of that file too.
 
+use table_io::{ReadError, Refusal, Sheet, SheetCell};
 use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
-use xlsx_rs::{ReadError, Refusal, Sheet, SheetCell};
 
 /// What `readXlsx` gives: the sheet read, or the code of a refusal with the
 /// fields its words need. It stays in the memory of the wasm, each field
@@ -59,10 +59,10 @@ pub struct XlsxRead {
 /// # Errors
 ///
 /// Throws an `Error` for a file that cannot be read, with the message of
-/// the zip crate, of calamine or of xlsx_rs, whichever failed.
+/// the zip crate, of calamine or of table_io, whichever failed.
 #[wasm_bindgen(js_name = readXlsx)]
 pub fn read_xlsx(bytes: &[u8], max_cells: u32) -> Result<XlsxRead, JsError> {
-    match xlsx_rs::read_first_sheet(bytes, max_cells) {
+    match table_io::read_first_sheet(bytes, max_cells) {
         Ok(sheet) => Ok(read_of_sheet(sheet)),
         Err(ReadError::Refused(refusal)) => Ok(read_of_refusal(refusal)),
         Err(ReadError::Unreadable(message)) => Err(JsError::new(&message)),

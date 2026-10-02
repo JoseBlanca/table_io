@@ -3,12 +3,14 @@
 //! does not know, and the sheet too large ("The refusals" of
 //! `docs/specs/read.md`, points 1 to 6).
 
+#![cfg(feature = "xlsx")]
+
 #[cfg(test)]
 #[expect(dead_code, reason = "no workbook here is of the 1904 system")]
 mod hand_written;
 
 use rust_xlsxwriter::{Chart, ChartType, Formula, Workbook};
-use xlsx_rs::{ReadError, Refusal, SheetCell, read_first_sheet};
+use table_io::{ReadError, Refusal, SheetCell, read_first_sheet};
 
 use crate::hand_written::{text_cell, xlsx_of_worksheet};
 
@@ -71,7 +73,7 @@ fn a_compound_file_with_no_encrypted_package_is_old_excel() {
     assert_eq!(read, Err(ReadError::Refused(Refusal::OldExcel)));
 }
 
-/// A compound file as an xlsx saved with a password is, as far as xlsx_rs
+/// A compound file as an xlsx saved with a password is, as far as table_io
 /// looks: the mark, zeros, and the name of the part `EncryptedPackage` in
 /// UTF-16 little-endian at byte 600, as a compound file writes its names,
 /// then zeros up to 1,024 bytes.

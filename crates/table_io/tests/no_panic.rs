@@ -16,10 +16,12 @@
 //! compressed data mostly stops at the checksum of its file: neither
 //! reaches calamine's reading of the XML. So an xlsx is also built here
 //! from the XML of its parts, stored in the zip uncompressed with the
-//! checksum of each part worked out again, and each part xlsx_rs reads,
+//! checksum of each part worked out again, and each part table_io reads,
 //! the workbook, its relationships, the table of texts, the sheet and the
 //! styles, is cut short and flipped in the same way, alone, before the
 //! parts are zipped again.
+
+#![cfg(feature = "xlsx")]
 
 #[cfg(test)]
 #[expect(
@@ -31,7 +33,7 @@ mod hand_written;
 use std::panic;
 
 use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Formula, Workbook, XlsxError};
-use xlsx_rs::{SheetCell, read_first_sheet};
+use table_io::{SheetCell, read_first_sheet};
 
 use crate::hand_written::stored_zip;
 
@@ -85,7 +87,7 @@ fn xlsx_of_every_kind() -> Result<Vec<u8>, XlsxError> {
     workbook.save_to_buffer()
 }
 
-/// A compound file as an xlsx saved with a password is, as far as xlsx_rs
+/// A compound file as an xlsx saved with a password is, as far as table_io
 /// looks: the mark, zeros, and the name of the part `EncryptedPackage` in
 /// UTF-16 little-endian at byte 600, as a compound file writes its names,
 /// then zeros up to 1,024 bytes.
@@ -188,7 +190,7 @@ const PARTS_OF_EVERY_KIND: [(&str, &str); 8] = [
     ),
 ];
 
-/// The parts of [`PARTS_OF_EVERY_KIND`] that xlsx_rs reads, through
+/// The parts of [`PARTS_OF_EVERY_KIND`] that table_io reads, through
 /// calamine, and that the tests damage: the workbook, its relationships,
 /// the table of texts, the sheet `Individuos` and the styles.
 const DAMAGED_PARTS: [&str; 5] = [

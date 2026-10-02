@@ -3,8 +3,10 @@
 //! is committed:
 //!
 //! ```text
-//! cargo test -p xlsx_rs --test write_fixtures -- --ignored
+//! cargo test -p table_io --test write_fixtures -- --ignored
 //! ```
+
+#![cfg(feature = "xlsx")]
 
 #[cfg(test)]
 #[expect(
@@ -277,7 +279,7 @@ fn write_individuals_10000_xlsx() {
 /// attribute `uniqueCount`, that it holds 400,000,000. calamine reserves
 /// room for that many texts before it reads the first, 4.8 GB in the wasm,
 /// which trapped the package, in the review of 28 September 2026 ("What
-/// xlsx_rs reads before calamine" of `docs/specs/read.md`, point 3).
+/// table_io reads before calamine" of `docs/specs/read.md`, point 3).
 /// rust_xlsxwriter writes the count it holds, so the file is written from
 /// the XML of its parts.
 #[test]

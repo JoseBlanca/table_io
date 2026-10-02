@@ -4,9 +4,11 @@
 //! the sheet of 10,000 rows and 20 columns of popnei_web's test ("How it
 //! is verified" of `docs/specs/read.md`).
 
+#![cfg(feature = "xlsx")]
+
 use std::path::PathBuf;
 
-use xlsx_rs::{Sheet, SheetCell, read_first_sheet};
+use table_io::{Sheet, SheetCell, read_first_sheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

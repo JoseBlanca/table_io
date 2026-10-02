@@ -1,12 +1,14 @@
 //! Every cell of a merged range with the value of its first cell, within
 //! the rectangle of the values ("Merged cells" of `docs/specs/read.md`).
 
+#![cfg(feature = "xlsx")]
+
 #[cfg(test)]
 #[expect(dead_code, reason = "no workbook here is of the 1904 system")]
 mod hand_written;
 
 use rust_xlsxwriter::{Format, Workbook};
-use xlsx_rs::{ReadError, Sheet, SheetCell, read_first_sheet};
+use table_io::{ReadError, Sheet, SheetCell, read_first_sheet};
 
 use crate::hand_written::{text_cell, xlsx_of_worksheet};
 

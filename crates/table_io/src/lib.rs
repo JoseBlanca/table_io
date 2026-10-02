@@ -1,27 +1,45 @@
 //! Reads the first worksheet that is not hidden of an xlsx into its cells,
 //! as `docs/specs/read.md` gives them.
+//!
+//! The reading of an xlsx is behind the cargo feature `xlsx`, with
+//! calamine, zip and quick-xml, so that a build without it compiles none
+//! of them (`docs/architecture.md`, section 5). The feature `csv` holds
+//! nothing yet. Both are on by default.
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "xlsx")]
 mod attrs;
+#[cfg(feature = "xlsx")]
 #[cfg(test)]
 mod bounds_tests;
+#[cfg(feature = "xlsx")]
 mod cell;
+#[cfg(feature = "xlsx")]
 mod date;
+#[cfg(feature = "xlsx")]
 mod encoding;
+#[cfg(feature = "xlsx")]
 mod parts;
+#[cfg(feature = "xlsx")]
 mod rectangle;
 
+#[cfg(feature = "xlsx")]
 use std::io::Cursor;
 
+#[cfg(feature = "xlsx")]
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
+#[cfg(feature = "xlsx")]
 use crate::cell::{TextCount, cell_of_value};
+#[cfg(feature = "xlsx")]
 use crate::parts::PartBounds;
+#[cfg(feature = "xlsx")]
 use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 
 /// A cell of the sheet: a date, a time, a duration and an error are text
 /// by then, as "Each cell" of `docs/specs/read.md` gives them.
+#[cfg(feature = "xlsx")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum SheetCell {
     /// No value: nothing in the file, or a text with no character.
@@ -36,6 +54,7 @@ pub enum SheetCell {
 
 /// The rectangle of the first worksheet that is not hidden, from the
 /// first row and column that hold a value to the last ones.
+#[cfg(feature = "xlsx")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sheet {
     /// The name of the sheet, as its tab shows it.
@@ -52,7 +71,8 @@ pub struct Sheet {
     pub cells: Vec<SheetCell>,
 }
 
-/// A file xlsx_rs does not read, with what the words of its refusal need.
+/// A file table_io does not read, with what the words of its refusal need.
+#[cfg(feature = "xlsx")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Refusal {
     /// A file that is not a zip, as every xlsx is: most often a CSV
@@ -90,12 +110,13 @@ pub enum Refusal {
 }
 
 /// Why a read gave no sheet.
+#[cfg(feature = "xlsx")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReadError {
     /// A file refused, with what its words need.
     Refused(Refusal),
-    /// A file xlsx_rs cannot read, with a message for the console: the zip
-    /// crate's, calamine's or xlsx_rs's message, as [`read_first_sheet`]
+    /// A file table_io cannot read, with a message for the console: the zip
+    /// crate's, calamine's or table_io's message, as [`read_first_sheet`]
     /// lists them.
     Unreadable(String),
 }
@@ -108,16 +129,18 @@ pub enum ReadError {
 /// UTF-8 are 400 MB or more as the strings of JavaScript, the most a tab
 /// can be asked to hold, where a table of individuals of 20 MB of CSV
 /// holds about 20 MB of text.
+#[cfg(feature = "xlsx")]
 pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 
 /// The most bytes the parts of a file may hold together once unzipped,
 /// 1,000,000,000: past it the read is [`ReadError::Unreadable`], "the file
 /// unzips to more than 1,000,000,000 bytes".
 ///
-/// The value is that of "What xlsx_rs reads before calamine" of
+/// The value is that of "What table_io reads before calamine" of
 /// `docs/specs/read.md`: `individuals_10000.xlsx` unzips to 6.6 times its
 /// size, so a zip of 20 MB, popnei_web's limit, of the same kind unzips to
 /// about 133 MB, while a zip can be written to unzip to many GB.
+#[cfg(feature = "xlsx")]
 pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 
 /// The most bytes each settings part may hold unzipped, 50,000,000: past
@@ -128,12 +151,13 @@ pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 /// ends in `workbook.xml`, the workbook, in `workbook.xml.rels`, its
 /// relationships, or in `styles.xml`, the styles.
 ///
-/// The value is that of "What xlsx_rs reads before calamine" of
+/// The value is that of "What table_io reads before calamine" of
 /// `docs/specs/read.md`, point 3. One Excel saves is a few KB, but a
 /// workbook that gathers tens of thousands of styles or defined names can
 /// pass 10 MB; calamine holds of a workbook of 50 MB of defined names
 /// about 175 MB natively, estimated there from a workbook listing
 /// 20,000,000 of them, 3.2 MB zipped, which took calamine 1.61 GB.
+#[cfg(feature = "xlsx")]
 pub const MAX_SETTINGS_PART_BYTES: u64 = 50_000_000;
 
 /// The most texts, elements of local name `si`, each table of texts may
@@ -144,10 +168,11 @@ pub const MAX_SETTINGS_PART_BYTES: u64 = 50_000_000;
 /// read, since calamine reserves room for as many texts as the first says
 /// before it reads one.
 ///
-/// The value is that of "What xlsx_rs reads before calamine" of
+/// The value is that of "What table_io reads before calamine" of
 /// `docs/specs/read.md`, point 3: calamine holds 12 bytes in the wasm for
 /// each text before its characters, 120 MB for these, where a table of
 /// individuals has at most as many texts as cells, 2,000,000.
+#[cfg(feature = "xlsx")]
 pub const MAX_TEXTS: u64 = 10_000_000;
 
 /// The most bytes the paths of the sheets calamine keeps may be counted
@@ -165,8 +190,9 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// tags: of the parts named `_rels/.rels` or ending in `workbook.xml.rels`,
 /// the longest tag, from `<` to `>`, of each is taken, and the two longest
 /// of these are added, since a target and the folder calamine takes from
-/// one are inside one tag ("What xlsx_rs reads before calamine", point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
+/// one are inside one tag ("What table_io reads before calamine", point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
 /// with tags of about 150 bytes: 300 KB.
+#[cfg(feature = "xlsx")]
 pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 
 /// The most bytes each part may hold unzipped, 300,000,000, the sheet
@@ -175,9 +201,9 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// part that holds once each text the cells hold, whose name ends in
 /// `sharedStrings.xml`, `\` read as `/` and ignoring case, in any folder.
 ///
-/// The value is that of "What xlsx_rs reads before calamine" of
+/// The value is that of "What table_io reads before calamine" of
 /// `docs/specs/read.md`, point 5: one cell of a sheet can hold a text as
-/// large as the sheet, which calamine builds whole before xlsx_rs sees the
+/// large as the sheet, which calamine builds whole before table_io sees the
 /// cell, and a cell of 300,000,000 bytes took the wasm to 1.71 GB at the
 /// most under node 26.8.2 on 29 September 2026, where the wasm can hold
 /// 4.29 GB and a cell of 750,000,000 bytes trapped it. The largest sheet a
@@ -189,6 +215,7 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// A part found in an encoding other than UTF-8, which calamine decodes
 /// into up to 3 bytes of UTF-8 for each byte, is counted three times, and
 /// so is refused past 100,000,000 bytes.
+#[cfg(feature = "xlsx")]
 pub const MAX_PART_BYTES: u64 = 300_000_000;
 
 /// Reads the first worksheet that is not hidden of the xlsx `bytes`,
@@ -246,7 +273,7 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 /// - "the file names no workbook", for a file whose package relationships,
 ///   `_rels/.rels`, are missing or name no workbook;
 /// - "the part … cannot be read as XML: …", with the message of quick-xml,
-///   for package relationships or a workbook whose XML xlsx_rs cannot read
+///   for package relationships or a workbook whose XML table_io cannot read
 ///   up to what it takes of it.
 ///
 /// Then, as calamine reads the sheet:
@@ -267,11 +294,13 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 ///   column, or a number of rows or columns, past what a `u32` holds,
 ///   which no file calamine reads can give and which are there so that
 ///   the read has no panic.
+#[cfg(feature = "xlsx")]
 pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError> {
     read_first_sheet_within(bytes, max_cells, PART_BOUNDS)
 }
 
 /// The bounds of the parts of [`read_first_sheet`].
+#[cfg(feature = "xlsx")]
 const PART_BOUNDS: PartBounds = PartBounds {
     max_unzipped_bytes: MAX_UNZIPPED_BYTES,
     max_settings_part_bytes: MAX_SETTINGS_PART_BYTES,
@@ -282,6 +311,7 @@ const PART_BOUNDS: PartBounds = PartBounds {
 
 /// Reads as [`read_first_sheet`] does, within `bounds`, which the tests of
 /// the crate lower so as to pass them with a file of a few KB.
+#[cfg(feature = "xlsx")]
 fn read_first_sheet_within(
     bytes: &[u8],
     max_cells: u32,
@@ -296,7 +326,7 @@ fn read_first_sheet_within(
     // Read before calamine, which takes the date system from an element of
     // another namespace in a workbook Excel 365 saves, reads four parts
     // whole, with no bound, when it opens the file, and holds every merged
-    // range of the sheet ("What xlsx_rs reads before calamine" of
+    // range of the sheet ("What table_io reads before calamine" of
     // docs/specs/read.md, points 2 to 4).
     let date_system = parts::read_parts(bytes, max_cells, bounds)?;
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;
@@ -359,7 +389,7 @@ fn read_first_sheet_within(
     };
     // Read once the cells are, so that a sheet refused as it is read is not
     // read a second time for its merged ranges; their number is bounded by
-    // parts::read_parts, since calamine holds them all ("What xlsx_rs reads
+    // parts::read_parts, since calamine holds them all ("What table_io reads
     // before calamine" of docs/specs/read.md, point 4).
     let merged_ranges: Vec<MergedRange> = workbook
         .merge_cells_by_sheet_name(&sheet_name)
@@ -403,6 +433,7 @@ fn read_first_sheet_within(
 /// the numbers [`Sheet`] and [`Refusal::SheetTooLarge`] give: its first row
 /// and column as Excel numbers them, from 1, and its numbers of rows and
 /// columns.
+#[cfg(feature = "xlsx")]
 struct ExcelRectangle {
     first_row: u32,
     first_column: u32,
@@ -412,6 +443,7 @@ struct ExcelRectangle {
 
 /// The [`ExcelRectangle`] of `rectangle`, or [`ReadError::Unreadable`] when
 /// one of them does not fit in a `u32`.
+#[cfg(feature = "xlsx")]
 fn excel_rectangle_of(
     rectangle: &Rectangle,
     sheet_name: &str,
@@ -447,28 +479,34 @@ fn excel_rectangle_of(
 
 /// The message of [`ReadError::Unreadable`] for texts of the cells past
 /// [`MAX_TEXT_BYTES`] and for a table of texts past [`MAX_PART_BYTES`].
+#[cfg(feature = "xlsx")]
 pub(crate) const TOO_MUCH_TEXT: &str = "too much text";
 
 /// The error of a read whose texts passed [`MAX_TEXT_BYTES`].
+#[cfg(feature = "xlsx")]
 fn too_much_text() -> ReadError {
     ReadError::Unreadable(TOO_MUCH_TEXT.to_owned())
 }
 
-/// The error of a sheet xlsx_rs cannot give, with `cause` after its name.
+/// The error of a sheet table_io cannot give, with `cause` after its name.
+#[cfg(feature = "xlsx")]
 fn unreadable_error_of(sheet_name: &str, cause: &str) -> ReadError {
     ReadError::Unreadable(format!("the sheet {sheet_name} {cause}"))
 }
 
 /// The eight bytes every compound file of the old Office starts with, an
 /// `.xls` and an xlsx saved with a password among them.
+#[cfg(feature = "xlsx")]
 const COMPOUND_FILE_MARK: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 
 /// The four bytes every zip starts with, `PK` and the bytes 3 and 4.
+#[cfg(feature = "xlsx")]
 const ZIP_MARK: [u8; 4] = [b'P', b'K', 3, 4];
 
 /// The name of the part an xlsx saved with a password holds its workbook
 /// in, `EncryptedPackage`, as a compound file writes the names of its
 /// parts: in UTF-16, little-endian.
+#[cfg(feature = "xlsx")]
 const ENCRYPTED_PACKAGE_NAME: &[u8; 32] = b"E\0n\0c\0r\0y\0p\0t\0e\0d\0P\0a\0c\0k\0a\0g\0e\0";
 
 /// The refusal of a compound file of Office: `Encrypted` when its bytes
@@ -477,6 +515,7 @@ const ENCRYPTED_PACKAGE_NAME: &[u8; 32] = b"E\0n\0c\0r\0y\0p\0t\0e\0d\0P\0a\0c\0
 /// calamine is not asked, since its reader of compound files panics on one
 /// cut short, which in the wasm ends the worker (refusal 1 of
 /// `docs/specs/read.md`).
+#[cfg(feature = "xlsx")]
 fn refusal_of_compound_file(bytes: &[u8]) -> Refusal {
     let holds_encrypted_package = bytes
         .windows(ENCRYPTED_PACKAGE_NAME.len())
@@ -489,6 +528,7 @@ fn refusal_of_compound_file(bytes: &[u8]) -> Refusal {
 }
 
 /// Whether `calamine_sheet` is a worksheet whose tab is shown.
+#[cfg(feature = "xlsx")]
 fn is_visible_worksheet(calamine_sheet: &calamine::Sheet) -> bool {
     let is_worksheet = match calamine_sheet.typ {
         SheetType::WorkSheet => true,
@@ -503,11 +543,12 @@ fn is_visible_worksheet(calamine_sheet: &calamine::Sheet) -> bool {
     is_worksheet && is_shown
 }
 
-/// The error of xlsx_rs for an error of calamine: the refusal it means, or
+/// The error of table_io for an error of calamine: the refusal it means, or
 /// calamine's message.
 ///
 /// Every error of calamine is named, so that one its next version adds
 /// stops the build here, where whether it is a refusal is decided.
+#[cfg(feature = "xlsx")]
 fn read_error_of(calamine_error: XlsxError) -> ReadError {
     match calamine_error {
         XlsxError::Password => ReadError::Refused(Refusal::Encrypted),
@@ -542,6 +583,7 @@ fn read_error_of(calamine_error: XlsxError) -> ReadError {
     }
 }
 
+#[cfg(feature = "xlsx")]
 #[cfg(test)]
 mod tests {
     use calamine::XlsxError;

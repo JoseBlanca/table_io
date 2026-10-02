@@ -3,6 +3,8 @@
 //! system of 1904, which rust_xlsxwriter does not write ("Each cell" of
 //! `docs/specs/read.md`).
 
+#![cfg(feature = "xlsx")]
+
 #[cfg(test)]
 #[expect(
     dead_code,
@@ -13,7 +15,7 @@ mod hand_written;
 use std::error::Error;
 
 use rust_xlsxwriter::{Format, Workbook};
-use xlsx_rs::{SheetCell, read_first_sheet};
+use table_io::{SheetCell, read_first_sheet};
 
 use crate::hand_written::xlsx_of_1904_worksheet;
 

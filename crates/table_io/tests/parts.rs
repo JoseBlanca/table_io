@@ -1,4 +1,4 @@
-//! The parts of the zip xlsx_rs reads itself before calamine ("What xlsx_rs
+//! The parts of the zip table_io reads itself before calamine ("What table_io
 //! reads before calamine" of `docs/specs/read.md`): every part read to its
 //! end, so that a part whose checksum fails refuses the file, and the bytes
 //! so read counted and bounded; the date system, from the `workbookPr` that
@@ -9,6 +9,8 @@
 //! 2026 that trapped the package; and the bound of every part, with the
 //! rule of UTF-8 by the bytes of a part. The messages of the bounds are
 //! also tested with small bounds in `src/bounds_tests.rs`.
+
+#![cfg(feature = "xlsx")]
 
 #[cfg(test)]
 #[expect(
@@ -22,7 +24,7 @@ use std::io::{Cursor, Write};
 use std::ops::Range;
 
 use rust_xlsxwriter::{Workbook, XlsxError};
-use xlsx_rs::{ReadError, Sheet, SheetCell, read_first_sheet};
+use table_io::{ReadError, Sheet, SheetCell, read_first_sheet};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
@@ -78,7 +80,7 @@ const ZIP_MESSAGES_OF_DAMAGED_DATA: [&str; 3] = [
 
 // Every copy is either read with the cells of the unchanged file or refused
 // with the message of the zip crate, before calamine reads a cell: calamine
-// alone read such copies with cells missing, and xlsx_rs, before it read
+// alone read such copies with cells missing, and table_io, before it read
 // every part to its end, refused some with calamine's message of the XML
 // and some as an empty sheet or a sheet too large.
 #[test]
@@ -314,7 +316,7 @@ fn a_strict_workbook_of_the_1904_system_gives_its_dates_in_that_system() {
 }
 
 // calamine finds a part by its name ignoring case, with `\` in the names of
-// the zip read as `/`, and so does xlsx_rs: a workbook it did not find
+// the zip read as `/`, and so does table_io: a workbook it did not find
 // would be given the system of 1900 while calamine read its sheet.
 #[test]
 fn a_workbook_whose_parts_are_named_in_capitals_and_with_backslashes_is_found() {
@@ -595,7 +597,7 @@ fn a_target_of_the_workbook_in_capitals_is_found() {
     assert_eq!(read.unwrap().cells, date_of_1904());
 }
 
-// calamine reads the entities of the target, as xlsx_rs does: the folder
+// calamine reads the entities of the target, as table_io does: the folder
 // is a&b/, written a&amp;b/.
 #[test]
 fn the_entities_of_the_target_of_the_workbook_are_read() {
@@ -680,7 +682,7 @@ fn read_with_copy_of_part(
 }
 
 // calamine reads the parts of the folder the package relationships give,
-// which xlsx_rs does not look for: every part whose name ends as one of
+// which table_io does not look for: every part whose name ends as one of
 // them is held to their bound, `\` read as `/` and ignoring case.
 #[test]
 #[ignore = "takes 19 s in cargo test, past 10 s; run before each release"]
@@ -884,7 +886,7 @@ fn a_table_of_texts_whose_unique_count_is_within_10_000_000_missing_or_not_a_num
 }
 
 // calamine finds the table of texts by its name ignoring case, and so does
-// xlsx_rs: a table it did not find would reach calamine unchecked.
+// table_io: a table it did not find would reach calamine unchecked.
 #[test]
 fn a_table_of_texts_named_in_capitals_is_checked() {
     let read_of_unique_count = |unique_count: &str| {
@@ -1004,7 +1006,7 @@ fn parts_with_decoy_sheet() -> Vec<(String, String)> {
 }
 
 // calamine reads the content of a defined name as text, and lists no sheet
-// in it; xlsx_rs listed this one, of the same name, and counted the merged
+// in it; table_io listed this one, of the same name, and counted the merged
 // ranges of the decoy, none.
 #[test]
 fn a_sheet_listed_inside_a_defined_name_does_not_hide_the_merged_ranges_of_the_sheet_read() {
@@ -1023,7 +1025,7 @@ fn a_sheet_listed_inside_a_defined_name_does_not_hide_the_merged_ranges_of_the_s
     );
 }
 
-// calamine reads the workbook up to the end tag named workbook; xlsx_rs
+// calamine reads the workbook up to the end tag named workbook; table_io
 // stopped where a stray end tag closed its count of elements open, before
 // the sheets, and found no sheet to count. The element <z> left open keeps
 // quick-xml from refusing </workbook> as an end tag with nothing open.
@@ -1156,7 +1158,7 @@ const FORM_FEED: &str = "\x0C";
 
 // The three files of the review of 28 September 2026 that trapped the
 // package, each with a form feed before the name of an attribute, which
-// calamine read and xlsx_rs, reading the attributes with quick-xml, did not.
+// calamine read and table_io, reading the attributes with quick-xml, did not.
 #[test]
 fn a_unique_count_after_a_form_feed_is_read_as_calamine_reads_it() {
     let mut parts = parts_with_texts(shared_strings(
@@ -1194,7 +1196,7 @@ fn a_type_of_the_package_relationships_after_a_form_feed_is_read_as_calamine_rea
     );
 }
 
-// The same file with nothing else hostile: xlsx_rs finds the workbook, and
+// The same file with nothing else hostile: table_io finds the workbook, and
 // its date system, only by reading the Type as calamine does.
 #[test]
 fn a_type_after_a_form_feed_gives_the_workbook_and_its_date_system() {
@@ -1798,7 +1800,7 @@ const PARTS_CALAMINE_HOLDS: [&str; 5] = [
 
 // quick-xml takes the encoding of the first declaration whose encoding it
 // knows, and so would read these in UTF-8; the rule of UTF-8 by the bytes
-// checks every declaration, and refuses them ("What xlsx_rs reads before
+// checks every declaration, and refuses them ("What table_io reads before
 // calamine" of docs/specs/read.md, point 5).
 #[test]
 fn a_part_calamine_reads_whole_with_a_second_declaration_of_windows_1252_is_unreadable() {

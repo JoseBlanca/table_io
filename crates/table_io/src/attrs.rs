@@ -23,15 +23,15 @@
 
 //! The attributes of an element read as calamine 0.36.1 reads them, with a
 //! copy of its `RawAttrIter` and the rule of its macro `get_attrs!`
-//! (`src/attrs.rs` of calamine), so that xlsx_rs and
-//! calamine find the same attributes in a tag ("What xlsx_rs reads before
+//! (`src/attrs.rs` of calamine), so that table_io and
+//! calamine find the same attributes in a tag ("What table_io reads before
 //! calamine" of `docs/specs/read.md`). quick-xml's own reader of attributes
 //! splits a tag another way: it keeps a form feed, the byte `0C`, in the
 //! name of an attribute, which calamine takes for a space before the name.
 //!
 //! Copied on 28 September 2026 under calamine's MIT license, above, and
 //! written again with no indexing and no plain arithmetic, as the lints of
-//! xlsx_rs ask; what it gives is calamine's, byte for byte.
+//! table_io ask; what it gives is calamine's, byte for byte.
 
 use quick_xml::events::BytesStart;
 use quick_xml::events::attributes::AttrError;

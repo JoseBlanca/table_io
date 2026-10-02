@@ -1,6 +1,6 @@
 [package]
-name = "xlsx_rs_js"
-description = "The wasm-bindgen binding of xlsx_rs, which exports readXlsx."
+name = "table_io_js"
+description = "The wasm-bindgen binding of table_io, which exports readXlsx."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,12 +11,14 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 # The functions wasm-bindgen generates are stubs that panic natively; what
-# this crate adds is tested under node, in js/xlsx_rs.
+# this crate adds is tested under node, in js/table_io.
 test = false
 doctest = false
 
 [dependencies]
-xlsx_rs = { path = "../xlsx_rs" }
+# Both formats, named rather than taken by default, so that the package
+# says what it holds (docs/architecture.md, section 5).
+table_io = { path = "../table_io", default-features = false, features = ["csv", "xlsx"] }
 # Pinned to the command line of wasm-bindgen, which refuses a crate of
 # another version; the version popnei pins, so that the one command line on
 # the owner's Mac builds both.

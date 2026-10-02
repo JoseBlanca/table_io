@@ -1,5 +1,5 @@
 [package]
-name = "xlsx_rs"
+name = "table_io"
 description = "Reads the first visible sheet of an xlsx into its cells."
 version.workspace = true
 edition.workspace = true
@@ -7,18 +7,25 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Each format a feature, both on by default (docs/architecture.md, section
+# 5): a build with `csv` alone compiles none of the dependencies of `xlsx`.
+default = ["csv", "xlsx"]
+csv = []
+xlsx = ["dep:calamine", "dep:zip", "dep:quick-xml"]
+
 [dependencies]
 # The version popnei_web's docs/technology.md measured. Its default features
 # are none; chrono, for dates as chrono's types, and picture, for the images
-# of a workbook, are left off: xlsx_rs writes a date from calamine's own
+# of a workbook, are left off: table_io writes a date from calamine's own
 # parts of it.
-calamine = { version = "=0.36.1", default-features = false }
-# The zip and the XML xlsx_rs reads itself before calamine ("What xlsx_rs
+calamine = { version = "=0.36.1", default-features = false, optional = true }
+# The zip and the XML table_io reads itself before calamine ("What table_io
 # reads before calamine" of docs/specs/read.md), at the versions and with
 # the features calamine takes them, so that the package holds one copy of
 # each. Upgraded with calamine.
-zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
-quick-xml = { version = "=0.41.0", features = ["encoding"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"], optional = true }
+quick-xml = { version = "=0.41.0", features = ["encoding"], optional = true }
 
 [dev-dependencies]
 # The xlsx files of the tests are written in memory; the library the writer

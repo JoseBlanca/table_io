@@ -5,7 +5,7 @@
 //
 // The owner's excel_en.xlsx, excel_1904.xlsx and encrypted.xlsx, in
 // tests/data/, are read with the cells the owner typed. The files of
-// tests/data/ that crates/xlsx_rs/tests/write_fixtures.rs writes,
+// tests/data/ that crates/table_io/tests/write_fixtures.rs writes,
 // written.xlsx, empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx,
 // wide_table_at_c2.xlsx and unique_count.xlsx, and a CSV, are read in any
 // case.
@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { before, test } from "node:test";
 
-import init, { readXlsx } from "../wasm/xlsx_rs.js";
+import init, { readXlsx } from "../wasm/table_io.js";
 
 /** MAX_SHEET_CELLS of popnei_web, the limit its light worker gives. */
 const MAX_SHEET_CELLS = 2_000_000;
@@ -23,9 +23,9 @@ const packageDir = new URL("../", import.meta.url);
 const dataDir = new URL("../../../tests/data/", import.meta.url);
 
 before(async () => {
-    // node's fetch does not read the .wasm beside xlsx_rs.js, as a browser
+    // node's fetch does not read the .wasm beside table_io.js, as a browser
     // does, so init is given its bytes, in the object wasm-bindgen asks for.
-    const wasmBytes = await readFile(new URL("wasm/xlsx_rs_bg.wasm", packageDir));
+    const wasmBytes = await readFile(new URL("wasm/table_io_bg.wasm", packageDir));
     await init({ module_or_path: wasmBytes });
 });
 
@@ -223,7 +223,7 @@ function hasForm(cellText, pattern) {
 }
 
 // What "Made by the owner" of docs/specs/read.md says excel_en.xlsx holds,
-// as crates/xlsx_rs/tests/owner_files.rs asserts it, with the cells the
+// as crates/table_io/tests/owner_files.rs asserts it, with the cells the
 // owner typed. The file is a copy of excel_es.xlsx, since an xlsx stores
 // formulas and errors in English whatever the language of Excel.
 test("excel_en.xlsx gives the cells of English Excel", async () => {
@@ -327,7 +327,7 @@ test("excel_1904.xlsx gives the date and the time as Excel shows them", async ()
 
 // A table of texts of two texts that says it holds 400,000,000, for which
 // calamine reserved room before it read the first, and the package
-// trapped, a failure that ends the worker, before xlsx_rs checked it.
+// trapped, a failure that ends the worker, before table_io checked it.
 test("unique_count.xlsx, whose table of texts says it holds 400,000,000 texts, throws an Error", async () => {
     const bytes = await readFile(new URL("unique_count.xlsx", dataDir));
 
@@ -365,11 +365,11 @@ function withoutInitOutput(declarations) {
 
 test("the declarations generated are the ones kept in git", async () => {
     // A difference is a change of the contract with popnei_web: the spec
-    // first, then test/xlsx_rs.d.ts, then a new release. The kept file is
+    // first, then test/table_io.d.ts, then a new release. The kept file is
     // the whole file wasm-bindgen writes, InitOutput among it, which the
     // comparison leaves out of both.
-    const generated = await readFile(new URL("wasm/xlsx_rs.d.ts", packageDir), "utf8");
-    const kept = await readFile(new URL("test/xlsx_rs.d.ts", packageDir), "utf8");
+    const generated = await readFile(new URL("wasm/table_io.d.ts", packageDir), "utf8");
+    const kept = await readFile(new URL("test/table_io.d.ts", packageDir), "utf8");
 
     assert.equal(withoutInitOutput(generated), withoutInitOutput(kept));
 });

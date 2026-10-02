@@ -1,5 +1,5 @@
-//! The parts of the zip xlsx_rs reads itself before calamine, as "What
-//! xlsx_rs reads before calamine" of `docs/specs/read.md` gives them.
+//! The parts of the zip table_io reads itself before calamine, as "What
+//! table_io reads before calamine" of `docs/specs/read.md` gives them.
 //!
 //! An xlsx is a zip of parts, each an XML file: the workbook, which lists
 //! the sheets and holds the settings of the file, the date system among
@@ -7,11 +7,11 @@
 //! of texts, which holds once each text the cells hold; the styles; and
 //! the sheets. Each part carries a checksum of its bytes, which the zip
 //! crate checks only once the part has been read to its end, and calamine
-//! stops reading a sheet at its last cell; so xlsx_rs reads every part to
+//! stops reading a sheet at its last cell; so table_io reads every part to
 //! its end first, counting its bytes. calamine also holds four parts whole
-//! when it opens the file, every merged range of the sheet before xlsx_rs
+//! when it opens the file, every merged range of the sheet before table_io
 //! sees one, and each cell whole, whose text can be as large as the sheet.
-//! xlsx_rs bounds, in that one reading, at least what calamine could hold
+//! table_io bounds, in that one reading, at least what calamine could hold
 //! of each: it does not copy calamine's reading, since
 //! every small difference between two readings let a file past a bound in
 //! the review of 28 September 2026. The one part it finds as calamine
@@ -57,7 +57,7 @@ pub(crate) struct PartBounds {
 /// checks its checksum, and bounds what calamine could hold of each within
 /// `bounds`, and the merged ranges of each within `max_cells`; then gives
 /// the date system of the workbook. The zip is let go of before it
-/// returns, so that calamine does not open the file while xlsx_rs holds
+/// returns, so that calamine does not open the file while table_io holds
 /// the list of its parts.
 ///
 /// A workbook named by the package relationships but missing is given the
@@ -76,7 +76,7 @@ pub(crate) struct PartBounds {
 /// calamine refuses too; "the file unzips to more than … bytes" when the parts hold
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
-/// bounds of the parts calamine reads whole ("What xlsx_rs reads before
+/// bounds of the parts calamine reads whole ("What table_io reads before
 /// calamine", point 3), and "a part of the file is too large" for any other
 /// part past `bounds.max_part_bytes`, counted three times when it is found
 /// in another encoding (point 5); "a part of the file is not in UTF-8" for
@@ -86,7 +86,7 @@ pub(crate) struct PartBounds {
 /// (point 3); "too many merged ranges" for a part with more
 /// merged ranges than `max_cells` (point 4); and "the part … cannot be read
 /// as XML: …", with quick-xml's message, for package relationships or a
-/// workbook whose XML cannot be read up to what xlsx_rs takes of it.
+/// workbook whose XML cannot be read up to what table_io takes of it.
 pub(crate) fn read_parts(
     bytes: &[u8],
     max_cells: u32,
@@ -114,7 +114,7 @@ const PACKAGE_RELATIONSHIPS_PATH: &str = "_rels/.rels";
 /// What calamine may read a part as, told by the end of its name, `\`
 /// read as `/` and ignoring case, in any folder: the part calamine reads is
 /// always one of them, since its name is the folder of the workbook
-/// followed by the usual name ("What xlsx_rs reads before calamine" of
+/// followed by the usual name ("What table_io reads before calamine" of
 /// `docs/specs/read.md`, point 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PartKind {
@@ -159,7 +159,7 @@ impl PartKind {
     /// `bounds`, and the message of the error past it: every part is held to
     /// the bound of every part, a settings part to the bound of settings
     /// parts too, and a table of texts past it is "too much text" ("What
-    /// xlsx_rs reads before calamine" of `docs/specs/read.md`, points 3 and
+    /// table_io reads before calamine" of `docs/specs/read.md`, points 3 and
     /// 5).
     fn bound_of_bytes(self, bounds: &PartBounds) -> PartBound {
         match self {
@@ -182,7 +182,7 @@ impl PartKind {
     }
 
     /// What an encoding other than UTF-8, found in a part of this kind by
-    /// the rule of UTF-8, does to the read ("What xlsx_rs reads before
+    /// the rule of UTF-8, does to the read ("What table_io reads before
     /// calamine" of `docs/specs/read.md`, point 5).
     fn other_encoding(self) -> OtherEncoding {
         match self {
@@ -397,11 +397,11 @@ const MERGED_RANGE_NAME: &[u8] = b"mergeCell";
 /// its name, with a prefix or without.
 const SHEET_NAME: &[u8] = b"sheet";
 
-/// What xlsx_rs counts of the paths of the sheets calamine keeps: for each
+/// What table_io counts of the paths of the sheets calamine keeps: for each
 /// sheet the workbook lists, the folder of the workbook, taken from a tag
 /// of `_rels/.rels`, followed by the target of the sheet's relationship, in
 /// a tag of the relationships of the workbook; every sheet may name the
-/// same relationship ("What xlsx_rs reads before calamine" of
+/// same relationship ("What table_io reads before calamine" of
 /// `docs/specs/read.md`, point 3).
 #[derive(Debug, Default)]
 struct SheetPaths {
@@ -442,7 +442,7 @@ impl SheetPaths {
 
 /// A count of the times the bytes of a name of an element come right after
 /// `<` or `:`, in bytes given a read at a time, a match split between two
-/// reads counted too, and nothing of them held ("What xlsx_rs reads before
+/// reads counted too, and nothing of them held ("What table_io reads before
 /// calamine" of `docs/specs/read.md`, point 4).
 ///
 /// Every element of that name, with a prefix or without, has those bytes
@@ -692,7 +692,7 @@ fn xml_reader_over<Part: BufRead>(part: Part) -> XmlReader<Part> {
 }
 
 /// The folder of the workbook, such as `xl/`, as calamine's
-/// `read_package_relationships` finds it ("What xlsx_rs reads before
+/// `read_package_relationships` finds it ("What table_io reads before
 /// calamine" of `docs/specs/read.md`, point 2): the elements of local name
 /// `Relationship` after the first start of `Relationships` and before the
 /// next end of an element of that local name; in each, `Type` and `Target`
@@ -779,7 +779,7 @@ fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, Attr
 }
 
 /// Reads the table of texts that `part_reader` unzips as [`read_xml_part`]
-/// does ("What xlsx_rs reads before calamine" of `docs/specs/read.md`,
+/// does ("What table_io reads before calamine" of `docs/specs/read.md`,
 /// point 3). It counts every element of local name
 /// `si`, each a text, those inside another `si` and outside the root among
 /// them, and reads every attribute `uniqueCount` of every element of local
@@ -855,7 +855,7 @@ fn is_number_past(digits: &[u8], max_number: u64) -> bool {
     number > max_number
 }
 
-/// The date system of the workbook `path` ("What xlsx_rs reads before
+/// The date system of the workbook `path` ("What table_io reads before
 /// calamine" of `docs/specs/read.md`, point 2): that of the last element
 /// `workbookPr` that is a direct child of its root element, whatever the
 /// namespace of either, 1904 when its attribute `date1904` is `1` or
@@ -932,14 +932,14 @@ fn unreadable_xml_error_of(path: &str, cause: &dyn std::fmt::Display) -> ReadErr
     ReadError::Unreadable(format!("the part {path} cannot be read as XML: {cause}"))
 }
 
-/// The error of xlsx_rs for an error of the zip crate: the file unreadable,
+/// The error of table_io for an error of the zip crate: the file unreadable,
 /// with the zip crate's message.
 fn unreadable_of_zip_error(zip_error: ZipError) -> ReadError {
     ReadError::Unreadable(zip_error.to_string())
 }
 
 /// `count` written with a comma between each group of three digits, as
-/// the messages of xlsx_rs write a number: `1,000,000,000`.
+/// the messages of table_io write a number: `1,000,000,000`.
 fn text_of_count(count: u64) -> String {
     let digits = count.to_string();
     let num_digits = digits.len();

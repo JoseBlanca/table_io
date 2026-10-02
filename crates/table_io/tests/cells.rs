@@ -2,10 +2,12 @@
 //! files written in memory with rust_xlsxwriter ("Each cell" of
 //! `docs/specs/read.md`).
 
+#![cfg(feature = "xlsx")]
+
 use std::error::Error;
 
 use rust_xlsxwriter::{Format, Formula, Workbook, Worksheet};
-use xlsx_rs::{SheetCell, read_first_sheet};
+use table_io::{SheetCell, read_first_sheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

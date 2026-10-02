@@ -1,16 +1,16 @@
 # The licenses of the crates in the package
 
-The `.wasm` of this package is xlsx_rs compiled with the Rust crates it
+The `.wasm` of this package is table_io compiled with the Rust crates it
 depends on, and each of their licenses asks that its notice go with every
 copy. These are the crates compiled into it, as
 
-    cargo tree -p xlsx_rs_js -e normal,no-proc-macro --target wasm32-unknown-unknown
+    cargo tree -p table_io_js -e normal,no-proc-macro --target wasm32-unknown-unknown
 
 lists them on 28 September 2026, the crates of macros that run only while
 it is built left out, with the license each declares and its text, from
 the source of the crate. Where a crate may be used under the MIT license
 or another, the MIT text is the one given. Crates whose text is the same
-are grouped. xlsx_rs's own license is `LICENSE`, beside this file.
+are grouped. table_io's own license is `LICENSE`, beside this file.
 
 ## atoi_simd 0.18.1
 

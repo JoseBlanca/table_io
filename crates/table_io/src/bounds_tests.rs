@@ -1,4 +1,4 @@
-//! The messages of the bounds of "What xlsx_rs reads before calamine" of
+//! The messages of the bounds of "What table_io reads before calamine" of
 //! `docs/specs/read.md`, tested with files of a few KB through
 //! `read_first_sheet_within`, which takes the bounds as an argument: a file
 //! that reaches the real bounds unzips to hundreds of MB. The files are
@@ -339,7 +339,7 @@ fn a_table_of_texts_of_as_many_texts_as_the_bound_is_read() {
 }
 
 // calamine counts the si of the first sst, not those inside another si nor
-// outside the root; xlsx_rs counts every one, and every uniqueCount.
+// outside the root; table_io counts every one, and every uniqueCount.
 #[test]
 fn a_table_of_texts_of_more_texts_than_the_bound_is_too_many_texts() {
     let two_texts = shared_strings(r#"uniqueCount="2""#, &["id", "pop"]);
@@ -516,7 +516,7 @@ fn with_largest_part(parts: &[(String, String)], part_name: &str) -> (Vec<(Strin
 }
 
 // A part calamine does not hold whole is bounded too, since one cell of the
-// sheet can hold a text as large as the sheet ("What xlsx_rs reads before
+// sheet can hold a text as large as the sheet ("What table_io reads before
 // calamine", point 5); docProps/padding.xml is a part calamine never opens.
 #[test]
 fn a_part_other_than_a_table_of_texts_past_the_bound_is_too_large_and_one_at_it_read() {
@@ -589,7 +589,7 @@ fn parts_with_declaration_between_rows(
 
 // A part other than those calamine holds whole is counted three times when
 // it is found in another encoding, since decoding makes at most 3 bytes of
-// UTF-8 of each byte ("What xlsx_rs reads before calamine", point 5).
+// UTF-8 of each byte ("What table_io reads before calamine", point 5).
 #[test]
 fn a_sheet_found_in_another_encoding_is_counted_three_times() {
     let version_of_1_000_000_bytes = format!(

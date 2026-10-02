@@ -14,9 +14,11 @@
 //! the spec does not expect is a finding for the spec, and not a test to be
 //! bent.
 
+#![cfg(feature = "xlsx")]
+
 use std::path::PathBuf;
 
-use xlsx_rs::{ReadError, Refusal, Sheet, SheetCell, read_first_sheet};
+use table_io::{ReadError, Refusal, Sheet, SheetCell, read_first_sheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
@@ -80,7 +82,7 @@ type IsOfKind = fn(&SheetCell) -> bool;
 
 /// Whether `cell_text` has the form `pattern`, where each `d` of the
 /// pattern is a digit from 0 to 9 and every other character is itself:
-/// `dddd-dd-dd` for a date as xlsx_rs writes it.
+/// `dddd-dd-dd` for a date as table_io writes it.
 fn has_form(cell_text: &str, pattern: &str) -> bool {
     cell_text.chars().count() == pattern.chars().count()
         && cell_text
@@ -392,7 +394,7 @@ fn libreoffice_xlsx_gives_the_cells_of_libreoffice_calc() {
 // `<x15:workbookPr chartTrackingRefBase="1"/>` inside `<extLst>` of
 // `xl/workbook.xml`, which calamine 0.36.1 (`xlsx/mod.rs`, `read_workbook`)
 // takes by its local name for the `workbookPr` of the workbook, and it sets
-// the date system back to 1900: A2 was read as 2020-05-12 until xlsx_rs
+// the date system back to 1900: A2 was read as 2020-05-12 until table_io
 // took the date system from the `workbookPr` of the root itself.
 #[test]
 fn excel_1904_xlsx_gives_the_date_as_excel_shows_it() {

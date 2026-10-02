@@ -372,16 +372,16 @@ pub enum Refusal {
 /// 6. [`Refusal::UnnamedColumn`] for a column with no name and a value in
 ///    the run of empty cells at the end of the header, the first by
 ///    position;
-/// 7. [`Refusal::RaggedRow`], the first by line;
+/// 7. [`Refusal::RaggedRow`], a row of a text file of another length than
+///    the header, the first by line;
 /// 8. [`Refusal::UnnamedColumn`] for a column with no name and a value
 ///    elsewhere, then [`Refusal::DuplicateColumn`], the first by position;
 /// 9. then, row by row in the order of the file,
 ///    [`Refusal::EmptyIndividual`] or [`Refusal::DuplicateIndividual`].
 ///
 /// [`ImportError::Unreadable`] for an xlsx that cannot be read, with the
-/// messages of `docs/specs/read.md`; and, in this version, for every text
-/// file that is not refused before its rows, since it is not read yet:
-/// "the reading of a text file is not built yet".
+/// messages of `docs/specs/read.md`, and for a text file with a line past
+/// line 4,294,967,295 or a row of more cells.
 pub fn import_table(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError> {
     let format = format_of(bytes);
     // A slice holds at most isize::MAX bytes, which a u64 holds on every
@@ -448,7 +448,7 @@ fn table_of_xlsx(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportE
             cells,
             row_ends,
         },
-        HowRead::Xlsx { sheet: name },
+        crate::table::HowReadSoFar::Known(HowRead::Xlsx { sheet: name }),
     )
 }
 
@@ -514,15 +514,10 @@ fn table_of_xlsx(_bytes: &[u8], _options: &ImportOptions) -> Result<Table, Impor
     })
 }
 
-/// The message of [`ImportError::Unreadable`] for a text file, until the
-/// module `csv` reads it.
-#[cfg(feature = "csv")]
-const TEXT_NOT_BUILT: &str = "the reading of a text file is not built yet";
-
 /// The table of the text file `bytes`, with `options.text`.
 #[cfg(feature = "csv")]
-fn table_of_text(_bytes: &[u8], _options: &ImportOptions) -> Result<Table, ImportError> {
-    Err(ImportError::Unreadable(TEXT_NOT_BUILT.to_owned()))
+fn table_of_text(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError> {
+    crate::csv::table_of_text(bytes, &options.text)
 }
 
 /// The refusal of a text file in a build without the feature `csv`.

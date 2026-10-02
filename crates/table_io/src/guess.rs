@@ -62,17 +62,25 @@ pub(crate) fn guessed_column(
 
 /// Each value read by `read`, a missing one left missing, or None when
 /// `read` gives None for one value.
+///
+/// The `Vec` is made at the length of `values`: collected from an
+/// iterator of `Option`, which does not know its length, it grew by
+/// doubling, and the 99 integer columns of 97,613 values of a CSV of
+/// 20,000,000 bytes held 210.5 MB with their names, where they hold
+/// 157.3 MB at their length (measured with a counting allocator on the
+/// owner's Mac, release build, 2 October 2026).
 fn each_of_type<To>(
     values: &[Option<CellValue<'_>>],
     read: impl Fn(&CellValue<'_>) -> Option<To>,
 ) -> Option<Vec<Option<To>>> {
-    values
-        .iter()
-        .map(|cell_value| match cell_value {
-            None => Some(None),
-            Some(present) => read(present).map(Some),
-        })
-        .collect()
+    let mut typed = Vec::with_capacity(values.len());
+    for cell_value in values {
+        typed.push(match cell_value {
+            None => None,
+            Some(present) => Some(read(present)?),
+        });
+    }
+    Some(typed)
 }
 
 /// The integer a value is: a text that is a whole number, or a number

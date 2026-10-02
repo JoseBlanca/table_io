@@ -22,6 +22,8 @@ use crate::guess::{CellValue, guessed_column};
 use crate::types::boolean_text;
 use crate::value::{DecimalMark, float_text, is_missing};
 use crate::{Column, Format, HowRead, ImportError, NameColumn, Refusal, Table};
+#[cfg(feature = "csv")]
+use crate::{FoundEncoding, Separator, TextRead, value::parse_float};
 
 /// A cell of a row, as the module of its format gives it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -33,8 +35,16 @@ pub(crate) enum Cell<'text> {
     /// where it needs no change, or a `String` of its own.
     Text(Cow<'text, str>),
     /// The number of a number cell of an xlsx, finite.
+    #[cfg_attr(
+        all(feature = "csv", not(feature = "xlsx")),
+        expect(dead_code, reason = "only an xlsx has number cells")
+    )]
     Number(f64),
     /// The value of a boolean cell of an xlsx.
+    #[cfg_attr(
+        all(feature = "csv", not(feature = "xlsx")),
+        expect(dead_code, reason = "only an xlsx has boolean cells")
+    )]
     Boolean(bool),
 }
 
@@ -50,13 +60,26 @@ pub(crate) struct RowEnd {
 }
 
 /// The format the rows come from, which sets the rules that are the
-/// format's: the spaces at the ends of a cell and the errors of Excel.
+/// format's: the spaces at the ends of a cell, the errors of Excel, and
+/// the rows of another length than the header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Origin {
     /// The rectangle of the sheet of an xlsx: every row as long as the
     /// rectangle, a text cell with its spaces and tabs at the ends, and
     /// the seven errors of Excel missing values and refused in the header.
+    #[cfg_attr(
+        all(feature = "csv", not(feature = "xlsx")),
+        expect(dead_code, reason = "a build without xlsx reads no sheet")
+    )]
     Xlsx,
+    /// The lines of a text file split with `separator`: a cell with its
+    /// spaces at the ends already removed, an empty one [`Cell::Empty`], and
+    /// a row of another length than the header refused.
+    #[cfg(feature = "csv")]
+    Text {
+        /// The separator the text was split with.
+        separator: Separator,
+    },
 }
 
 impl Origin {
@@ -64,8 +87,30 @@ impl Origin {
     fn format(self) -> Format {
         match self {
             Self::Xlsx => Format::Xlsx,
+            #[cfg(feature = "csv")]
+            Self::Text { .. } => Format::Text,
         }
     }
+}
+
+/// How a file was read, as the table step is given it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HowReadSoFar {
+    /// Known before the rows: an xlsx, or a text file whose decimal mark
+    /// was set, or is the point since the separator is the comma.
+    Known(HowRead),
+    /// A text file whose decimal mark is found from its values once the
+    /// refusals of the rows are passed, as popnei_web's `readCsv` finds it
+    /// (`docs/specs/text-files.md`, "The decimal mark").
+    #[cfg(feature = "csv")]
+    DecimalToFind {
+        /// The encoding the text was decoded with.
+        encoding: FoundEncoding,
+        /// The separator the text was split with.
+        separator: Separator,
+        /// The line of the first character not decoded, from 1.
+        undecoded_line: Option<u32>,
+    },
 }
 
 /// The rows of a file, in its order, blank ones among them: their cells
@@ -125,7 +170,7 @@ const COLUMN_PAST_U32: &str = "a column past column 4,294,967,295";
 const ROWS_NOT_THEIR_CELLS: &str = "the rows do not hold their cells";
 
 /// The table of `rows`, read as `read` says, its values read with the
-/// decimal mark of `read`.
+/// decimal mark of `read`, or with the one found from them.
 ///
 /// # Errors
 ///
@@ -133,12 +178,13 @@ const ROWS_NOT_THEIR_CELLS: &str = "the rows do not hold their cells";
 /// this order: a header error, an error of Excel in the header of an xlsx,
 /// the first by position; no row below the header, or no header, empty; a
 /// column with no name and a value in the run of empty cells at the end of
-/// the header, the first by position; a column with no name and a value
-/// elsewhere, the first by position; two columns of one name, the first
+/// the header, the first by position; a row of a text file of another
+/// length than the header, the first by line; a column with no name and a
+/// value elsewhere, the first by position; two columns of one name, the first
 /// name that repeats one before it; then, row by row, an empty individual
 /// or a duplicate individual. [`ImportError::Unreadable`] for a column past
 /// column 4,294,967,295, or rows whose ends do not fit their cells.
-pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowRead) -> Result<Table, ImportError> {
+pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowReadSoFar) -> Result<Table, ImportError> {
     let Rows {
         origin,
         first_column,
@@ -194,6 +240,18 @@ pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowRead) -> Result<Table, Impo
     // the rectangle, and only a text file has them.
     match origin {
         Origin::Xlsx => {}
+        #[cfg(feature = "csv")]
+        Origin::Text { separator } => {
+            if let Some(refusal) = first_ragged_row(
+                &cells,
+                individuals,
+                num_counted,
+                header.cells.len(),
+                separator,
+            )? {
+                return Err(refused(refusal));
+            }
+        }
     }
     let kept = match kept_columns(&header_names, num_counted, has_value) {
         Ok(kept) => kept,
@@ -214,6 +272,27 @@ pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowRead) -> Result<Table, Impo
         }));
     }
     let names = names_of_individuals(&mut cells, individuals).map_err(refused)?;
+    #[cfg_attr(
+        not(feature = "csv"),
+        expect(
+            clippy::infallible_destructuring_match,
+            reason = "a build without csv has no decimal mark to find"
+        )
+    )]
+    let read = match read {
+        HowReadSoFar::Known(how_read) => how_read,
+        #[cfg(feature = "csv")]
+        HowReadSoFar::DecimalToFind {
+            encoding,
+            separator,
+            undecoded_line,
+        } => HowRead::Text(TextRead {
+            encoding,
+            separator,
+            decimal: decimal_of_values(&cells, individuals),
+            undecoded_line,
+        }),
+    };
     let mut columns = Vec::with_capacity(kept.len());
     for index in kept {
         let column_values: Vec<Option<CellValue<'_>>> = individuals
@@ -248,7 +327,8 @@ pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowRead) -> Result<Table, Impo
 }
 
 /// Each cell as the table takes it: in an xlsx, a text cell with its
-/// spaces and tabs at the ends removed, and empty when nothing is left.
+/// spaces and tabs at the ends removed, and empty when nothing is left; a
+/// cell of a text file as the split made it.
 fn take_as_the_table_takes_them(cells: &mut [Cell<'_>], origin: Origin) {
     match origin {
         Origin::Xlsx => {
@@ -256,6 +336,8 @@ fn take_as_the_table_takes_them(cells: &mut [Cell<'_>], origin: Origin) {
                 trim(cell);
             }
         }
+        #[cfg(feature = "csv")]
+        Origin::Text { .. } => {}
     }
 }
 
@@ -335,6 +417,8 @@ fn first_header_error<'cells>(
                 Cell::Text(cell_text) if is_excel_error(cell_text) => Some((index, &**cell_text)),
                 Cell::Empty | Cell::Text(_) | Cell::Number(_) | Cell::Boolean(_) => None,
             }),
+        #[cfg(feature = "csv")]
+        Origin::Text { .. } => None,
     }
 }
 
@@ -357,6 +441,8 @@ fn is_missing_cell(cell: &Cell<'_>, origin: Origin) -> bool {
         Cell::Empty => true,
         Cell::Text(cell_text) => match origin {
             Origin::Xlsx => is_missing(cell_text) || is_excel_error(cell_text),
+            #[cfg(feature = "csv")]
+            Origin::Text { .. } => is_missing(cell_text),
         },
         Cell::Number(_) | Cell::Boolean(_) => false,
     }
@@ -474,5 +560,78 @@ fn value_of(cell: Cell<'_>, origin: Origin) -> Option<CellValue<'_>> {
         Cell::Text(cell_text) => Some(CellValue::Text(cell_text)),
         Cell::Number(number) => Some(CellValue::Number(number)),
         Cell::Boolean(is_true) => Some(CellValue::Boolean(is_true)),
+    }
+}
+
+/// The refusal of the first row of `individuals`, by line, of another
+/// length than the header: fewer cells than the `num_counted` the header
+/// is counted as, or a cell that is not empty past the `header_length`
+/// cells of the whole header.
+///
+/// # Errors
+///
+/// [`ImportError::Unreadable`] for a row of more than 4,294,967,295 cells.
+#[cfg(feature = "csv")]
+fn first_ragged_row(
+    cells: &[Cell<'_>],
+    individuals: &[RowSpan],
+    num_counted: usize,
+    header_length: usize,
+    separator: Separator,
+) -> Result<Option<Refusal>, ImportError> {
+    let past_u32 = || ImportError::Unreadable(COLUMN_PAST_U32.to_owned());
+    for row in individuals {
+        let num_cells = row.cells.len();
+        let past_header = row
+            .cells
+            .start
+            .checked_add(header_length)
+            .and_then(|start| cells.get(start..row.cells.end))
+            .unwrap_or_default();
+        if num_cells < num_counted || past_header.iter().any(|cell| *cell != Cell::Empty) {
+            return Ok(Some(Refusal::RaggedRow {
+                line: row.place,
+                expected: u32::try_from(num_counted).map_err(|_| past_u32())?,
+                found: u32::try_from(num_cells).map_err(|_| past_u32())?,
+                separator,
+            }));
+        }
+    }
+    Ok(None)
+}
+
+/// The decimal mark found from the values of a text file, its cells below
+/// the header and outside the first column: the comma when more of them
+/// are numbers written with a comma, holding one and a number with the
+/// comma, than numbers written with a point, the same with the point; the
+/// point otherwise, a file of whole numbers among them.
+#[cfg(feature = "csv")]
+fn decimal_of_values(cells: &[Cell<'_>], individuals: &[RowSpan]) -> DecimalMark {
+    let values = || {
+        individuals
+            .iter()
+            .flat_map(|row| {
+                cells
+                    .get(row.cells.clone())
+                    .unwrap_or_default()
+                    .iter()
+                    .skip(1)
+            })
+            .filter_map(|cell| match cell {
+                Cell::Text(cell_text) => Some(&**cell_text),
+                Cell::Empty | Cell::Number(_) | Cell::Boolean(_) => None,
+            })
+    };
+    let num_written_with = |mark: char, decimal: DecimalMark| {
+        values()
+            .filter(|cell_text| {
+                cell_text.contains(mark) && parse_float(cell_text, decimal).is_some()
+            })
+            .count()
+    };
+    if num_written_with(',', DecimalMark::Comma) > num_written_with('.', DecimalMark::Point) {
+        DecimalMark::Comma
+    } else {
+        DecimalMark::Point
     }
 }

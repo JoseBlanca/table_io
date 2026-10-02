@@ -16,20 +16,14 @@
 #![forbid(unsafe_code)]
 
 #[cfg_attr(
-    not(feature = "xlsx"),
-    expect(
-        dead_code,
-        reason = "the table of a text file is made in work package 4 of docs/plans/table-io.md; until then only an xlsx is"
-    )
+    not(any(feature = "csv", feature = "xlsx")),
+    expect(dead_code, reason = "a build that reads no format makes no table")
 )]
 mod guess;
 mod import;
 #[cfg_attr(
-    not(feature = "xlsx"),
-    expect(
-        dead_code,
-        reason = "the table of a text file is made in work package 4 of docs/plans/table-io.md; until then only an xlsx is"
-    )
+    not(any(feature = "csv", feature = "xlsx")),
+    expect(dead_code, reason = "a build that reads no format makes no table")
 )]
 mod table;
 mod text_options;
@@ -52,6 +46,8 @@ mod attrs;
 mod bounds_tests;
 #[cfg(feature = "xlsx")]
 mod cell;
+#[cfg(feature = "csv")]
+mod csv;
 #[cfg(feature = "xlsx")]
 mod date;
 #[cfg(feature = "xlsx")]

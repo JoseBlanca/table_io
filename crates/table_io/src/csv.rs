@@ -272,6 +272,13 @@ fn separator_byte(separator: Separator) -> u8 {
     }
 }
 
+/// Whether `byte` is one the split leaves out at the ends of a cell
+/// outside quotes, with `separator`: a space, and a tab when the separator
+/// is not the tab.
+fn is_blank(byte: u8, separator: Separator) -> bool {
+    byte == b' ' || (byte == b'\t' && separator != Separator::Tab)
+}
+
 /// A cell as the split finds it, by the places of its bytes in the text,
 /// its spaces at the ends left out.
 #[derive(Debug, Clone, Copy)]
@@ -363,7 +370,7 @@ fn split<'text>(
     }
     let separator_byte = separator_byte(separator);
     let byte_at = |place: usize| bytes.get(place).copied();
-    let is_blank = |byte: u8| byte == b' ' || (byte == b'\t' && separator != Separator::Tab);
+    let is_blank = |byte: u8| is_blank(byte, separator);
     let ends_cell = |byte: u8| byte == separator_byte || byte == b'\n' || byte == b'\r';
     let end_without_blanks = |start: usize, end: usize| {
         let mut kept_end = end;

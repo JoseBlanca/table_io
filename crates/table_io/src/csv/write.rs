@@ -5,7 +5,11 @@
 //! import decodes it with, a character that cannot be carried refused and
 //! never replaced.
 
-use super::{BYTE_ORDER_MARK, UTF8_MARK, WINDOWS_1252_80_TO_9F, is_variants_file, separator_byte};
+use std::borrow::Cow;
+
+use super::{
+    BYTE_ORDER_MARK, UTF8_MARK, WINDOWS_1252_80_TO_9F, is_blank, is_variants_file, separator_byte,
+};
 use crate::export_cells::{CellWriter, ExportValue, refused, write_cells};
 use crate::types::boolean_text;
 use crate::value::float_text;
@@ -58,26 +62,26 @@ fn header_line(names: &NameColumn, columns: &[Column], separator: Separator) -> 
         if index > 0 {
             line.push(separator_character);
         }
-        if needs_quotes(name, separator) {
-            line.push('"');
-            line.push_str(&name.replace('"', "\"\""));
-            line.push('"');
-        } else {
-            line.push_str(name);
-        }
+        line.push_str(&quoted_cell(name, separator));
     }
     line
 }
 
-/// Whether a cell of `text` is written in quotes with `separator`: when it
-/// holds the separator, a `"`, `\r` or `\n`, or starts or ends with a
-/// space or a tab, which the import removes outside quotes, a tab at the
-/// ends being the separator itself when the separator is the tab.
-fn needs_quotes(text: &str, separator: Separator) -> bool {
+/// A cell of `text` as it is written with `separator`, before it is
+/// encoded: in quotes, each `"` doubled, when it holds the separator, a
+/// `"`, `\r` or `\n`, or starts or ends with a character the import
+/// removes there outside quotes, [`is_blank`]; else as it is.
+fn quoted_cell(text: &str, separator: Separator) -> Cow<'_, str> {
     let separator_character = char::from(separator_byte(separator));
-    text.contains([separator_character, '"', '\r', '\n'])
-        || text.starts_with([' ', '\t'])
-        || text.ends_with([' ', '\t'])
+    let is_blank_at = |byte: Option<u8>| byte.is_some_and(|end| is_blank(end, separator));
+    let needs_quotes = text.contains([separator_character, '"', '\r', '\n'])
+        || is_blank_at(text.bytes().next())
+        || is_blank_at(text.bytes().next_back());
+    if needs_quotes {
+        Cow::Owned(format!("\"{}\"", text.replace('"', "\"\"")))
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 /// The text of a float in a CSV: [`float_text`] with `decimal`, followed by
@@ -145,11 +149,7 @@ impl CsvWriter {
     /// first character the encoding cannot carry, U+0000 in any.
     fn write_text(&mut self, text: &str, place: CellPlace) -> Result<(), ExportError> {
         self.start_cell();
-        let is_quoted = needs_quotes(text, self.csv_export.separator);
-        if is_quoted {
-            self.bytes.push(b'"');
-        }
-        for character in text.chars() {
+        for character in quoted_cell(text, self.csv_export.separator).chars() {
             if character == '\0' {
                 return Err(refused(ExportRefusal::CannotCarry { place, character }));
             }
@@ -165,12 +165,6 @@ impl CsvWriter {
                     self.bytes.push(byte);
                 }
             }
-            if is_quoted && character == '"' {
-                self.bytes.push(b'"');
-            }
-        }
-        if is_quoted {
-            self.bytes.push(b'"');
         }
         Ok(())
     }

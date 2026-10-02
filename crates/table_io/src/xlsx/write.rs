@@ -13,7 +13,7 @@
 use rust_xlsxwriter::{ColNum, RowNum, Workbook, Worksheet, XlsxError};
 
 use crate::export_cells::{CellWriter, ExportValue, count_of, refusal_error, write_cells};
-use crate::table::is_excel_error;
+use crate::table::{is_excel_error, is_space_or_tab};
 use crate::{CellPlace, Column, ExportError, ExportRefusal, NameColumn};
 
 /// The rows of a sheet of Excel below the header, its 1,048,576 rows less
@@ -89,7 +89,6 @@ fn sheet_place(place: CellPlace) -> Result<(RowNum, ColNum), ExportError> {
 /// units of UTF-16 than a cell holds, [`ExportRefusal::TextTooLong`]; and
 /// a character [`uncarried_character`] finds, [`ExportRefusal::CannotCarry`].
 fn text_refusal(text: &str, place: CellPlace) -> Option<ExportRefusal> {
-    let is_space_or_tab = |character: char| character == ' ' || character == '\t';
     if text.starts_with(is_space_or_tab) || text.ends_with(is_space_or_tab) {
         return Some(ExportRefusal::SpacesAtEnds { place });
     }

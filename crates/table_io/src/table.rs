@@ -351,7 +351,6 @@ fn trim(cell: &mut Cell<'_>) {
     let Cell::Text(cell_text) = cell else {
         return;
     };
-    let is_space_or_tab = |character: char| character == ' ' || character == '\t';
     let num_trailing = cell_text
         .len()
         .saturating_sub(cell_text.trim_end_matches(is_space_or_tab).len());
@@ -375,6 +374,12 @@ fn trim(cell: &mut Cell<'_>) {
             owned.drain(..num_leading);
         }
     }
+}
+
+/// Whether `character` is one the import removes at the ends of a text
+/// cell of an xlsx: a space or a tab.
+pub(crate) fn is_space_or_tab(character: char) -> bool {
+    character == ' ' || character == '\t'
 }
 
 /// The rows of `row_ends` that are not blank, one whose cells are all

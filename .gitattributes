@@ -1,0 +1,5 @@
+# The text files of the tests are kept byte for byte: written.csv ends its
+# lines with CRLF, as Excel on Windows writes them, and the owner's files
+# hold the bytes their program wrote, which no conversion of git changes.
+tests/data/*.csv -text
+tests/data/*.txt -text

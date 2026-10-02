@@ -113,8 +113,9 @@ pub(crate) enum HowReadSoFar {
     },
 }
 
-/// The rows of a file, in its order, blank ones among them: their cells
-/// one after the other in one `Vec`, and where each row ends.
+/// The rows of a file, in its order, blank ones among them or left out by
+/// the module of the format: their cells one after the other in one `Vec`,
+/// and where each row ends.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Rows<'text> {
     /// The format they come from.
@@ -207,7 +208,7 @@ pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowReadSoFar) -> Result<Table,
     let Some((header, individuals)) = spans.split_first() else {
         return Err(refused(Refusal::Empty));
     };
-    let header_cells = cells.get_mut(header.cells.clone()).unwrap_or_default();
+    let header_cells = cells.get(header.cells.clone()).unwrap_or_default();
     if let Some((index, error)) = first_header_error(header_cells, origin) {
         return Err(refused(Refusal::HeaderError {
             row: header.place,
@@ -218,13 +219,21 @@ pub(crate) fn table_of_rows(rows: Rows<'_>, read: HowReadSoFar) -> Result<Table,
     if individuals.is_empty() {
         return Err(refused(Refusal::Empty));
     }
-    let mut header_names: Vec<String> = header_cells
+    let is_unnamed_with_value = unnamed_with_value(header_cells, &cells, individuals, origin);
+    let has_value = |index: usize| is_unnamed_with_value.get(index).copied().unwrap_or(false);
+    let num_counted = num_counted_columns(header_cells, has_value);
+    // The names of the counted cells alone: the run of empty cells dropped
+    // at the end of the header, 20,000,000 in a file of a header of commas,
+    // gets no `String`.
+    let mut header_names: Vec<String> = header
+        .cells
+        .start
+        .checked_add(num_counted)
+        .and_then(|counted_end| cells.get_mut(header.cells.start..counted_end))
+        .unwrap_or_default()
         .iter_mut()
         .map(|cell| name_of(std::mem::take(cell)))
         .collect();
-    let is_unnamed_with_value = unnamed_with_value(&header_names, &cells, individuals, origin);
-    let has_value = |index: usize| is_unnamed_with_value.get(index).copied().unwrap_or(false);
-    let num_counted = num_counted_columns(&header_names, has_value);
     if let Some(index) = unnamed_in_run_at_end(&header_names, num_counted, has_value) {
         return Err(refused(Refusal::UnnamedColumn {
             column: column_number(index)?,
@@ -376,7 +385,7 @@ fn trim(cell: &mut Cell<'_>) {
 /// [`ImportError::Unreadable`] when the ends are not in order or pass the
 /// cells.
 fn non_blank_rows(cells: &[Cell<'_>], row_ends: &[RowEnd]) -> Result<Vec<RowSpan>, ImportError> {
-    let mut spans = Vec::new();
+    let mut spans = Vec::with_capacity(row_ends.len());
     let mut start = 0;
     for row_end in row_ends {
         let row_cells = cells
@@ -443,27 +452,27 @@ fn is_missing_cell(cell: &Cell<'_>, origin: Origin) -> bool {
     }
 }
 
-/// For each cell of the header, whether its name is empty and its column
+/// For each cell of the header, whether it is empty and its column
 /// holds a value in some row of `individuals`, a cell that is not missing:
 /// one pass over the cells. A pass over the rows for each column with no
 /// name took 2.90 s for a header of `a` and 40,000 empty names over 40,000
 /// rows, where the one pass takes 0.01 s (the package under node 26.8.2,
 /// on the owner's Mac, 2 October 2026).
 fn unnamed_with_value(
-    header_names: &[String],
+    header_cells: &[Cell<'_>],
     cells: &[Cell<'_>],
     individuals: &[RowSpan],
     origin: Origin,
 ) -> Vec<bool> {
-    let mut is_unnamed_with_value = vec![false; header_names.len()];
+    let mut is_unnamed_with_value = vec![false; header_cells.len()];
     for row in individuals {
         let row_cells = cells.get(row.cells.clone()).unwrap_or_default();
-        for ((name, cell), has_value) in header_names
+        for ((header_cell, cell), has_value) in header_cells
             .iter()
             .zip(row_cells)
             .zip(is_unnamed_with_value.iter_mut())
         {
-            if name.is_empty() && !*has_value && !is_missing_cell(cell, origin) {
+            if *header_cell == Cell::Empty && !*has_value && !is_missing_cell(cell, origin) {
                 *has_value = true;
             }
         }
@@ -472,17 +481,17 @@ fn unnamed_with_value(
 }
 
 /// The number of cells of the header without the longest run at its end
-/// of empty names whose columns hold no value in any row, by `has_value`;
+/// of empty cells whose columns hold no value in any row, by `has_value`;
 /// the first cell is always counted.
-fn num_counted_columns(header_names: &[String], has_value: impl Fn(usize) -> bool) -> usize {
-    let num_dropped = header_names
+fn num_counted_columns(header_cells: &[Cell<'_>], has_value: impl Fn(usize) -> bool) -> usize {
+    let num_dropped = header_cells
         .iter()
         .enumerate()
         .skip(1)
         .rev()
-        .take_while(|(index, name)| name.is_empty() && !has_value(*index))
+        .take_while(|(index, cell)| **cell == Cell::Empty && !has_value(*index))
         .count();
-    header_names.len().saturating_sub(num_dropped)
+    header_cells.len().saturating_sub(num_dropped)
 }
 
 /// The index of the first column, among the run of empty names at the end

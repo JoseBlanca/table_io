@@ -496,11 +496,27 @@ fn cell_of_span(text: &str, span: CellSpan) -> Cell<'_> {
     }
 }
 
-/// The rows of a text as the split makes them.
+/// Whether the cell at `span` has no character, which [`cell_of_span`]
+/// makes [`Cell::Empty`].
+fn is_empty_span(span: CellSpan) -> bool {
+    match span {
+        CellSpan::Plain { start, end } => start == end,
+        CellSpan::Quoted {
+            inner_start,
+            inner_end,
+            trail_start,
+            trail_end,
+        } => inner_start == inner_end && trail_start == trail_end,
+    }
+}
+
+/// The rows of a text as the split makes them, but its blank rows, whose
+/// cells are all empty, which the table step skips: such a row keeps no
+/// cell and no end, so that a file of 20,000,000 line breaks holds no cell.
 struct RowsSink<'text> {
-    /// The cells of every row, row after row.
+    /// The cells of every row that is not blank, row after row.
     cells: Vec<Cell<'text>>,
-    /// Where each row ends among the cells, and its line.
+    /// Where each row that is not blank ends among the cells, and its line.
     row_ends: Vec<RowEnd>,
 }
 
@@ -510,43 +526,68 @@ impl<'text> SplitSink<'text> for RowsSink<'text> {
     }
 
     fn row_end(&mut self, line: u32) {
-        self.row_ends.push(RowEnd {
-            place: line,
-            end: self.cells.len(),
-        });
+        let row_start = self.row_ends.last().map_or(0, |row_end| row_end.end);
+        let is_blank = self
+            .cells
+            .get(row_start..)
+            .unwrap_or_default()
+            .iter()
+            .all(|cell| *cell == Cell::Empty);
+        if is_blank {
+            self.cells.truncate(row_start);
+        } else {
+            self.row_ends.push(RowEnd {
+                place: line,
+                end: self.cells.len(),
+            });
+        }
     }
 }
 
-/// The numbers of cells and of rows of a text, counted by a split that
-/// makes no cell.
+/// The numbers of cells and of rows of a text that are not blank, as
+/// [`RowsSink`] keeps them, counted by a split that makes no cell.
 #[derive(Debug, Clone, Copy)]
 struct CellCount {
-    /// The number of cells.
+    /// The number of cells of the rows that are not blank.
     num_cells: usize,
-    /// The number of rows.
+    /// The number of rows that are not blank.
     num_rows: usize,
+    /// The number of cells of the row being split.
+    row_num_cells: usize,
+    /// Whether every cell of the row being split is empty.
+    is_row_blank: bool,
 }
 
 impl<'text> SplitSink<'text> for CellCount {
-    fn cell(&mut self, _text: &'text str, _span: CellSpan) {
-        self.num_cells = self.num_cells.saturating_add(1);
+    fn cell(&mut self, _text: &'text str, span: CellSpan) {
+        self.row_num_cells = self.row_num_cells.saturating_add(1);
+        self.is_row_blank &= is_empty_span(span);
     }
 
     fn row_end(&mut self, _line: u32) {
-        self.num_rows = self.num_rows.saturating_add(1);
+        if !self.is_row_blank {
+            self.num_cells = self.num_cells.saturating_add(self.row_num_cells);
+            self.num_rows = self.num_rows.saturating_add(1);
+        }
+        self.row_num_cells = 0;
+        self.is_row_blank = true;
     }
 }
 
-/// The rows of `text` split with `separator`, each cell made once.
+/// The rows of `text` split with `separator`, each cell made once, its
+/// blank rows left out.
 ///
 /// The cells are counted by a split before they are made, so that their
 /// `Vec` is made once at its size. Grown by doubling, the `Vec` of the 9.76
 /// million cells of a CSV of 20,000,000 bytes of `0,` reached 16,777,216
 /// slots, and the import of that file grew the memory of the wasm to 558.8
-/// MB, where with the count it grows it to 339.3 MB (the package built for
-/// release, under node 26.8.2 on the owner's Mac, 2 October 2026). Natively
-/// the memory resident is 422.9 MB either way, since the slots never
-/// written are given no pages.
+/// MB, where with the count it grows it to 336 MB; a file of 20,000,000
+/// line breaks, whose blank rows kept their cells, grew it to 501.4 MB,
+/// and grows it to 21.4 MB. The most of the files of 20,000,000 bytes
+/// measured is 610.5 MB, a header `id,v` over rows `a,` (the package built
+/// for release, under node 26.8.2 on the owner's Mac, 2 October 2026).
+/// Natively the memory resident does not change with the count, since the
+/// slots never written are given no pages.
 ///
 /// # Errors
 ///
@@ -555,6 +596,8 @@ fn rows_of(text: &str, separator: Separator) -> Result<Rows<'_>, SplitStop> {
     let mut count = CellCount {
         num_cells: 0,
         num_rows: 0,
+        row_num_cells: 0,
+        is_row_blank: true,
     };
     split(text, separator, &mut count)?;
     let mut sink = RowsSink {
@@ -778,4 +821,30 @@ fn found_separator(text: &str) -> Result<Separator, ImportError> {
     Ok(most_cells(&mut tries.iter().filter(|&&(_, _, fits)| fits))
         .or_else(|| most_cells(&mut tries.iter()))
         .unwrap_or(Separator::Comma))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use crate::Separator;
+    use crate::csv::rows_of;
+    use crate::table::{Cell, RowEnd};
+
+    #[test]
+    fn a_blank_row_keeps_no_cell_and_no_end_and_the_lines_after_it_are_kept() {
+        let rows = rows_of("a,b\n\n , \"\"\nc\n", Separator::Comma).unwrap();
+        assert_eq!(
+            rows.cells,
+            vec![
+                Cell::Text(Cow::Borrowed("a")),
+                Cell::Text(Cow::Borrowed("b")),
+                Cell::Text(Cow::Borrowed("c")),
+            ]
+        );
+        assert_eq!(
+            rows.row_ends,
+            vec![RowEnd { place: 1, end: 2 }, RowEnd { place: 4, end: 3 }]
+        );
+    }
 }

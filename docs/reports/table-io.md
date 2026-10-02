@@ -37,9 +37,9 @@ there, 441 tests and 25 ignored. The session that goes on:
 3. Ticks 4.1 and 4.2, goes on with task 4.3, then the review of work
    package 4, and then work packages 5 to 7.
 
-The owner has said nothing more is needed from them to go on; the merge
-and a note of section "Work package 3" are what the report will ask at
-the end.
+Nothing waits on the owner to go on. At the end the report asks for
+the merge, and tells the owner of the note far to the left of a table,
+in the section on work package 3.
 
 ## Work package 1: the rename
 

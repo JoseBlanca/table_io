@@ -48,7 +48,12 @@ pub(crate) fn csv_of_table(
         is_row_start: true,
     };
     write_cells(names, columns, &mut writer)?;
-    Ok(writer.bytes)
+    // The Vec grew by doubling, and the capacity past the bytes is given
+    // back: a CSV of 16.9 MB, 20,000 rows of 100 floats, held 33.6 MB
+    // (release build, on the owner's Mac, 2 October 2026).
+    let mut bytes = writer.bytes;
+    bytes.shrink_to_fit();
+    Ok(bytes)
 }
 
 /// The line of the header as it is written, its cells quoted, before it is

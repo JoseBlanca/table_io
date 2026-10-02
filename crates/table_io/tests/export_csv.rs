@@ -955,6 +955,31 @@ mod written {
         );
     }
 
+    // The bytes of a CSV of 20,000 rows of 100 floats, 16.9 MB, held
+    // 33.6 MB, the capacity their Vec had doubled to (release build, on the
+    // owner's Mac, 2 October 2026).
+    #[test]
+    fn the_bytes_of_a_csv_hold_no_more_memory_than_their_length() {
+        let num_rows = 1_000;
+        let names = NameColumn {
+            header: "id".to_owned(),
+            number: 1,
+            names: (0..num_rows).map(|row| format!("ind{row}")).collect(),
+        };
+        let columns = [column(
+            "x",
+            ColumnValues::Float(
+                (0..num_rows)
+                    .map(|row| Some(f64::from(row) / 8.0))
+                    .collect(),
+            ),
+        )];
+
+        let bytes = export_table(&names, &columns, &plain(Separator::Comma)).unwrap();
+
+        assert_eq!(bytes.capacity(), bytes.len());
+    }
+
     #[test]
     fn an_export_error_is_written_in_english_with_its_fields_and_is_an_error() {
         let names = names_of("id", &["a", "b"]);

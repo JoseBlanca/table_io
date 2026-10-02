@@ -108,6 +108,10 @@ The same rules for the rows of every format:
   Excel writes for rows it once formatted, is skipped, wherever it is.
 - **The header** is the first row that is not blank, and gives the names
   of the columns, as text: `NA` in the header is a column named `NA`.
+  A file with no row that is not blank, an xlsx whose only values are
+  spaces among them, which `specs/read.md` reads as a rectangle of
+  texts, has no header and is refused as **empty**, as a text file with
+  no line is (below, "The refusals").
 - **The empty cells at the end of the header** whose columns hold no
   value in any row are dropped, as the owner decided on 25 September 2026
   for popnei_web: a header `id;pop;;` over rows of such cells is a header
@@ -133,8 +137,10 @@ The same rules for the rows of every format:
   that `id,a,b,b,a` is refused for `b`, columns 3 and 4, as popnei_web's
   `firstRepeated` has it, and so
   the user reads "the name 'height' is used by columns 4 and 9"
-  (Vavilov Explorer's `docs/design.md`, section 5). Names are compared
-  exactly.
+  (Vavilov Explorer's `docs/design.md`, section 5). The name of the
+  first column is among the names compared, as in `firstRepeated`, so
+  that `pop,pop` is refused for `pop`, columns 1 and 2. Names are
+  compared exactly.
 - **A row of a text file of another length than the header**, one with
   fewer cells than the header, counted as above, or with more whose cells
   past the whole header are not all empty, is refused, as a **ragged

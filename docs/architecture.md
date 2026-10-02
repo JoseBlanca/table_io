@@ -306,8 +306,10 @@ An import ends in one of three ways.
 
 An export ends in the bytes or a refusal, and a conversion in the column
 or the count of the values that do not convert. In Rust each is a
-`Result`. In the package a refusal is a value JavaScript reads, and an
-error a JavaScript `Error` with the message. No type of calamine or of
+`Result`. In the package a refusal and an unreadable file are both
+values JavaScript reads, the second with its message, and a JavaScript
+`Error` is thrown only for a defect of the caller, an option that is not
+one of the package's (`specs/package.md`). No type of calamine or of
 rust_xlsxwriter is in the public interface, so that an application does
 not depend on which version of either is inside.
 
@@ -423,7 +425,10 @@ column to table_io as text.
   with the roles its analyses need worked out from them (section 2), in
   its project, its project file and its screens; the words of the
   refusals that change, the CSV renamed `.xlsx` that is now read; and
-  the line of the local install in its `docs/architecture.md`, section 6.
+  the line of the local install in its `docs/architecture.md`, section 6;
+  and it keeps its check of the size of a file before it reads its bytes,
+  since the package sees the bytes only once they are in the memory of
+  the wasm.
   A project file popnei_web saved with its four types is opened by
   popnei_web reading the table again or mapping the types, which is
   popnei_web's to decide.

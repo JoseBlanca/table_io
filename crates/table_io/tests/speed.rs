@@ -17,8 +17,8 @@
 use std::time::Instant;
 
 use table_io::{
-    ColumnValues, DecimalMark, FoundEncoding, HowRead, ImportOptions, Separator, TextOptions,
-    TextRead, import_table,
+    ColumnType, ColumnValues, DecimalMark, FoundEncoding, HowRead, ImportOptions, Separator,
+    TextOptions, TextRead, import_table,
 };
 
 /// The rows of the table, below the header.
@@ -30,44 +30,56 @@ const NUM_INTEGERS: u32 = 20;
 const NUM_FLOATS: u32 = 20;
 const NUM_TEXTS: u32 = 9;
 
-/// A CSV as a Spanish Excel saves it, UTF-8 with `;` between the cells and
-/// `,` for the decimals, lines ended by `\r\n`: a header `id;int1;...;
-/// int20;float1;...;float20;text1;...;text9`, then 100,000 rows, each a
-/// name, `ind1` to `ind100000`, 20 integers from 0 to 99,999, 20 floats of
-/// three decimals from `0,000` to `999,999`, and 9 texts `pop0` to
-/// `pop19`; no value is missing.
+/// A CSV as a Spanish Excel saves it, in Windows-1252, with `;` between the
+/// cells and `,` for the decimals, lines ended by `\r\n`, so that the time
+/// holds the decoding of Windows-1252: a header `id;int1;...;int20;float1;
+/// ...;float20;text1;...;text9`, then 100,000 rows, each a name, `ind1` to
+/// `ind100000`, 20 integers from 0 to 99,999, 20 floats of three decimals
+/// from `0,000` to `999,999`, and 9 texts `España0` to `España19`, whose
+/// `ñ` is the byte 0xF1; no value is missing.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "the row is at most 100,000 and the column at most 49, so every product and sum is below 10^7, and every divisor is a constant other than 0"
 )]
 fn csv_of_the_table() -> Vec<u8> {
-    let mut csv = String::from("id");
+    let mut csv = b"id".to_vec();
     for integer in 1..=NUM_INTEGERS {
-        csv.push_str(&format!(";int{integer}"));
+        csv.extend_from_slice(format!(";int{integer}").as_bytes());
     }
     for float in 1..=NUM_FLOATS {
-        csv.push_str(&format!(";float{float}"));
+        csv.extend_from_slice(format!(";float{float}").as_bytes());
     }
     for text in 1..=NUM_TEXTS {
-        csv.push_str(&format!(";text{text}"));
+        csv.extend_from_slice(format!(";text{text}").as_bytes());
     }
-    csv.push_str("\r\n");
+    csv.extend_from_slice(b"\r\n");
     for row in 1..=NUM_ROWS {
-        csv.push_str(&format!("ind{row}"));
+        csv.extend_from_slice(format!("ind{row}").as_bytes());
         for column in 1..=NUM_INTEGERS {
-            csv.push_str(&format!(";{}", (row * 7 + column * 13) % 100_000));
+            csv.extend_from_slice(format!(";{}", (row * 7 + column * 13) % 100_000).as_bytes());
         }
         for column in 1..=NUM_FLOATS {
             let whole = (row + column) % 1_000;
             let thousandths = (row * column) % 1_000;
-            csv.push_str(&format!(";{whole},{thousandths:03}"));
+            csv.extend_from_slice(format!(";{whole},{thousandths:03}").as_bytes());
         }
         for column in 1..=NUM_TEXTS {
-            csv.push_str(&format!(";pop{}", (row + column) % 20));
+            csv.extend_from_slice(b";Espa\xF1a");
+            csv.extend_from_slice(format!("{}", (row + column) % 20).as_bytes());
         }
-        csv.push_str("\r\n");
+        csv.extend_from_slice(b"\r\n");
     }
-    csv.into_bytes()
+    csv
+}
+
+/// The number of values of a column.
+fn num_values(values: &ColumnValues) -> usize {
+    match values {
+        ColumnValues::Integer(integers) => integers.len(),
+        ColumnValues::Float(floats) => floats.len(),
+        ColumnValues::Boolean(booleans) => booleans.len(),
+        ColumnValues::Text(texts) => texts.len(),
+    }
 }
 
 #[test]
@@ -98,29 +110,67 @@ fn a_csv_of_100000_rows_and_50_columns_is_imported_and_timed() {
         csv.len(),
         elapsed.as_secs_f64()
     );
+    if cfg!(debug_assertions) {
+        println!("a build without --release: the time is not the one of the target");
+    }
     assert_eq!(
         table.read,
         HowRead::Text(TextRead {
-            encoding: FoundEncoding::Utf8,
+            encoding: FoundEncoding::Windows1252,
             separator: Separator::Semicolon,
             decimal: DecimalMark::Comma,
             undecoded_line: None,
         })
     );
+    assert_eq!(table.names.header, "id");
+    assert_eq!(table.names.number, 1);
     assert_eq!(table.names.names.len(), 100_000);
+    assert_eq!(table.names.names[0], "ind1");
     assert_eq!(table.names.names[99_999], "ind100000");
+    let expected: Vec<(String, ColumnType)> = (1..=NUM_INTEGERS)
+        .map(|integer| (format!("int{integer}"), ColumnType::Integer))
+        .chain((1..=NUM_FLOATS).map(|float| (format!("float{float}"), ColumnType::Float)))
+        .chain((1..=NUM_TEXTS).map(|text| (format!("text{text}"), ColumnType::Text)))
+        .collect();
     assert_eq!(table.columns.len(), 49);
-    // Row 1 of int1 is 1 × 7 + 1 × 13, of float1 2,001, of text1 pop2.
+    for (position, (column, (name, column_type))) in table.columns.iter().zip(&expected).enumerate()
+    {
+        assert_eq!(&column.name, name);
+        assert_eq!(
+            column.number,
+            u32::try_from(position).unwrap().checked_add(2).unwrap()
+        );
+        assert_eq!(column.values.column_type(), *column_type, "{name}");
+        assert_eq!(num_values(&column.values), 100_000, "{name}");
+    }
+    // Row 1 of int1 is 1 × 7 + 1 × 13, of float1 2,001, of text1 España2;
+    // row 100,000 of int1 is 13 and of int20 260, of float1 1,000 and of
+    // float20 20,000, of text1 España1 and of text9 España9.
     let ColumnValues::Integer(int1) = &table.columns[0].values else {
         panic!("int1 is not an integer column");
     };
-    assert_eq!(int1[0], Some(20));
+    assert_eq!((int1[0], int1[99_999]), (Some(20), Some(13)));
+    let ColumnValues::Integer(int20) = &table.columns[19].values else {
+        panic!("int20 is not an integer column");
+    };
+    assert_eq!(int20[99_999], Some(260));
     let ColumnValues::Float(float1) = &table.columns[20].values else {
         panic!("float1 is not a float column");
     };
-    assert_eq!(float1[0], Some(2.001));
+    assert_eq!((float1[0], float1[99_999]), (Some(2.001), Some(1.0)));
+    let ColumnValues::Float(float20) = &table.columns[39].values else {
+        panic!("float20 is not a float column");
+    };
+    assert_eq!(float20[99_999], Some(20.0));
     let ColumnValues::Text(text1) = &table.columns[40].values else {
         panic!("text1 is not a text column");
     };
-    assert_eq!(text1[0].as_deref(), Some("pop2"));
+    assert_eq!(
+        (text1[0].as_deref(), text1[99_999].as_deref()),
+        (Some("España2"), Some("España1"))
+    );
+    let ColumnValues::Text(text9) = &table.columns[48].values else {
+        panic!("text9 is not a text column");
+    };
+    assert_eq!(text9[99_999].as_deref(), Some("España9"));
 }

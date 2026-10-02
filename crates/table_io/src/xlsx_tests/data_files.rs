@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use table_io::xlsx::{Sheet, SheetCell, read_first_sheet};
+use crate::xlsx::{Sheet, SheetCell, read_first_sheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

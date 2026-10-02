@@ -11,12 +11,14 @@
 //! `t="inlineStr"`, so that there is no table of shared texts. A workbook
 //! of 1904 holds a sixth, `xl/styles.xml`, where the formats of its
 //! numbers are, which calamine finds by that name with no relationship to
-//! it. `tests/no_panic.rs` zips with [`stored_zip`] the parts of a
-//! workbook of its own, some of them damaged, and `tests/parts.rs` the
+//! it. `src/xlsx_tests/no_panic.rs` zips with [`stored_zip`] the parts of a
+//! workbook of its own, some of them damaged, and `src/xlsx_tests/parts.rs` the
 //! parts of a workbook with their names or their XML changed, or with a
 //! table of shared texts added, `xl/sharedStrings.xml`, which calamine too
 //! finds by that name; `tests/write_fixtures.rs` writes one such file into
-//! `tests/data/`, and `src/bounds_tests.rs` takes it by its path.
+//! `tests/data/`. The tests of the library, `src/xlsx_tests/` and
+//! `src/bounds_tests.rs`, take it as the module
+//! `crate::xlsx_tests::hand_written`, loaded once by its path.
 //!
 //! Each module that takes it is declared `#[cfg(test)]`, so that clippy
 //! reads its `unwrap`s as those of a test: a size of a test's file past a

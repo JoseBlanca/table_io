@@ -5,14 +5,10 @@
 
 #![cfg(feature = "xlsx")]
 
-#[cfg(test)]
-#[expect(dead_code, reason = "no workbook here is of the 1904 system")]
-mod hand_written;
-
+use crate::xlsx::{ReadError, Refusal, SheetCell, read_first_sheet};
 use rust_xlsxwriter::{Chart, ChartType, Formula, Workbook};
-use table_io::xlsx::{ReadError, Refusal, SheetCell, read_first_sheet};
 
-use crate::hand_written::{text_cell, xlsx_of_worksheet};
+use crate::xlsx_tests::hand_written::{text_cell, xlsx_of_worksheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

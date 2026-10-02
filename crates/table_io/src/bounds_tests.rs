@@ -3,14 +3,7 @@
 //! `read_first_sheet_within`, which takes the bounds as an argument: a file
 //! that reaches the real bounds unzips to hundreds of MB. The files are
 //! written by the helper of `tests/hand_written/`, which the tests of
-//! `tests/` share, taken here by its path.
-
-#[expect(
-    dead_code,
-    reason = "the tests of the bounds use only the zip of the parts and the workbooks of one sheet"
-)]
-#[path = "../tests/hand_written/mod.rs"]
-mod hand_written;
+//! `tests/` share, taken here as `crate::xlsx_tests::hand_written`.
 
 use std::io::Cursor;
 
@@ -18,13 +11,13 @@ use rust_xlsxwriter::{Workbook, XlsxError};
 use zip::ZipArchive;
 use zip::result::ZipError;
 
-use crate::bounds_tests::hand_written::{
-    parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
-};
 use crate::parts::PartBounds;
 use crate::xlsx::{
     MAX_PART_BYTES, MAX_SETTINGS_PART_BYTES, MAX_SHEET_PATH_BYTES, MAX_TEXT_BYTES, MAX_TEXTS,
     MAX_UNZIPPED_BYTES, PART_BOUNDS, ReadError, Sheet, SheetCell, read_first_sheet_within,
+};
+use crate::xlsx_tests::hand_written::{
+    parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
 };
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.

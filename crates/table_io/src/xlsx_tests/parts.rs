@@ -12,23 +12,16 @@
 
 #![cfg(feature = "xlsx")]
 
-#[cfg(test)]
-#[expect(
-    dead_code,
-    reason = "the texts here are in a table of texts, not written in the cells by hand"
-)]
-mod hand_written;
-
 use std::error::Error;
 use std::io::{Cursor, Write};
 use std::ops::Range;
 
+use crate::xlsx::{ReadError, Sheet, SheetCell, read_first_sheet};
 use rust_xlsxwriter::{Workbook, XlsxError};
-use table_io::xlsx::{ReadError, Sheet, SheetCell, read_first_sheet};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
-use crate::hand_written::{
+use crate::xlsx_tests::hand_written::{
     parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
 };
 

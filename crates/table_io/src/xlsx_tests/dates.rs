@@ -5,19 +5,12 @@
 
 #![cfg(feature = "xlsx")]
 
-#[cfg(test)]
-#[expect(
-    dead_code,
-    reason = "the dates are numbers, and no cell here is a text written by hand"
-)]
-mod hand_written;
-
 use std::error::Error;
 
+use crate::xlsx::{SheetCell, read_first_sheet};
 use rust_xlsxwriter::{Format, Workbook};
-use table_io::xlsx::{SheetCell, read_first_sheet};
 
-use crate::hand_written::xlsx_of_1904_worksheet;
+use crate::xlsx_tests::hand_written::xlsx_of_1904_worksheet;
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

@@ -23,19 +23,12 @@
 
 #![cfg(feature = "xlsx")]
 
-#[cfg(test)]
-#[expect(
-    dead_code,
-    reason = "only the zip of the parts is used here, not the workbooks of one sheet"
-)]
-mod hand_written;
-
 use std::panic;
 
+use crate::xlsx::{SheetCell, read_first_sheet};
 use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Formula, Workbook, XlsxError};
-use table_io::xlsx::{SheetCell, read_first_sheet};
 
-use crate::hand_written::stored_zip;
+use crate::xlsx_tests::hand_written::stored_zip;
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

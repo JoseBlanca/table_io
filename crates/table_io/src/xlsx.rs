@@ -1,8 +1,9 @@
 //! xlsx_rs's read of an xlsx, `docs/specs/read.md`: the first worksheet
 //! that is not hidden, as the rectangle of its cells, or a refusal. The
-//! import reads an xlsx with it, and the binding crate calls it until it
-//! exports the import instead, when it becomes private to the library
-//! (`docs/specs/import.md`, "The Rust interface").
+//! import reads an xlsx with it, through [`import_sheet`]; it is private to
+//! the library (`docs/specs/import.md`, "The Rust interface"), and
+//! [`read_first_sheet`], with its own refusals, is kept for the tests of
+//! `src/xlsx_tests/`, which assert the cells of `docs/specs/read.md`.
 
 use std::io::Cursor;
 
@@ -10,7 +11,9 @@ use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 
 use crate::cell::{TextCount, cell_of_value};
 use crate::date::DateSystem;
-use crate::import::{COMPOUND_FILE_MARK, ZIP_MARK};
+use crate::import::COMPOUND_FILE_MARK;
+#[cfg(test)]
+use crate::import::ZIP_MARK;
 use crate::parts::{self, PackageWorkbook, PartBounds};
 use crate::rectangle::{LayoutError, MergedRange, Rectangle};
 use crate::{Format, ImportError};
@@ -52,6 +55,13 @@ pub struct Sheet {
 pub enum Refusal {
     /// A file that is not a zip, as every xlsx is: most often a CSV
     /// saved with the name `.xlsx`, or an empty file.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "given by read_first_sheet alone, which only the tests call; the import finds the format before"
+        )
+    )]
     NotXlsx,
     /// A file of the old Office, an `.xls` whose name was changed among
     /// them.
@@ -262,6 +272,7 @@ pub const MAX_PART_BYTES: u64 = 300_000_000;
 ///   column, or a number of rows or columns, past what a `u32` holds,
 ///   which no file calamine reads can give and which are there so that
 ///   the read has no panic.
+#[cfg(test)]
 pub fn read_first_sheet(bytes: &[u8], max_cells: u32) -> Result<Sheet, ReadError> {
     read_first_sheet_within(bytes, max_cells, PART_BOUNDS)
 }
@@ -277,6 +288,7 @@ pub(crate) const PART_BOUNDS: PartBounds = PartBounds {
 
 /// Reads as [`read_first_sheet`] does, within `bounds`, which the tests of
 /// the crate lower so as to pass them with a file of a few KB.
+#[cfg(test)]
 pub(crate) fn read_first_sheet_within(
     bytes: &[u8],
     max_cells: u32,

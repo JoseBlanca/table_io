@@ -61,4 +61,7 @@ mod parts;
 #[cfg(feature = "xlsx")]
 mod rectangle;
 #[cfg(feature = "xlsx")]
-pub mod xlsx;
+mod xlsx;
+#[cfg(feature = "xlsx")]
+#[cfg(test)]
+mod xlsx_tests;

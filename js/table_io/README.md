@@ -30,16 +30,19 @@ github.com/JoseBlanca/table_io, the rules of a value and of a conversion in
   text file and ignored for an xlsx.
 - A `TableRead` holds a table or a refusal. Its `refusal` is `""` for a
   table, and then `format` is `"text"` or `"xlsx"`; `encoding`,
-  `separator`, `decimal` and `undecodedLine` how a text file was read, and
-  `decimal` `"point"` for an xlsx; `sheet` the sheet of an xlsx;
+  `"utf-8"`, `"utf-16"` or `"windows-1252"`, `separator`, `decimal` and
+  `undecodedLine`, the line of the first character that could not be
+  decoded or `undefined`, how a text file was read, and `decimal`
+  `"point"` for an xlsx; `sheet` the sheet of an xlsx;
   `namesHeader`, `namesNumber` and `names` the first column of the file,
   which names the individuals; and `numColumns` the number of the other
   columns. Each of them is read by its index, from 0, with `columnName`,
   `columnNumber`, `columnType`, `"integer"`, `"float"`, `"boolean"` or
   `"text"`, and five arrays: `columnMissing`, 1 for a missing value, and
-  `columnIntegers`, a `BigInt64Array`, `columnFloats`, `columnBooleans`
-  and `columnTexts`, of which the one of the column's type holds its
-  values and the other three are empty.
+  `columnIntegers`, a `BigInt64Array`, so that an integer beyond 2^53
+  is exact, `columnFloats`, a `Float64Array`, `columnBooleans`, 1 for
+  true, and `columnTexts`, of which the one of the column's type holds
+  its values, a missing one 0 or `""`, and the other three are empty.
 - Otherwise `refusal` is the kind of the refusal, `"tooLarge"`,
   `"oldExcel"`, `"raggedRow"` and the others of `docs/specs/package.md`,
   with `format` and the fields its words need, the others 0 or `""`. A
@@ -49,8 +52,10 @@ github.com/JoseBlanca/table_io, the rules of a value and of a conversion in
 - `convertColumn(column_type, missing, integers, floats, booleans, texts,
   to, decimal)`, which converts a column, given as a `TableRead` gives
   it, to the type `to`, and returns a `Conversion`: with `numFailed` 0 the
-  column converted, as its five arrays; otherwise how many values do not
-  convert, and the row, from 1, and the text of the first.
+  column converted, as its five arrays `missing`, `integers`, `floats`,
+  `booleans` and `texts`; otherwise `numFailed` is how many values do not
+  convert, `firstRow` the row of the first, from 1, and `firstText` its
+  text, and the arrays are empty.
 - `isMissing(text)`, `parseInteger(text)`, a `bigint`, `parseFloat(text,
   decimal)`, `parseBoolean(text)` and `floatText(number, decimal)`, the
   rules of a value the import reads by; the three parses give `undefined`

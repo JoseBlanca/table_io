@@ -6,11 +6,14 @@ copy. These are the crates compiled into it, as
 
     cargo tree -p table_io_js -e normal,no-proc-macro --target wasm32-unknown-unknown
 
-lists them on 28 September 2026, the crates of macros that run only while
+lists them on 2 October 2026, the crates of macros that run only while
 it is built left out, with the license each declares and its text, from
 the source of the crate. Where a crate may be used under the MIT license
 or another, the MIT text is the one given. Crates whose text is the same
-are grouped. table_io's own license is `LICENSE`, beside this file.
+are grouped. rust_xlsxwriter, the writer of an xlsx, is among them,
+since the package is built with the feature `xlsx` that takes it, though
+no function the package exports writes a file yet. table_io's own license
+is `LICENSE`, beside this file.
 
 ## atoi_simd 0.18.1
 
@@ -541,6 +544,34 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+```
+
+## rust_xlsxwriter 0.99.1
+
+- rust_xlsxwriter 0.99.1: MIT OR Apache-2.0; the text below is its LICENSE_MIT
+
+```text
+MIT License
+
+Copyright 2022-2026 John McNamara <jmcnamara@cpan.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## scopeguard 1.2.0

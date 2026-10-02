@@ -1,6 +1,6 @@
 [package]
 name = "table_io"
-description = "Reads the first visible sheet of an xlsx into its cells."
+description = "Imports a table from a CSV, a TSV or the first visible sheet of an xlsx as typed columns, and exports typed columns as a CSV or an xlsx."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

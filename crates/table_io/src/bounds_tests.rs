@@ -1,4 +1,4 @@
-//! The messages of the bounds of "What table_io reads before calamine" of
+//! The messages of the bounds of "What xlsx_rs reads before calamine" of
 //! `docs/specs/read.md`, tested with files of a few KB through
 //! `read_first_sheet_within`, which takes the bounds as an argument: a file
 //! that reaches the real bounds unzips to hundreds of MB. The files are
@@ -589,7 +589,7 @@ fn parts_with_declaration_between_rows(
 
 // A part other than those calamine holds whole is counted three times when
 // it is found in another encoding, since decoding makes at most 3 bytes of
-// UTF-8 of each byte ("What table_io reads before calamine", point 5).
+// UTF-8 of each byte ("What xlsx_rs reads before calamine", point 5).
 #[test]
 fn a_sheet_found_in_another_encoding_is_counted_three_times() {
     let version_of_1_000_000_bytes = format!(

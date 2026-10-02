@@ -136,7 +136,7 @@ pub const MAX_TEXT_BYTES: u64 = 200_000_000;
 /// 1,000,000,000: past it the read is [`ReadError::Unreadable`], "the file
 /// unzips to more than 1,000,000,000 bytes".
 ///
-/// The value is that of "What table_io reads before calamine" of
+/// The value is that of "What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`: `individuals_10000.xlsx` unzips to 6.6 times its
 /// size, so a zip of 20 MB, popnei_web's limit, of the same kind unzips to
 /// about 133 MB, while a zip can be written to unzip to many GB.
@@ -151,7 +151,7 @@ pub const MAX_UNZIPPED_BYTES: u64 = 1_000_000_000;
 /// ends in `workbook.xml`, the workbook, in `workbook.xml.rels`, its
 /// relationships, or in `styles.xml`, the styles.
 ///
-/// The value is that of "What table_io reads before calamine" of
+/// The value is that of "What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`, point 3. One Excel saves is a few KB, but a
 /// workbook that gathers tens of thousands of styles or defined names can
 /// pass 10 MB; calamine holds of a workbook of 50 MB of defined names
@@ -168,7 +168,7 @@ pub const MAX_SETTINGS_PART_BYTES: u64 = 50_000_000;
 /// read, since calamine reserves room for as many texts as the first says
 /// before it reads one.
 ///
-/// The value is that of "What table_io reads before calamine" of
+/// The value is that of "What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`, point 3: calamine holds 12 bytes in the wasm for
 /// each text before its characters, 120 MB for these, where a table of
 /// individuals has at most as many texts as cells, 2,000,000.
@@ -190,7 +190,7 @@ pub const MAX_TEXTS: u64 = 10_000_000;
 /// tags: of the parts named `_rels/.rels` or ending in `workbook.xml.rels`,
 /// the longest tag, from `<` to `>`, of each is taken, and the two longest
 /// of these are added, since a target and the folder calamine takes from
-/// one are inside one tag ("What table_io reads before calamine", point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
+/// one are inside one tag ("What xlsx_rs reads before calamine", point 3). A workbook of 1,000 sheets as Excel writes it counts 1,001,
 /// with tags of about 150 bytes: 300 KB.
 #[cfg(feature = "xlsx")]
 pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
@@ -201,7 +201,7 @@ pub const MAX_SHEET_PATH_BYTES: u64 = 100_000_000;
 /// part that holds once each text the cells hold, whose name ends in
 /// `sharedStrings.xml`, `\` read as `/` and ignoring case, in any folder.
 ///
-/// The value is that of "What table_io reads before calamine" of
+/// The value is that of "What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`, point 5: one cell of a sheet can hold a text as
 /// large as the sheet, which calamine builds whole before table_io sees the
 /// cell, and a cell of 300,000,000 bytes took the wasm to 1.71 GB at the
@@ -326,7 +326,7 @@ fn read_first_sheet_within(
     // Read before calamine, which takes the date system from an element of
     // another namespace in a workbook Excel 365 saves, reads four parts
     // whole, with no bound, when it opens the file, and holds every merged
-    // range of the sheet ("What table_io reads before calamine" of
+    // range of the sheet ("What xlsx_rs reads before calamine" of
     // docs/specs/read.md, points 2 to 4).
     let date_system = parts::read_parts(bytes, max_cells, bounds)?;
     let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(read_error_of)?;

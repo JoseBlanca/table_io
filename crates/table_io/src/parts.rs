@@ -114,7 +114,7 @@ const PACKAGE_RELATIONSHIPS_PATH: &str = "_rels/.rels";
 /// What calamine may read a part as, told by the end of its name, `\`
 /// read as `/` and ignoring case, in any folder: the part calamine reads is
 /// always one of them, since its name is the folder of the workbook
-/// followed by the usual name ("What table_io reads before calamine" of
+/// followed by the usual name ("What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`, point 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PartKind {
@@ -401,7 +401,7 @@ const SHEET_NAME: &[u8] = b"sheet";
 /// sheet the workbook lists, the folder of the workbook, taken from a tag
 /// of `_rels/.rels`, followed by the target of the sheet's relationship, in
 /// a tag of the relationships of the workbook; every sheet may name the
-/// same relationship ("What table_io reads before calamine" of
+/// same relationship ("What xlsx_rs reads before calamine" of
 /// `docs/specs/read.md`, point 3).
 #[derive(Debug, Default)]
 struct SheetPaths {
@@ -779,7 +779,7 @@ fn raw_relationship_of(element: &BytesStart<'_>) -> Result<RawRelationship, Attr
 }
 
 /// Reads the table of texts that `part_reader` unzips as [`read_xml_part`]
-/// does ("What table_io reads before calamine" of `docs/specs/read.md`,
+/// does ("What xlsx_rs reads before calamine" of `docs/specs/read.md`,
 /// point 3). It counts every element of local name
 /// `si`, each a text, those inside another `si` and outside the root among
 /// them, and reads every attribute `uniqueCount` of every element of local

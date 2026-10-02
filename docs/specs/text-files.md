@@ -217,13 +217,8 @@ import's own):
 3. **A variants file**, a VCF. No data.
 4. **An unclosed quote**: the line where the cell that is never closed
    starts, and the separator used.
-5. **Too many cells**, only if the owner's answer to Open 2 of
-   `specs/import.md` adds it, which meanwhile is not: the line where the cells split so far, the blank
-   rows' among them, pass the caller's limit, `max_cells` of
-   `specs/import.md`, and the limit. Only the split with the separator
-   taken counts cells against the limit; the search of the separator
-   counts cells to compare the separators and makes none. An unclosed
-   quote and too many cells are given in the order the split meets them.
+A text file is bounded by its bytes alone, which the import checks
+(`specs/import.md`, "The limit of cells").
 
 ## The Rust interface
 

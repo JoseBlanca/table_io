@@ -83,15 +83,15 @@ ends with `\r\n`, as Excel writes them, the last one included.
 
 One sheet, named `Sheet1`, rust_xlsxwriter's name for a first sheet; the
 names in the first row, from A1; a row for each individual below; a
-float as a number cell; an integer as a number cell when it is from
+float as a number cell; an integer as a number cell, when it is from
 −2^53 to 2^53, which a number of Excel, a float, holds exactly, and
-beyond as a text cell of its digits, which the import reads back as the
-same integer (`specs/values.md`, "The type of a column"; **Open 2**,
-below); a boolean as a
-boolean cell; a text as a text cell; a missing value as no cell. A
-float written as a number cell 1 is read back as an integer, since an
-xlsx keeps the number and not how it was written (`specs/values.md`,
-**Open 1**).
+refused beyond (below); a boolean as a boolean cell; a text as a text
+cell; a missing value as no cell. A float written as a number cell 1 is
+read back as an integer, since an xlsx keeps the number and not how it
+was written (`specs/values.md`, "The type of a column"). The name of the
+sheet is `Sheet1`, as the owner decided on 2 October 2026; the option
+not taken was a name the application gives, which would have needed a
+refusal of the names Excel does not take.
 
 ## The refusals
 
@@ -132,6 +132,12 @@ in a row from left to right; the first met is the one given.
   spaces and tabs at the ends of a text cell of an xlsx, and an xlsx has
   no quotes to keep them. A name or a value, with its column and row. A
   CSV quotes such a text and keeps it.
+- **An integer too large for a number of Excel**, in an xlsx: an integer
+  beyond −2^53 to 2^53, which a number cell would hold as the nearest
+  float, 9,007,199,254,740,993 as 9,007,199,254,740,992, with its column
+  and row, as the owner decided on 2 October 2026. The options not taken
+  were a text cell of its digits, which Excel marks as a number stored as
+  text, and the nearest float.
 - **A float that is not finite**, infinite or not a number, which no
   import gives and a caller can make: no file holds it as a number.
 - **A character the file cannot carry**, with its column, its row and the
@@ -204,6 +210,7 @@ pub enum ExportRefusal {
     ReadsAsMissing { place: CellPlace },
     ErrorAsName { place: CellPlace },
     SpacesAtEnds { place: CellPlace },
+    IntegerTooLarge { place: CellPlace },
     NotFinite { place: CellPlace },
     CannotCarry { place: CellPlace, character: char },
     TextTooLong { place: CellPlace, length: u32 },
@@ -267,8 +274,8 @@ rule.
   `#N/A`; an xlsx refuses it.
 - **A text with `€` in Windows-1252**: written as the byte `80`. A text
   with `ő`, which Windows-1252 does not have: refused.
-- **An integer 2^60 in an xlsx**: the text cell `1152921504606846976`,
-  read back as that integer.
+- **An integer 2^60 in an xlsx**: refused, with its place; in a CSV
+  written `1152921504606846976` and read back as that integer.
 
 ## How it is verified
 
@@ -276,8 +283,8 @@ With cargo test, natively, at `export_table`, each case a literal table,
 the format and its choices, and the literal bytes of the CSV or the
 refusal; for an xlsx, what rust_xlsxwriter wrote is read back by
 `import_table` and by calamine, and checked as the cells of the sheet:
-A1 the name, a number cell where a float was, a boolean cell, a text cell
-of digits for 2^60, no cell for a missing value.
+A1 the name, a number cell where a float was, a number cell 2^53 exact, a
+boolean cell, no cell for a missing value.
 
 - The CSV of the table `id`, `h`, `n`, `ok`, `pop` over two rows, `A`,
   1.5, 3, true, `P1` and `B`, missing, −2, false, `x;y`, with `;`, the
@@ -302,7 +309,7 @@ The round trip of "What reads back", as a property over tables made by a
 generator of the tests with a fixed seed, no dependency added: names
 distinct and not empty, with accents, an emoji, a quote, the three
 separators and spaces inside; columns of each of the four types, with
-missing values, whole floats, integers beyond 2^53, texts that are
+missing values, whole floats, integers beyond 2^53, refused in an xlsx, texts that are
 numbers and texts that are not, U+0000, a U+FEFF at the start, U+FFFE,
 an empty name of the names' column before `#CHROM`, and tables of no
 individual; each exported as a CSV with every
@@ -319,27 +326,9 @@ its booleans, written in the report of the plan.
 
 ## Open points
 
-The owner decides these; until then the implementer follows the
-"meanwhile" of each.
-
-1. **The name of the sheet of an xlsx.** `Sheet1` is what rust_xlsxwriter
-   and an Excel in English name a first sheet; an Excel in Spanish names
-   it `Hoja1`. The options: (a) `Sheet1`, fixed; (b) a name the caller
-   gives, the application's, with a refusal for a name Excel does not
-   take, longer than 31 characters or with one of `[ ] : * ? / \`.
-   Recommended: (a), since nothing reads the name back and the user sees
-   it in one tab; (b) is a field and a refusal more for a name the user
-   rarely looks at. Meanwhile, (a).
-2. **An integer beyond 2^53 in an xlsx.** A number of Excel is a float,
-   which holds every whole number only up to 2^53, so 9,007,199,254,740,993
-   written as a number cell would be 9,007,199,254,740,992. The options:
-   (a) a text cell of its digits, which the import reads back as the same
-   integer, and which Excel shows with the green triangle of a number
-   stored as text; (b) a number cell, the nearest float, the value read
-   back changed, which "What reads back" would then list; (c) a refusal,
-   naming the cell. Recommended: (a), since the value is kept and the
-   triangle shows the user that the cell is a text, which it is.
-   Meanwhile, (a).
+None. The owner decided the two points of the draft on 2 October 2026:
+the sheet is named `Sheet1`, and an integer beyond 2^53 is refused in an
+xlsx; each is written above where it applies.
 
 ## Not in this spec
 

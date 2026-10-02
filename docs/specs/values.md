@@ -124,7 +124,9 @@ and a conversion to text.
     `1.5e-7`.
 - **A boolean**: `TRUE` or `FALSE`, as Excel shows it, where popnei_web
   wrote `true` and `false`, as JavaScript's `String` writes them
-  (**Open 3**, below).
+  as the owner decided on 2 October 2026. The option not taken was
+  `true`, which a name of popnei_web that is a boolean cell of an xlsx
+  had been.
 
 A float a caller made itself may be infinite or not a number, which no
 import gives: its text is `Infinity`, `-Infinity` or `NaN`, as
@@ -161,7 +163,13 @@ with no decimal mark and no exponent, as the owner decided on 2 October
 `2` integer. An xlsx holds a number and not how it was written, and
 calamine gives no format of a cell, so a number cell 1, whether Excel
 shows it `1` or `1.0`, is whole, and a column of number cells 1 and 2 is
-integer (**Open 1**, below).
+integer, as the owner decided on 2 October 2026: "the column will be
+integer only if all numbers in the column cells might be integers. So
+1.1 is clearly not an integer, but 1.0 might be." The option not taken
+was every number cell a float, which would have made a column of codes 1
+to 12 float in an xlsx and integer in the CSV saved from it. A float
+column of whole values exported as an xlsx comes back integer
+(`specs/export.md`).
 
 A text cell of an xlsx is read with the point, since the numbers of an
 xlsx need no decimal mark and Excel takes `1,5` typed in a sheet in
@@ -207,8 +215,12 @@ the conversion.
 From integer to float, a whole number beyond 2^53 that a float cannot
 hold, 2^53 + 1 but not 2^53 + 2, becomes the nearest float, as a text
 `9007199254740993` does when it is read as a float, and as Vavilov
-Explorer's design has it, "from integer to numeric, always" (**Open 2**,
-below). From float to integer, the range is checked against 2^63 itself
+Explorer's design has it, "from integer to numeric, always", as the
+owner decided on 2 October 2026, such integers being beyond what the
+tables need; the same holds where a text is read as a float and where the
+guess makes a column of such numbers float because a value in it is not
+whole. The option not taken was a value that is not exactly a float
+failing to convert, and such a column made text. From float to integer, the range is checked against 2^63 itself
 and not against `i64::MAX as f64`, which Rust rounds to 2^63, so that a
 float of 2^63 does not convert and is never made the integer 2^63 − 1
 by a cast that saturates.
@@ -368,48 +380,10 @@ seed, no dependency added.
 
 ## Open points
 
-The owner decides these; until then the implementer follows the
-"meanwhile" of each.
-
-1. **A whole number cell of an xlsx, integer or float.** An xlsx stores
-   1 and 1.0 as the same number, and calamine gives no format of the
-   cell, so table_io cannot see which the user typed. The options:
-   - (a) a whole number cell is an integer, so a column of 1, 2 and 3 is
-     integer, as in the CSV Excel saves from it, where it is written `1`,
-     `2`, `3`; a float column whose values are all whole, exported as an
-     xlsx and imported again, comes back integer (`specs/export.md`).
-   - (b) every number cell is a float, as Excel holds it, so a column of
-     codes 1 to 12 in an xlsx is float, and integer in the CSV saved from
-     the same sheet, and the user converts it.
-
-   Recommended: (a), since the same sheet then gives the same types as
-   its CSV, which `objectives.md`, goal 2, asks, and a user who types 1
-   in Excel means a whole number. Meanwhile, (a).
-2. **A whole number beyond 2^53 made a float.** A float holds every whole
-   number up to 2^53 and only some beyond, so 9,007,199,254,740,993
-   becomes 9,007,199,254,740,992. It happens in three places: an integer
-   column converted to float; a text `9007199254740993` converted to
-   float; and the guess of the type, a column of such codes holding one
-   value that is not whole, `1.5`, which makes the column float. The
-   options: (a) the nearest float in all three, as a decimal text such as
-   `0.1` is always the nearest float and as Vavilov Explorer's design
-   converts "from integer to numeric, always"; (b) a value that is not
-   exactly a float does not convert, in the two conversions, and such a
-   column is text at the guess, so that no digit is lost without a word.
-   Recommended: (a), since a user who asks for a float asks for a
-   measurement, which 16 digits hold, and a code of more than 16 digits
-   is better kept as text or integer, which the import gives it unless a
-   value in the column is not whole. Meanwhile, (a).
-3. **A boolean written as text, `TRUE` or `true`.** A boolean cell of an
-   xlsx is written as text when it is a name of the header or of the
-   first column, and when a column is converted to text. popnei_web wrote
-   `true`, as JavaScript does, so an individual named by a boolean cell is
-   `true` there today. The options: (a) `TRUE`, as Excel shows the cell
-   and as a CSV saved by Excel in English writes it; (b) `true`, as
-   popnei_web wrote it. Recommended: (a), since the user sees `TRUE` in
-   Excel, and a name of popnei_web's that changes is only that of an
-   individual named by a boolean cell, which no table the owner has made
-   holds. Meanwhile, (a).
+None. The owner decided the three points of the draft on 2 October 2026:
+a whole number cell of an xlsx is an integer, a whole number beyond 2^53
+becomes the nearest float, and a boolean is written as text `TRUE`; each
+is written above where it applies.
 
 ## Not in this spec
 

@@ -108,12 +108,11 @@ words need are filled, the others 0 or `""`:
 | `unreadable` | `text`, the zip crate's, calamine's or table_io's message |
 | `tooLarge` | `size`, in bytes |
 | `formatNotBuilt` | none but `format` |
-| `oldExcel`, `encrypted`, `cutShort`, `notText`, `variantsFile`, `empty` | none |
+| `oldExcel`, `encrypted`, `notWorkbook`, `cutShort`, `notText`, `variantsFile`, `empty` | none |
 | `emptySheet` | `sheet` |
 | `cellError` | `text`, the error, `#GETTING_DATA` |
 | `sheetTooLarge` | `sheet`, `row` and `column`, the first of the rectangle, `sheetRows`, `sheetColumns` |
 | `unclosedQuote` | `line`, `separator` |
-| `tooManyCells`, only by Open 2 of `specs/import.md` | `line` |
 | `headerError` | `row`, `column`, of the sheet, `text`, the error |
 | `unnamedColumn` | `column` |
 | `raggedRow` | `line`, `expected`, `found`, `separator` |
@@ -302,8 +301,9 @@ a warning of deprecated parameters:
 - a refusal of each shape of the table above: `raggedRow` with its line,
   counts and separator, `duplicateIndividual` of a text file with its two
   lines and of an xlsx with its two rows, `sheetTooLarge`, `tooLarge`;
-- an unreadable xlsx, a zip with no workbook: the kind `unreadable`, with
-  the library's message in `text`, and nothing thrown;
+- an unreadable xlsx, one whose sheet is cut short: the kind
+  `unreadable`, with the library's message in `text`, and nothing thrown;
+  a zip with no workbook: `notWorkbook`;
 - the limits 5 × 10^9 and −1 for `max_cells`, and 1.5 for `max_bytes`:
   an `Error` thrown;
 - an option or a type that is not one of the strings, and an index out of

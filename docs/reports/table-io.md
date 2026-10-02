@@ -12,6 +12,35 @@ objectives, the architecture, the specs and the plan were put on `main`
 by the owner's order the same day, at 8bb8982; nothing of the code is on
 `main`, and nothing is pushed.
 
+Paused on 2 October 2026, at the owner's word, so that a fresh session
+goes on. Work packages 1, 2 and 3 are done, reviewed and written below.
+Work package 4 is begun: tasks 4.1 and 4.2 were with one subagent, which
+committed 746f18e, a change of `specs/text-files.md` (a line past 2^32 −
+1 unreadable, and the header of a separator whose quote is never
+closed), and whose code the orchestrator committed as it was left, in
+the commit after it, marked unfinished; `cargo test --workspace` passes
+there, 441 tests and 25 ignored. The session that goes on:
+
+1. Enters the worktree `.claude/worktrees/table-io`, branch
+   `plan/table-io`, and runs every check of the coding skill.
+2. Finishes tasks 4.1 and 4.2 from that commit, with a subagent given
+   the plan's work package 4 and what is left: the checks; the peak of
+   memory of `import_table` over a CSV of 20,000,000 bytes of `0,`
+   cells, measured at 619 MB natively, mostly the growth of the vector of
+   cells to a capacity of 16.7 million for 9.76 million cells, which a
+   counting pass of the split before the vectors are made was to lower,
+   and over 100,000 rows × 50 columns, both written here; the property of
+   the round trip of `specs/text-files.md`, if it is not in
+   `tests/import_text.rs` yet; and every difference between popnei_web's
+   TypeScript and the spec, which goes to the owner and is not bent
+   either way.
+3. Ticks 4.1 and 4.2, goes on with task 4.3, then the review of work
+   package 4, and then work packages 5 to 7.
+
+The owner has said nothing more is needed from them to go on; the merge
+and a note of section "Work package 3" are what the report will ask at
+the end.
+
 ## Work package 1: the rename
 
 Built on 2 October 2026 in commits 7df5adc (task 1.1), dea97e0 (task

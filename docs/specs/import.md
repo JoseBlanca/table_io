@@ -493,7 +493,8 @@ The owner decides these; until then the implementer follows the
    one character, `0,`, so with 2,000,000 popnei_web would refuse a
    table of short cells it reads today. The options: (a) the limit of
    cells for both formats, the caller choosing one that fits both, which
-   for popnei_web would be 10,000,000 or two imports' worth of thought;
+   for popnei_web would be 10,000,000, five times the rectangle of an
+   xlsx it accepts today;
    (b) the limit of cells for an xlsx alone, a text file bounded by its
    bytes, as popnei_web has it, its cells at most half its bytes plus
    one; (c) two limits, one for each format. Recommended: (b), since the

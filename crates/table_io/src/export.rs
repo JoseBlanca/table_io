@@ -181,6 +181,113 @@ pub enum ExportError {
     Failed(String),
 }
 
+/// A refusal or a failed export, written for whoever reports the problem,
+/// in English and with its fields, such as "an export refused: the text at
+/// column 3 and row 2 reads back as a missing value"; the words a user
+/// reads are the application's.
+impl std::fmt::Display for ExportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Refused(refusal) => {
+                write!(formatter, "an export refused: ")?;
+                write_refusal(formatter, refusal)
+            }
+            Self::Failed(message) => write!(formatter, "an export failed: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for ExportError {}
+
+/// Writes `refusal` with its fields, for [`ExportError`]'s `Display`.
+fn write_refusal(
+    formatter: &mut std::fmt::Formatter<'_>,
+    refusal: &ExportRefusal,
+) -> std::fmt::Result {
+    let place_text =
+        |place: &CellPlace| format!("at column {} and row {}", place.column, place.row);
+    match refusal {
+        ExportRefusal::FormatNotBuilt => {
+            write!(formatter, "a format this build of table_io does not write")
+        }
+        ExportRefusal::NoIndividual => write!(formatter, "a table with no individual"),
+        ExportRefusal::WrongLength {
+            column,
+            expected,
+            found,
+        } => write!(
+            formatter,
+            "column {column} has {found} values where there are {expected} individuals"
+        ),
+        ExportRefusal::EmptyName { column } => {
+            write!(formatter, "column {column} has an empty name")
+        }
+        ExportRefusal::DuplicateName {
+            name,
+            first_column,
+            second_column,
+        } => write!(
+            formatter,
+            "the name '{name}' is used by the columns {first_column} and {second_column}"
+        ),
+        ExportRefusal::EmptyIndividual { row } => {
+            write!(formatter, "the row {row} has no name of an individual")
+        }
+        ExportRefusal::DuplicateIndividual {
+            name,
+            first_row,
+            second_row,
+        } => write!(
+            formatter,
+            "the individual '{name}' is in the rows {first_row} and {second_row}"
+        ),
+        ExportRefusal::ReadsAsMissing { place } => write!(
+            formatter,
+            "the text {} reads back as a missing value",
+            place_text(place)
+        ),
+        ExportRefusal::ErrorAsName { place } => write!(
+            formatter,
+            "the name {} is an error of Excel",
+            place_text(place)
+        ),
+        ExportRefusal::SpacesAtEnds { place } => write!(
+            formatter,
+            "the text {} has a space or a tab at its start or its end",
+            place_text(place)
+        ),
+        ExportRefusal::IntegerTooLarge { place } => write!(
+            formatter,
+            "the integer {} is beyond -2^53 to 2^53, which a number of Excel holds exactly",
+            place_text(place)
+        ),
+        ExportRefusal::NotFinite { place } => write!(
+            formatter,
+            "the float {} is infinite or not a number",
+            place_text(place)
+        ),
+        ExportRefusal::CannotCarry { place, character } => write!(
+            formatter,
+            "the character '{character}' (U+{:04X}) {} cannot be carried by the file",
+            u32::from(*character),
+            place_text(place)
+        ),
+        ExportRefusal::TextTooLong { place, length } => write!(
+            formatter,
+            "the text {} is {length} units of UTF-16 long, past the 32,767 of a cell of Excel",
+            place_text(place)
+        ),
+        ExportRefusal::TooLargeForSheet { rows, columns } => write!(
+            formatter,
+            "{rows} rows below the header and {columns} columns, past the 1,048,575 rows and \
+             16,384 columns of a sheet of Excel"
+        ),
+        ExportRefusal::ReadsAsVariantsFile => {
+            write!(formatter, "the header starts as a file of variants, a VCF")
+        }
+    }
+}
+
 /// The bytes of a new file holding the table of the column of the names
 /// of the individuals `names` and the other columns `columns`, in
 /// `format`, by `docs/specs/export.md`.

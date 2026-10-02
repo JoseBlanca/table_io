@@ -955,6 +955,41 @@ mod written {
         );
     }
 
+    #[test]
+    fn an_export_error_is_written_in_english_with_its_fields_and_is_an_error() {
+        let names = names_of("id", &["a", "b"]);
+        let columns = [column("t", texts(&[Some("x"), Some("NA")]))];
+        let error = export_table(&names, &columns, &plain(Separator::Comma)).unwrap_err();
+        let as_error: &dyn std::error::Error = &error;
+
+        assert_eq!(
+            as_error.to_string(),
+            "an export refused: the text at column 2 and row 2 reads back as a missing value"
+        );
+        assert_eq!(
+            ExportError::Refused(ExportRefusal::CannotCarry {
+                place: at(4, 0),
+                character: 'ő',
+            })
+            .to_string(),
+            "an export refused: the character 'ő' (U+0151) at column 4 and row 0 cannot be \
+             carried by the file"
+        );
+        assert_eq!(
+            ExportError::Refused(ExportRefusal::DuplicateIndividual {
+                name: "b".to_owned(),
+                first_row: 2,
+                second_row: 4,
+            })
+            .to_string(),
+            "an export refused: the individual 'b' is in the rows 2 and 4"
+        );
+        assert_eq!(
+            ExportError::Failed("a message of rust_xlsxwriter".to_owned()).to_string(),
+            "an export failed: a message of rust_xlsxwriter"
+        );
+    }
+
     #[cfg(not(feature = "xlsx"))]
     #[test]
     fn an_xlsx_in_a_build_without_xlsx_is_a_format_not_built() {

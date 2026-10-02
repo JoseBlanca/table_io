@@ -93,13 +93,13 @@ xlsx with `readXlsx` as before, imported as `table_io`.
 
 **Tasks.**
 
-- [ ] 1.1 The crates, the package and the workspace renamed with `git
+- [x] 1.1 The crates, the package and the workspace renamed with `git
   mv`, the version, the repository, the features of
   `docs/architecture.md`, section 5, `.gitignore`, the README of the
   package and `THIRD_PARTY_LICENSES.md`'s names; no rule changes.
   Deliverables 1 to 3. From `docs/architecture.md`, sections 1, 5, 9 and
   10.
-- [ ] 1.2 `CLAUDE.md`, the skills under `.claude/skills/` and the
+- [x] 1.2 `CLAUDE.md`, the skills under `.claude/skills/` and the
   subagents under `.claude/agents/` say table_io, its two applications
   and its two contracts; the coding skill's "Nothing of popnei_web's
   rules" holds of the step of the cells alone, and its commands name

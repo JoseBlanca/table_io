@@ -107,6 +107,8 @@ tab and `\n`, which rust_xlsxwriter writes as `_x0000_` and its kin, `\r`
 among them; a U+FEFF; and a text that holds such an escape, `_x0041_`,
 which it writes as `_x005F_x0041_` so that it is not read back as `A`.
 Tried with rust_xlsxwriter 0.99.1 and calamine 0.36.1 on 2 October 2026.
+The one exception, `_x` and four digits of hexadecimal before such a
+control, is refused below.
 
 ## The refusals
 
@@ -115,7 +117,14 @@ format not built, a column of the wrong length, a table with no
 individual, a table larger than a sheet of Excel, and a header that reads
 back as a variants file. The others name a cell and are
 found in the order of the file: the header first, then row by row, and
-in a row from left to right; the first met is the one given.
+in a row from left to right; the first met is the one given. Of two
+refusals of one cell, the first in this order is given: for a name of
+the header, an empty name, a name repeated, an error of Excel, spaces at
+its ends, a text too long, a character the file cannot carry; for a name
+of an individual, an empty name, a name repeated, then spaces, length
+and character as for the header; for a value, a text that reads back as
+missing, an error of Excel among them in an xlsx, a float not finite, an
+integer too large, then spaces, length and character as for a name.
 
 - **A format not built**: the xlsx asked of a build without the feature
   `xlsx`, or a CSV of one without `csv`, as the import refuses such a
@@ -164,7 +173,18 @@ in a row from left to right; the first met is the one given.
   first name of the header, which the import removes as a mark of
   UTF-8; in an xlsx, U+FFFE and U+FFFF, which rust_xlsxwriter writes as
   `_xFFFE_` and calamine reads back as those seven characters (tried with
-  rust_xlsxwriter 0.99.1 and calamine 0.36.1 on 2 October 2026).
+  rust_xlsxwriter 0.99.1 and calamine 0.36.1 on 2 October 2026); and a
+  control rust_xlsxwriter writes as `_xHHHH_`, U+0000 to U+0008 and
+  U+000B to U+001F, right after `_x` and four digits of hexadecimal in
+  either case, the character given being the control. rust_xlsxwriter
+  escapes a whole `_xHHHH_` of the text first and the controls after, so
+  that the `_` of the control's escape completes the four digits before
+  it: `_x0041` and `\r` are written `_x0041_x000D_`, which calamine reads
+  back as `Ax000D_`, and which Excel, which decodes every `_xHHHH_` by
+  ECMA-376, would read as wrongly; rust_xlsxwriter has no way to write
+  such a text that reads back as itself. This refusal is the default
+  until the owner decides, since a cell read back as another text, unseen,
+  is worse than a refusal.
 - **A text longer than a cell of Excel holds**, in an xlsx, 32,767
   characters, with its column, its row and its length. rust_xlsxwriter
   counts the characters of Unicode, and accepted 32,767 emoji in the
@@ -188,7 +208,26 @@ The export makes these checks itself before it writes, so that the
 refusal names the place; an error of rust_xlsxwriter that comes all the
 same, which the checks should leave none of, is given as the message of
 an export that failed, for whoever reports the problem, and never as a
-panic.
+panic. A sheet whose XML passes 4 GiB, which a table of 1,048,575 rows
+of 100 floats would reach and about 20 GB of memory before it, fails so
+too, with zip's message: rust_xlsxwriter writes a zip of 4 GiB at most
+unless asked for its ZIP64 extensions, which then every reader of even a
+small file needs, and which it says Excel reads and other applications
+may not.
+
+## How it runs
+
+An export of a CSV writes its bytes as it goes, into one buffer given
+back at its length. An export of an xlsx holds the whole sheet in
+rust_xlsxwriter, every cell in its tables and the texts in a table of
+their own, and then the XML of the sheet, before it zips them; its mode
+of constant memory writes the sheet to a file of the file system as it
+goes, and the library uses none, so the memory cannot be lowered within
+rust_xlsxwriter's interface. The export of 20,000 rows of 100 columns,
+half floats and half texts, 2,000,000 cells, held at its peak 456 MB,
+against 61 MB for the table alone, about 7.5 times the table, took
+0.73 s and wrote a file of 9.2 MB (a build for release, natively, on the
+owner's Mac, an Apple M5 Pro, 2 October 2026).
 
 ## The Rust interface
 
@@ -237,7 +276,9 @@ pub enum ExportRefusal {
 
 pub enum ExportError {
     Refused(ExportRefusal),
-    /// rust_xlsxwriter's message, for whoever reports the problem.
+    /// The message of the writer of the file, for whoever reports the
+    /// problem: rust_xlsxwriter's, or table_io's own for a cell past the
+    /// sheet, which the check of the size leaves none of.
     Failed(String),
 }
 
@@ -346,7 +387,10 @@ the options the export used, and compared column by column with what
 Made by the owner: one table exported as a CSV with `;` and the comma in
 Windows-1252, and as an xlsx, opened in Excel in Spanish on the owner's
 Mac, and what Excel shows in each column, its accents, its decimals and
-its booleans, written in the report of the plan.
+its booleans, written in the report of the plan. Its float column holds
+5 × 10^−324, the largest float and −0, which rust_xlsxwriter writes
+with no exponent, in 326, 309 and 2 characters, to see what Excel shows
+of them.
 
 ## Open points
 

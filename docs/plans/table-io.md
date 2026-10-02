@@ -315,7 +315,7 @@ release, and the package ready to be released when the owner orders it.
 
 **Tasks.**
 
-- [ ] 7.1 The size, the speed, the licenses, the README and the pack.
+- [x] 7.1 The size, the speed, the licenses, the README and the pack.
   Deliverables 1 to 4.
 
 ## At the end

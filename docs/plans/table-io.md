@@ -183,12 +183,12 @@ xlsx_rs's `readXlsx` is gone.
   too large, a format not built, and not a workbook, which reads the
   package relationships `specs/read.md` already reads. Deliverable 1. From `specs/import.md`, "The
   format" and "The Rust interface".
-- [ ] 3.2 The module `table`: the rows of an xlsx made the table, by "The
+- [x] 3.2 The module `table`: the rows of an xlsx made the table, by "The
   cells of an xlsx, as the table takes them" and "The rows", with the
   refusals in their order, and the guess of the type. Deliverables 2 and
   3. From `specs/import.md` and `specs/values.md`, "The type of a column".
   Needs 3.1.
-- [ ] 3.3 The binding crate and the package, by `specs/package.md`, with
+- [x] 3.3 The binding crate and the package, by `specs/package.md`, with
   its test under node over `tests/data/written.xlsx` and the owner's
   `excel_en.xlsx` and `encrypted.xlsx`; xlsx_rs's types made private
   once the binding no longer calls them. Deliverables 4 and 5. Needs 3.1; can

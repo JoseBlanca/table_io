@@ -125,7 +125,8 @@ not filled; the fields a kind fills always hold a value, a name of a
 duplicate column never being empty. The limit of a refusal of size,
 `max_bytes` and `max_cells` of `specs/import.md`, is not repeated: the
 caller gave it. A file that cannot be read, `ImportError::Unreadable` of
-`specs/import.md`, is a value too, the kind `unreadable`, whose message
+`specs/import.md`, is a value too, the kind `unreadable`, with `format` `""`, since it is
+not a refusal and the library's `Unreadable` carries no format, whose message
 popnei_web writes to the console, so that an `Error` thrown by the
 package is always a defect of the caller, an option or an index that is
 wrong, and popnei_web can tell the two apart: today it takes every

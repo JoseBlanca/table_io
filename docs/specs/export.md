@@ -86,7 +86,8 @@ names in the first row, from A1; a row for each individual below; a
 float as a number cell; an integer as a number cell when it is from
 −2^53 to 2^53, which a number of Excel, a float, holds exactly, and
 beyond as a text cell of its digits, which the import reads back as the
-same integer (`specs/values.md`, "The type of a column"); a boolean as a
+same integer (`specs/values.md`, "The type of a column"; **Open 2**,
+below); a boolean as a
 boolean cell; a text as a text cell; a missing value as no cell. A
 float written as a number cell 1 is read back as an integer, since an
 xlsx keeps the number and not how it was written (`specs/values.md`,
@@ -94,12 +95,18 @@ xlsx keeps the number and not how it was written (`specs/values.md`,
 
 ## The refusals
 
-Three are about the whole table and are checked first, in this order: a
-column of the wrong length, a table larger than a sheet of Excel, and a
-header that reads back as a variants file. The others name a cell and are
+Five are about the whole table and are checked first, in this order: a
+format not built, a column of the wrong length, a table with no
+individual, a table larger than a sheet of Excel, and a header that reads
+back as a variants file. The others name a cell and are
 found in the order of the file: the header first, then row by row, and
 in a row from left to right; the first met is the one given.
 
+- **A format not built**: the xlsx asked of a build without the feature
+  `xlsx`, or a CSV of one without `csv`, as the import refuses such a
+  file.
+- **A table with no individual**: a header alone, which the import
+  refuses as empty.
 - **A column of the wrong length**: a column with another number of
   values than there are names, with its column, the names' count and its
   own. A defect of the caller, refused and not panicked at
@@ -127,30 +134,38 @@ in a row from left to right; the first met is the one given.
   CSV quotes such a text and keeps it.
 - **A float that is not finite**, infinite or not a number, which no
   import gives and a caller can make: no file holds it as a number.
-- **A character the encoding does not have**, in a CSV in Windows-1252,
-  with its column, its row and the character, never replaced.
+- **A character the file cannot carry**, with its column, its row and the
+  character, never replaced: in a CSV in Windows-1252, a character
+  Windows-1252 does not have; in any CSV, U+0000, whose byte 0 makes the
+  import refuse the file as not text, and a U+FEFF at the start of the
+  first name of the header, which the import removes as a mark of
+  UTF-8; in an xlsx, U+FFFE and U+FFFF, which rust_xlsxwriter writes as
+  `_xFFFE_` and calamine reads back as those seven characters (tried with
+  rust_xlsxwriter 0.99.1 and calamine 0.36.1 on 2 October 2026).
 - **A text longer than a cell of Excel holds**, in an xlsx, 32,767
-  characters, as rust_xlsxwriter counts them, with its column, its row
-  and its length.
+  characters, with its column, its row and its length. rust_xlsxwriter
+  counts the characters of Unicode, and accepted 32,767 emoji in the
+  review's trial; Excel counts, it is believed and has not been checked,
+  the units of UTF-16, of which an emoji is two. So the export counts the
+  units of UTF-16, the stricter, and refuses past 32,767.
 - **A table larger than a sheet of Excel**, in an xlsx: more than
   1,048,575 rows below the header, Excel's 1,048,576 rows less the
   header's, or more than 16,384 columns, the
   names' among them, with the numbers of rows and of columns.
 - **A header that reads back as a variants file**, in a CSV, a variants
   file being the VCF of the genotypes, which popnei_web's users may pick
-  by mistake and the import refuses: a header
-  whose first name, its spaces and tabs at the start left out, starts
-  with `##fileformat=VCF` or `#CHROM`, which the import of a text file
-  refuses as a variants file (`specs/text-files.md`).
+  by mistake and the import refuses: the line of the header as written,
+  after its quotes, its spaces and tabs at the start left out, starting
+  with `##fileformat=VCF` or `#CHROM`, as the import of a text file reads
+  it (`specs/text-files.md`). So an empty name of the names' column and a
+  second name `#CHROM` with the tab as separator, `\t#CHROM`, is
+  refused, and a first name ` #CHROM`, quoted, is not.
 
-rust_xlsxwriter refuses a text longer than 32,767 characters and a cell
-past the last row or column of Excel, and writes a float that is not
-finite as the text `NAN`, `INF` or `-INF`, read in its `worksheet.rs`,
-`store_number_type` and `store_string`, at the version pinned, 0.99.1. The
-export checks these itself before it writes, so that the refusal names
-the place; an error of rust_xlsxwriter that comes all the same, which
-these checks should leave none of, is given as the message of an export
-that failed, for whoever reports the problem, and never as a panic.
+The export makes these checks itself before it writes, so that the
+refusal names the place; an error of rust_xlsxwriter that comes all the
+same, which the checks should leave none of, is given as the message of
+an export that failed, for whoever reports the problem, and never as a
+panic.
 
 ## The Rust interface
 
@@ -179,6 +194,8 @@ pub enum MissingText { Empty, Na }
 pub struct CellPlace { pub column: u32, pub row: u32 }
 
 pub enum ExportRefusal {
+    FormatNotBuilt,
+    NoIndividual,
     WrongLength { column: u32, expected: u32, found: u32 },
     EmptyName { column: u32 },
     DuplicateName { name: String, first_column: u32, second_column: u32 },
@@ -188,7 +205,7 @@ pub enum ExportRefusal {
     ErrorAsName { place: CellPlace },
     SpacesAtEnds { place: CellPlace },
     NotFinite { place: CellPlace },
-    NotEncodable { place: CellPlace, character: char },
+    CannotCarry { place: CellPlace, character: char },
     TextTooLong { place: CellPlace, length: u32 },
     TooLargeForSheet { rows: u32, columns: u32 },
     ReadsAsVariantsFile,
@@ -210,8 +227,8 @@ pub fn export_table(names: &NameColumn, columns: &[Column], format: &ExportForma
 
 ## What reads back
 
-A table exported and imported again, the import given the separator, the
-decimal mark and the encoding the export used, gives the same names, in
+A table exported and imported again, the import of a CSV given the
+separator, the decimal mark and the encoding the export used, gives the same names, in
 the same order, and the same values, and each column the type it had,
 but where its values read as a narrower type than its own
 (`specs/values.md`, "The type of a column"):
@@ -228,7 +245,10 @@ but where its values read as a narrower type than its own
 
 These are the only changes: for each column, the values read back are
 those `convert_column` gives of the values exported, to the type read
-back. The categorical column of an application, given as text, comes
+back, with the decimal mark of the CSV, and with the point for an xlsx.
+A text holding U+FFFD, the replacement character, reads back as itself,
+and the import reports the line of the first as a character not decoded,
+which an application may show as a warning of a damaged file. The categorical column of an application, given as text, comes
 back as text, and the application makes it categorical again by its own
 rule.
 
@@ -272,7 +292,7 @@ of digits for 2^60, no cell for a missing value.
   −0 equal to 0.
 - The quoting: `say "hi"` as `"say ""hi"""`; `a\nb` and `a\rb` quoted;
   ` x` and `x ` quoted; `a\tb` quoted only with the tab as separator, and
-  ` \tx` with any separator but the tab.
+  `\tx` with every separator, holding the tab or starting with it.
 - Windows-1252: `España` as the bytes of `Espa`, `F1`, `a`; `€` as `80`;
   `ő` refused, its column and row.
 - Each refusal of "The refusals", once, with the place it names, and two
@@ -283,7 +303,9 @@ generator of the tests with a fixed seed, no dependency added: names
 distinct and not empty, with accents, an emoji, a quote, the three
 separators and spaces inside; columns of each of the four types, with
 missing values, whole floats, integers beyond 2^53, texts that are
-numbers and texts that are not; each exported as a CSV with every
+numbers and texts that are not, U+0000, a U+FEFF at the start, U+FFFE,
+an empty name of the names' column before `#CHROM`, and tables of no
+individual; each exported as a CSV with every
 combination of the separator, the decimal mark, the encoding, and the
 text of a missing value, 36 in all, and as an xlsx, a table the export
 refuses being made again without the value it names; each imported with
@@ -308,6 +330,16 @@ The owner decides these; until then the implementer follows the
    Recommended: (a), since nothing reads the name back and the user sees
    it in one tab; (b) is a field and a refusal more for a name the user
    rarely looks at. Meanwhile, (a).
+2. **An integer beyond 2^53 in an xlsx.** A number of Excel is a float,
+   which holds every whole number only up to 2^53, so 9,007,199,254,740,993
+   written as a number cell would be 9,007,199,254,740,992. The options:
+   (a) a text cell of its digits, which the import reads back as the same
+   integer, and which Excel shows with the green triangle of a number
+   stored as text; (b) a number cell, the nearest float, the value read
+   back changed, which "What reads back" would then list; (c) a refusal,
+   naming the cell. Recommended: (a), since the value is kept and the
+   triangle shows the user that the cell is a text, which it is.
+   Meanwhile, (a).
 
 ## Not in this spec
 

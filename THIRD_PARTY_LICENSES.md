@@ -15,6 +15,14 @@ since the package is built with the feature `xlsx` that takes it, though
 no function the package exports writes a file yet. table_io's own license
 is `LICENSE`, beside this file.
 
+One crate is not in that list: dlmalloc 0.2.13, the allocator of memory
+that Rust's standard library compiles into every `.wasm` for
+`wasm32-unknown-unknown`, which comes with the standard library and not
+from the dependencies of table_io; its text is from its source in the
+`rust-src` of the toolchain, 1.98.0, and the same as cfg-if's, with
+which it is grouped. The standard library itself is under MIT OR
+Apache-2.0.
+
 ## atoi_simd 0.18.1
 
 - atoi_simd 0.18.1: MIT OR Apache-2.0; the text below is its LICENSE-MIT
@@ -139,9 +147,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-## cfg-if 1.0.5, wasm-bindgen 0.2.128, wasm-bindgen-shared 0.2.128
+## cfg-if 1.0.5, dlmalloc 0.2.13, wasm-bindgen 0.2.128, wasm-bindgen-shared 0.2.128
 
 - cfg-if 1.0.5: MIT OR Apache-2.0; the text below is its LICENSE-MIT
+- dlmalloc 0.2.13: MIT/Apache-2.0; the text below is its LICENSE-MIT
 - wasm-bindgen 0.2.128: MIT OR Apache-2.0; the text below is its LICENSE-MIT
 - wasm-bindgen-shared 0.2.128: MIT OR Apache-2.0; the text below is its LICENSE-MIT
 

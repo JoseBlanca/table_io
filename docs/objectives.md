@@ -16,9 +16,8 @@ conventions and skills that popnei follows", and its first release,
 Vavilov Explorer needs of table_io is in its `docs/table_io-needs.md`, and
 is taken here as the requirements of that side. The parts of table_io and
 how it is released are in `architecture.md`, and what each module does in
-its spec under `specs/`. The owner approves these goals before any spec
-of table_io is written, and confirms or changes the target of speed of
-goal 7.
+its spec under `specs/`. The owner approved these goals on 2 October
+2026.
 
 table_io is a library in Rust that imports a table from a CSV, a TSV or
 the first sheet of an xlsx file, and exports one as a CSV or an xlsx. The
@@ -136,10 +135,11 @@ part of it that a user of the crate can leave out when it is compiled.
 
 7. **Fast enough for a desktop table.** Vavilov Explorer's tables have
    tens of thousands of rows. The target, proposed in
-   `table_io-needs.md` and to be confirmed by the owner, is a CSV of
-   100,000 rows and 50 columns imported in less than one second by a
-   release build on the owner's Mac, the measurement giving the model of
-   the Mac. Nothing has been measured. Faster than the target, speed is
+   `table_io-needs.md`, is a CSV of 100,000 rows and 50 columns imported
+   in less than one second by a release build on the owner's Mac, the
+   measurement giving the model of the Mac, which the owner found on 2
+   October 2026 more than enough; the speed is reviewed once the library
+   is built. Nothing has been measured. Faster than the target, speed is
    not worked on, and no goal before this one is given up to reach it.
 
 ## Non goals

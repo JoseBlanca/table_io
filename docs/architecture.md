@@ -253,7 +253,7 @@ The package of xlsx_rs was 0.30 MB gzipped, measured on 29 September
 2026, and a user of popnei_web downloads 0.71 MB of popnei's own wasm
 already. What the import of a text file and the types add to it has not
 been measured; it is measured on the first build of the package
-(question 1 of section 14).
+(section 14).
 
 ## 6. What the code keeps, in every module
 
@@ -479,8 +479,8 @@ workflow that builds the package on the tag would check it.
 - **rust_xlsxwriter 0.99.1**, pinned, which the tests have used since 28
   September 2026 to write their xlsx files in memory, becomes a
   dependency of the library, behind the feature `xlsx`, to write the
-  export. It takes zip 8.6.0, the copy calamine takes. This needs the
-  owner's approval, since it was approved for the tests alone.
+  export. It takes zip 8.6.0, the copy calamine takes. Approved by the
+  owner on 2 October 2026.
 - **wasm-bindgen 0.2.128**, pinned, since its command line refuses a crate
   of another version; the version popnei pins. The binding crate alone.
 - **Rust 1.98.0**, the stable release of 18 August 2026, named in
@@ -547,23 +547,20 @@ At four levels, each named in the specs with the cases it holds.
   report of stage 6 among them (section 5).
 - **A workflow that makes the releases**, shared with popnei.
 
-## 14. Asked of the owner
+## 14. Decided by the owner
 
-1. **One `.wasm` for every table, or a small one for a text file.** The
-   package of section 5 holds the import of both formats in one `.wasm`,
-   so a user of popnei_web with a CSV downloads the reader of xlsx too,
-   almost all of the 0.30 MB of xlsx_rs's `.wasm` (popnei_web's
-   `docs/technology.md` measured calamine at 0.29 MB gzipped in a crate of
-   three libraries, on 24 September 2026), once, after which
-   the browser keeps it. The other way is two builds of the binding crate
-   in the package, one with the feature `csv` alone, with the same
-   declarations, and popnei_web loading the one its file needs: a smaller
-   download for a CSV, not measured, against two `.wasm` to build, test
-   and release, and a choice of the file's format back in popnei_web,
-   which section 2 takes out of it. Recommended: one `.wasm`, measured on
-   the first build, and split only if popnei_web finds the download a
-   wait. Meanwhile the plan builds one.
-2. **rust_xlsxwriter 0.99.1 as a dependency of the library** (section 11).
-   Recommended: yes, since the export of an xlsx is asked of table_io and
-   writing one without it is a writer of zip and XML of our own. With
-   no, the export gives a CSV alone until another writer is approved.
+The owner approved this document and `objectives.md` on 2 October 2026,
+and decided the same day:
+
+1. **One `.wasm` for every table.** The package holds the import of both
+   formats in one `.wasm`, so a user of popnei_web with a CSV downloads
+   the reader of xlsx too, almost all of the 0.30 MB of xlsx_rs's `.wasm`
+   (popnei_web's `docs/technology.md` measured calamine at 0.29 MB
+   gzipped in a crate of three libraries, on 24 September 2026), once,
+   after which the browser keeps it. Its size is measured on the first
+   build. The option not taken: two builds of the binding crate in the
+   package, one with the feature `csv` alone, for a smaller download of
+   a CSV, not measured, against two `.wasm` to build, test and release
+   and a choice of the file's format back in popnei_web.
+2. **rust_xlsxwriter 0.99.1 as a dependency of the library**, behind the
+   feature `xlsx`, for the export of an xlsx (section 11).

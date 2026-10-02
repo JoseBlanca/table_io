@@ -59,6 +59,11 @@ const SEPARATORS_BY_PRECEDENCE: [Separator; 3] =
 /// application has.
 const LINE_PAST_U32: &str = "a line past line 4,294,967,295";
 
+/// The message of [`ImportError::Unreadable`] for a row of more than
+/// 4,294,967,295 cells, which no file within the limits of either
+/// application has.
+const CELLS_PAST_U32: &str = "a row of more than 4,294,967,295 cells";
+
 /// The table of the text file `bytes`, read with `options`, by
 /// `docs/specs/text-files.md`.
 ///
@@ -69,7 +74,8 @@ const LINE_PAST_U32: &str = "a line past line 4,294,967,295";
 /// a file that is not UTF-16, [`Refusal::NotText`]; a variants file,
 /// [`Refusal::VariantsFile`]; a quote never closed,
 /// [`Refusal::UnclosedQuote`]; then the refusals of the rows of the table
-/// step. [`ImportError::Unreadable`] for a line past line 4,294,967,295.
+/// step. [`ImportError::Unreadable`] for a line past line 4,294,967,295,
+/// or a row of more than 4,294,967,295 cells.
 pub(crate) fn table_of_text(bytes: &[u8], options: &TextOptions) -> Result<Table, ImportError> {
     let refused = |refusal| ImportError::Refused {
         format: Format::Text,
@@ -91,6 +97,9 @@ pub(crate) fn table_of_text(bytes: &[u8], options: &TextOptions) -> Result<Table
         }
         Err(SplitStop::LinePastU32) => {
             return Err(ImportError::Unreadable(LINE_PAST_U32.to_owned()));
+        }
+        Err(SplitStop::CellsPastU32) => {
+            return Err(ImportError::Unreadable(CELLS_PAST_U32.to_owned()));
         }
     };
     let undecoded_line = undecoded_line(text)?;
@@ -297,6 +306,8 @@ enum SplitStop {
     },
     /// A line past line 4,294,967,295.
     LinePastU32,
+    /// A row of more than 4,294,967,295 cells.
+    CellsPastU32,
 }
 
 /// What a split gives its cells and the ends of its rows to.
@@ -324,7 +335,8 @@ trait SplitSink<'text> {
 /// [`SplitStop::UnclosedQuote`] for a quote never closed, once the cell it
 /// opens, which takes the rest of the text, and the end of its row are
 /// given to `sink`; [`SplitStop::LinePastU32`] for a line past line
-/// 4,294,967,295.
+/// 4,294,967,295; [`SplitStop::CellsPastU32`] for a row of more than
+/// 4,294,967,295 cells.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "a place is at most the length of the text, of at most isize::MAX bytes, and \
@@ -356,7 +368,11 @@ fn split<'text>(
     let mut line: u32 = 1;
     loop {
         let row_line = line;
+        let mut num_row_cells: u32 = 0;
         loop {
+            num_row_cells = num_row_cells
+                .checked_add(1)
+                .ok_or(SplitStop::CellsPastU32)?;
             while byte_at(place).is_some_and(is_blank) {
                 place += 1;
             }
@@ -792,7 +808,8 @@ impl<'text> SplitSink<'text> for SeparatorCount {
 ///
 /// # Errors
 ///
-/// [`ImportError::Unreadable`] for a line past line 4,294,967,295.
+/// [`ImportError::Unreadable`] for a line past line 4,294,967,295, or a
+/// row of more than 4,294,967,295 cells.
 fn found_separator(text: &str) -> Result<Separator, ImportError> {
     let mut tries = Vec::with_capacity(SEPARATORS_BY_PRECEDENCE.len());
     for separator in SEPARATORS_BY_PRECEDENCE {
@@ -802,6 +819,9 @@ fn found_separator(text: &str) -> Result<Separator, ImportError> {
             Err(SplitStop::UnclosedQuote { .. }) => false,
             Err(SplitStop::LinePastU32) => {
                 return Err(ImportError::Unreadable(LINE_PAST_U32.to_owned()));
+            }
+            Err(SplitStop::CellsPastU32) => {
+                return Err(ImportError::Unreadable(CELLS_PAST_U32.to_owned()));
             }
         };
         tries.push((separator, count.num_counted(), is_closed && count.fits()));

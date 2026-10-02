@@ -9,8 +9,11 @@ module `types` of the library crate: what a text means, which of the
 four types a column of an import gets, and how a column is converted to
 another type when the user asks. `specs/import.md` calls this module for
 every column of a table, and an application calls it directly to read a
-value or to convert a column. It has no feature of its own: every build
-of the library has it.
+value or to convert a column. It is behind neither of the cargo features
+of the library, `csv` and `xlsx`, so that every build has it. An xlsx is
+read by calamine, the Rust library of spreadsheets, which gives each cell
+of a sheet as empty, a text, a number or a boolean, a **number cell**, a
+**text cell** and a **boolean cell** below (`specs/read.md`).
 
 ## What it does
 
@@ -99,7 +102,15 @@ and a conversion to text.
   1.98.0 on 2 October 2026), so table_io takes the digits and the
   exponent of `{:e}` and lays them out as ECMAScript does. The form is
   JavaScript's because popnei_web wrote it so, and a name a user saw in
-  popnei_web stays the same.
+  popnei_web stays the same. The layout, from the shortest digits `d`, k
+  of them, and the exponent n of `{:e}` plus 1, so that the number is
+  0.d × 10^n:
+  - when k ≤ n ≤ 21, the digits and n − k zeros, `100`;
+  - when 0 < n ≤ 21, the first n digits, the mark, the rest, `1.5`;
+  - when −6 < n ≤ 0, `0`, the mark, −n zeros, the digits, `0.000001`;
+  - otherwise the first digit, then the mark and the rest when k > 1,
+    then `e`, `+` or `-`, and the absolute value of n − 1, `1e+21`,
+    `1.5e-7`.
 - **A boolean**: `TRUE` or `FALSE`, as Excel shows it. popnei_web wrote
   `true` and `false`, as JavaScript's `String` writes them; this is a
   change for it, decided here since nothing else reads the form and a
@@ -142,11 +153,14 @@ calamine gives no format of a cell, so a number cell 1, whether Excel
 shows it `1` or `1.0`, is whole, and a column of number cells 1 and 2 is
 integer (**Open 1**, below).
 
-A column of an xlsx can mix cells: a number cell 1 and a text cell `2`
-are an integer column of 1 and 2; a number cell 1.5 and a text cell
-`2,5`, which is not a number with the point an xlsx is read with, are a
-text column of `1.5` and `2,5`; a boolean cell and a number cell are a
-text column of `TRUE` and `1`.
+A text cell of an xlsx is read with the point, since the numbers of an
+xlsx need no decimal mark and Excel takes `1,5` typed in a sheet in
+Spanish as a number, so a text `1,5` there is one Excel did not take. A
+column of an xlsx can mix cells: a number cell 1 and a text cell `2` are
+an integer column of 1 and 2; a number cell 1.5 and a text cell `2,5` are
+a text column of `1.5` and `2,5`; a boolean cell and a number cell are a
+text column of `TRUE` and `1`, since the boolean is not a number and the
+number not a boolean.
 
 The guess depends on the values and not on their order, and is the same
 for a table and the same table with its rows in another order.
@@ -160,19 +174,22 @@ is given, which for a column of an import is the one the import used, and
 either gives every value converted or, when one value or more does not
 convert, gives no column and says how many do not, and the first of
 them, with its row, counted from 1 among the rows of the table, the first
-below the header being row 1, and its text. So the user reads "12
+below the header being row 1, and its text. That row is the table's and
+not the file's: an application that shows a line or a row of the sheet
+keeps that number itself. So the user reads "12
 values are not numbers, such as 'n.d.' in row 40", in the application's
 words. A missing value stays missing and never fails.
 
 | from \ to | integer | float | boolean | text |
 |---|---|---|---|---|
-| integer | itself | each value exactly a float, from −2^53 to 2^53 and beyond only where the float is the same number | no value converts | always |
+| integer | itself | each value exactly a float: every one from −2^53 to 2^53, both included, and beyond only where the float is the same number | no value converts | always |
 | float | each value whole and from −2^63 to 2^63 − 1 | itself | no value converts | always |
 | boolean | no value converts | no value converts | itself | always |
 | text | each a whole number | each a number with the decimal mark | each a boolean | itself |
 
-A conversion that "no value converts" succeeds only for a column whose
-every cell is missing. A boolean is not a number, and a number is not a
+Where the table says that no value converts, the conversion succeeds
+only for a column whose every cell is missing, and fails for any
+other. A boolean is not a number, and a number is not a
 boolean, as the owner's rule of the booleans has it. A conversion to text
 writes each value as "The text of a value" says, with the decimal mark of
 the conversion.
@@ -251,11 +268,11 @@ application asks for a type by converting to it.
 ## The cases
 
 - **A column of `001`, `002`, `010`** in a CSV, a code the user wrote
-  with its zeros: integer, 1, 2 and 10, the zeros lost. The user converts
-  it to text, which gives `1`, `2`, `10` and not the zeros, since the
-  integer holds no zeros; the application that wants the texts keeps the
-  column it imported as text, or the user writes the codes `P001`. The
-  first column, the names, keeps `001` as written (`specs/import.md`).
+  with its zeros: integer, 1, 2 and 10, the zeros lost. A conversion to
+  text gives `1`, `2`, `10`, since the integer holds no zeros. A user who
+  needs the zeros writes the codes so that they are not numbers, `P001`.
+  The first column, the names, keeps `001` as written
+  (`specs/import.md`).
 - **A column of `1` and `1.0`** in a CSV: float, 1 and 1.
 - **A column of `0` and `1`**: integer, not boolean.
 - **A column of `TRUE`, `false` and `NA`**: boolean, true, false and

@@ -94,9 +94,11 @@ xlsx keeps the number and not how it was written (`specs/values.md`,
 
 ## The refusals
 
-Each names where it is, in the order of the file: the header first, then
-row by row, and in a row from left to right; the first met is the one
-given.
+Three are about the whole table and are checked first, in this order: a
+column of the wrong length, a table larger than a sheet of Excel, and a
+header that reads back as a variants file. The others name a cell and are
+found in the order of the file: the header first, then row by row, and
+in a row from left to right; the first met is the one given.
 
 - **A column of the wrong length**: a column with another number of
   values than there are names, with its column, the names' count and its
@@ -114,8 +116,9 @@ given.
 - **A text that reads back as missing**: a text value that is empty,
   `NA` or `-`, whatever the text of a missing value is, as
   `table_io-needs.md`, section 6, asks; and in an xlsx a text value that
-  is one of the seven errors of Excel, `#N/A` among them, which the import
-  of an xlsx takes for missing.
+  is one of the seven errors of Excel, `#N/A`, `#DIV/0!`, `#NAME?`,
+  `#NULL!`, `#NUM!`, `#REF!` and `#VALUE!`, which the import of an xlsx
+  takes for missing.
 - **An error of Excel as a name**, in an xlsx: a name that is one of the
   seven, which the import refuses as a header error.
 - **A text with spaces at its ends**, in an xlsx: the import removes the
@@ -130,9 +133,12 @@ given.
   characters, as rust_xlsxwriter counts them, with its column, its row
   and its length.
 - **A table larger than a sheet of Excel**, in an xlsx: more than
-  1,048,575 rows below the header, or more than 16,384 columns, the
+  1,048,575 rows below the header, Excel's 1,048,576 rows less the
+  header's, or more than 16,384 columns, the
   names' among them, with the numbers of rows and of columns.
-- **A header that reads back as a variants file**, in a CSV: a header
+- **A header that reads back as a variants file**, in a CSV, a variants
+  file being the VCF of the genotypes, which popnei_web's users may pick
+  by mistake and the import refuses: a header
   whose first name, its spaces and tabs at the start left out, starts
   with `##fileformat=VCF` or `#CHROM`, which the import of a text file
   refuses as a variants file (`specs/text-files.md`).
@@ -140,7 +146,7 @@ given.
 rust_xlsxwriter refuses a text longer than 32,767 characters and a cell
 past the last row or column of Excel, and writes a float that is not
 finite as the text `NAN`, `INF` or `-INF`, read in its `worksheet.rs`,
-`store_number_type` and `store_string`, at the version pinned. The
+`store_number_type` and `store_string`, at the version pinned, 0.99.1. The
 export checks these itself before it writes, so that the refusal names
 the place; an error of rust_xlsxwriter that comes all the same, which
 these checks should leave none of, is given as the message of an export
@@ -215,9 +221,10 @@ but where its values read as a narrower type than its own
   `FALSE` in any case boolean, each value converted as
   `convert_column` converts it;
 - a column whose every value is missing comes back text;
-- from an xlsx, a float column whose every value is whole comes back
-  integer, and a float column with a value beyond 2^63 is a float column
-  still.
+- from an xlsx, a float column whose every value is whole and from
+  −2^63 to 2^63 − 1, the range of an integer, comes back integer; one
+  with a whole value beyond that range, 10^20, comes back float, since no
+  integer holds it.
 
 These are the only changes: for each column, the values read back are
 those `convert_column` gives of the values exported, to the type read

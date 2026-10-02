@@ -2,12 +2,12 @@
 
 Written on 2 October 2026, before any code, from `docs/architecture.md`,
 section 3, "The cells, by the rules of the format", which the owner
-approved that day, and from popnei_web's
-`docs/specs/worker/individuals.md`, "The bytes and the encoding", "The
-separator", "The rows and the cells" and "The decimal mark and the
-numbers", approved by the owner on 25 September 2026 and since, whose
-rules for a CSV and a TSV become table_io's here, written in Rust where
-popnei_web wrote them in TypeScript. A **text file** is a CSV or a TSV,
+approved that day. The rules are popnei_web's for a CSV and a TSV, from
+its `docs/specs/worker/individuals.md`, "The bytes and the encoding",
+"The separator", "The rows and the cells" and "The decimal mark and the
+numbers", approved by the owner from 25 September 2026; they become
+table_io's here, written in Rust where popnei_web wrote them in
+TypeScript. A **text file** is a CSV or a TSV,
 or any file the import does not find to be a workbook
 (`specs/import.md`, "The format"). This spec gives the module `csv` of
 the library crate, behind the feature `csv`: from the bytes of a text
@@ -58,7 +58,7 @@ against the caller's limit before (`specs/import.md`).
    with no partner, is decoded as U+FFFD, the replacement character,
    shown as �.
 2. **Not text.** Any other file with a byte 0 anywhere in it, the whole
-   file being looked at, is refused as **not text**: a gzipped VCF, a
+   file being looked at, its mark of UTF-8 included, is refused as **not text**: a gzipped VCF, a
    `.nei` file or another binary file picked by mistake. A zip, an xlsx
    among them, does not reach here (`specs/import.md`).
 3. **The mark of UTF-8.** The three bytes `EF BB BF` at the start, the
@@ -97,8 +97,9 @@ against the caller's limit before (`specs/import.md`).
 6. A U+FEFF at the start of the text that is left, which a file can hold
    after its mark when it was saved twice with one, is removed.
 
-Windows-1252 is Unicode's first 256 characters, U+0000 to U+00FF, but for
-the 32 bytes from `80` to `9F`, which are these, by the index of the
+Windows-1252 gives each byte the character of Unicode of the same
+number, U+0000 to U+00FF, except the 32 bytes from `80` to `9F`, which
+are these, by the index of the
 Encoding Standard, `index-windows-1252`; the five that Windows-1252 left
 without a character are the control of Unicode of the same number, as the
 standard and a browser's `TextDecoder` have them:
@@ -169,8 +170,8 @@ hold no value in any row, a value being any cell but an empty one, `NA`,
 `-`, or no cell at all, as `specs/import.md`, "The header", drops it.
 
 A separator **fits** the file when it gives the header two cells or more
-and every row as many cells as the header, a row with more cells whose
-cells past the header are all empty fitting too; a separator with which a
+and every row as many cells as the header. A row with more cells than the
+header fits too when every cell it has past the header is empty; a separator with which a
 quote is never closed does not fit, since whether a `"` opens a cell
 depends on the separator before it. Of the separators that fit, the one
 that gives the header the most cells is taken, and on a tie the tab, then
@@ -303,8 +304,8 @@ Over the bytes and the encoding:
 - the UTF-16 little endian file with one byte more, and with its last
   character the first half of one written in four, the bytes `3D D8`:
   cut short;
-- the bytes `PK\x03\x04` cut to a zip that is not one, with a byte 0, and
-  a text with one byte 0 in its last line: not text;
+- a text with one byte 0 in its last line, and the bytes `00 01 02 03`:
+  not text;
 - the Spanish file as UTF-8 with its mark and the byte `FF` in its third
   line, no encoding set: read as UTF-8, the line not decoded 3, and a
   cell with �; the same file without the bad byte: none;
@@ -347,9 +348,10 @@ files, marked `#[ignore]`:
 
 ## Open points
 
-None. The rules are popnei_web's, approved by the owner, and the two
-changes this spec makes to them, the format found from the bytes and the
-boolean written `TRUE`, are `specs/import.md`'s and `specs/values.md`'s.
+None. The rules are popnei_web's, approved by the owner. Two changes
+to them come from the other specs: the format is found from the bytes and
+not the name (`specs/import.md`), and a boolean is written as text
+`TRUE` and not `true` (`specs/values.md`).
 
 ## Not in this spec
 

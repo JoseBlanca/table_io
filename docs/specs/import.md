@@ -11,8 +11,9 @@ columns typed, or a refusal. It finds the format, calls the module of
 the format for the rows of cells (`specs/text-files.md`,
 `specs/read.md`), makes the table of them by the rules both applications
 share, the module `table`, and types each column by `specs/values.md`.
-It has no feature of its own; a format whose feature a build leaves out
-is refused.
+The library has a cargo feature for each format, `csv` and `xlsx`, both
+on by default; the import is behind neither, and refuses a file of a
+format whose feature a build leaves out.
 
 ## What it does
 
@@ -56,7 +57,8 @@ words that ask the user to rename it, is read as the CSV it is, and the
 table says it was read as a text file. A zip that holds no workbook, a
 `.docx` or a `.zip` of other files, is not read: `specs/read.md` gives an
 error, "the file names no workbook", which the application shows as a
-file that could not be read. A build without the feature of the format
+file that could not be read, until the owner decides otherwise (**Open
+1**, below). A build without the feature of the format
 found refuses the file as **a format not built**, naming the format, so
 that the application can say which reader it lacks.
 
@@ -66,8 +68,9 @@ any more: such a file is a text file.
 ### The cells of an xlsx, as the table takes them
 
 The rows of a text file come as texts, each with its line
-(`specs/text-files.md`). The rows of an xlsx come as the rectangle of its
-first visible sheet, each cell empty, a text, a number or a boolean
+(`specs/text-files.md`). The rows of an xlsx come as the **rectangle** of
+its first visible sheet, the cells from the first row and column that
+hold a value to the last ones, each cell empty, a text, a number or a boolean
 (`specs/read.md`), each row with its row in the sheet and each cell with
 its column in the sheet, A being 1. Before the rules below:
 
@@ -92,20 +95,23 @@ The same rules for the rows of every format:
   for popnei_web: a header `id;pop;;` over rows of such cells is a header
   of two, which is what the user sees in Excel. The run dropped is the
   longest at the end of the header whose every cell is empty and whose
-  columns hold, in every row, a missing cell, below, or no cell at all.
+  columns hold, in every row, a missing cell, as the point on missing
+  cells below defines it, or no cell at all.
 - **A column with an empty name whose cells are all missing** is dropped
   too, wherever it is, since such a column has no values any more than
   one of empty cells, which Excel adds with a trailing separator. A
   column with an empty name and some value is refused, as an **unnamed
-  column**, with its column. The run of empty cells at the end of the
+  column**, with its column. A run of empty cells at the end of the
   header that is not dropped, because one of its columns has a value in
-  some row, is checked so before the lengths of the rows: the user sees
+  some row, is refused as an unnamed column before the lengths of the
+  rows are checked: the user sees
   no name there, and a count of the header that took those cells in would
   be a number shown nowhere. `id;pop;;` over `a;1` and `b;2;3` is refused
   as column 3 having values and no name, and not as line 2 having 2 cells
   where the header has 3.
 - **Two columns of one name** are refused, as a **duplicate column**,
-  with the name and the two columns, the first two that share it, so that
+  with the name and the first two columns by position that have it, so
+  that
   the user reads "the name 'height' is used by columns 4 and 9"
   (Vavilov Explorer's `docs/design.md`, section 5). Names are compared
   exactly.
@@ -134,7 +140,7 @@ The same rules for the rows of every format:
   `#NAME?`, `#NULL!`, `#NUM!`, `#REF!` and `#VALUE!`, exactly, once its
   spaces at the ends are removed. `specs/read.md` gives an error cell as
   its text, so a cell where the user typed the text `#N/A` is missing
-  too, which is taken as it is: such a text means the same to the user.
+  too.
   In a text file `#N/A` is a value, a text, as the owner decided for
   popnei_web on 28 September 2026, so the CSV Excel saves from a sheet
   gives the text where the xlsx gives a missing cell.
@@ -161,8 +167,8 @@ The caller gives with each import the largest number of cells it accepts,
 popnei_web 2,000,000 today. An xlsx is refused as **sheet too large** at
 the first cell that makes the rectangle of its values larger, by
 `specs/read.md`. A text file is refused as **too many cells** at the line
-where the cells it has split so far pass the limit, with that line and
-the limit, so that a text file never holds more cells than the caller
+where the cells it has split so far, the blank rows' among them, pass
+the limit, with that line and the limit, so that a text file never holds more cells than the caller
 allowed. A CSV of 20 MB, popnei_web's largest, holds about 1,800,000
 cells of ten characters and a separator, so 2,000,000 lets a text file
 hold a table as large as popnei_web's limit of bytes does: an estimate,
@@ -241,7 +247,7 @@ pub struct ImportOptions {
 }
 ```
 
-`TextOptions` and `TextRead` are `specs/text-files.md`'s, `ColumnValues`
+`TextOptions`, `TextRead` and `Separator` are `specs/text-files.md`'s, `ColumnValues`
 and `DecimalMark` `specs/values.md`'s. What an import gives:
 
 ```rust
@@ -279,9 +285,11 @@ pub enum HowRead {
 pub fn import_table(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError>;
 ```
 
-What an import that gives no table gives. A row is named in the way of
-its format, so that the application, which does not know the format of a
-refused file, can word it:
+What an import that gives no table gives. A refusal says the format by
+its kind where only one format meets it, a ragged row a text file's, a
+header error an xlsx's, and by `RowPlace` where both can, so that the
+application, which does not know the format of a refused file, can word
+it:
 
 ```rust
 pub enum ImportError {
@@ -386,8 +394,8 @@ carry what this spec adds:
 | `id,n\r\nA,1\r\n\r\nB,2\r\n`, and the same with `\r` alone | the table of `id,n\nA,1\nB,2\n`, the blank line skipped |
 | `id;pop;;\nA;P1;;\n` | columns `id`, `pop` |
 | `id;pop;;\nA;P1\nB;P2;NA\n` | `;`; columns `id`, `pop` |
-| `id,x;pop;;\nA,1;P1\nB,2;P2;NA\n` | `;`; the names headed `id,x`, and `pop` |
-| `id;pop;;\nA;P1\nB;P2;;x\n` | unnamed column 4 |
+| `id,x;pop;;\nA,1;P1\nB,2;P2;NA\n` | `;`, as `specs/text-files.md`, "The separator", finds it; the first column's header `id,x`, and `pop` |
+| `id;pop;;\nA;P1\nB;P2;;x\n` | unnamed column 4: the header has four cells, the last two empty, and `x` is in the fourth |
 | `id;pop;;\na;1\nb;2;3\n` | unnamed column 3, not a ragged row at line 2 |
 | `id;pop;;x\nA;P1;;1\nB;P2\n` | ragged row, line 3, expected 4, found 2, `;` |
 | `id,,pop\nA,NA,P1\nB,-,P2\n` | the names `A`, `B`, and `pop`, column 3 |
@@ -438,7 +446,7 @@ bytes of an xlsx with the limit of bytes one less than their length, too
 large, with the size and the limit; a text file of `id,pop\nA,P1\n` read
 by a build of the feature `xlsx` alone, `cargo test --no-default-features
 --features xlsx`, a format not built, text, and an xlsx by a build of
-`csv` alone, xlsx; the compound file of `specs/read.md`'s tests, old
+`csv` alone, `cargo test --no-default-features --features csv`, xlsx; the compound file of `specs/read.md`'s tests, old
 Excel and encrypted; and the order of the refusals, each pair of the list
 above that one file can hold, `#REF!` in the header of a sheet of one
 row among them, giving the one first in the list.

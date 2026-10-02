@@ -23,8 +23,9 @@ limits and the options the user set, and reads the table or the refusal
 from what it gets; when the user changes the type of a column it calls
 `convertColumn`. What goes wrong because of this module is seen there:
 
-- a field read before it was filled, a value of a column of another type
-  than the one the column has, gives a table of zeros;
+- an array read of another type than the column's gives an empty array,
+  and a field of a refusal its kind does not fill gives 0, so either read
+  by mistake gives a table of nothing or a refusal that names line 0;
 - an integer above 2^53 read as a JavaScript number, which cannot hold
   it, gives the user a value the file does not have, and popnei_web a
   value Vavilov Explorer does not give for the same file;
@@ -38,9 +39,11 @@ JavaScript, gives a struct of Rust to JavaScript as an object that stays
 in the memory of the wasm, whose fields JavaScript reads through
 functions that copy each field out, and which JavaScript frees with
 `free()`. A struct that holds other structs gives each as one more such
-object, to be freed too: in a trial of 2 October 2026, below, a table
-holding its columns as objects gave each column as a copy every time the
-list was read. So the table crosses as one object, `TableRead`, with its
+object, to be freed too: in the crate of trial of 2 October 2026 from
+which the declarations below were taken, a first version whose table
+held its columns as a list of objects gave JavaScript `Column[]`, each
+column a copy in the wasm's memory made every time the list was read,
+and each to be freed. So the table crosses as one object, `TableRead`, with its
 columns read one by one by their index, each as arrays of JavaScript,
 and the conversion takes and gives arrays: one `free()` for an import and
 one for a conversion, which popnei_web calls in a `finally`.
@@ -75,14 +78,18 @@ defect of the caller, thrown as an `Error`.
 
 ### What an import gives
 
-`TableRead` holds a table or a refusal. With a table, `refusal` is `""`;
+`TableRead` holds a table or a refusal. The **column of the names** is
+the first column of the file, which names the individuals and has no
+type (`specs/import.md`). With a table, `refusal` is `""`;
 `format` the format found; `encoding`, `separator`, `decimal` and
 `undecodedLine` how a text file was read, the line `undefined` when every
 character was decoded; `sheet` the sheet of an xlsx; `namesHeader`,
 `namesNumber` and `names` the column of the names; `numColumns` the
 number of the other columns, which `columnName`, `columnNumber`,
-`columnType` and the four arrays of a column give by their index, from
-0; an index out of range is thrown as an `Error`.
+`columnType` and the five arrays of a column, `columnMissing` and the
+four of the values, give by their index, from 0. The array of another
+type than the column's is empty, `columnIntegers` of a text column an
+empty `BigInt64Array`; an index out of range is thrown as an `Error`.
 
 With a refusal, `refusal` is its kind, in camelCase, and the fields its
 words need are filled, the others 0 or `""`:
@@ -105,13 +112,15 @@ words need are filled, the others 0 or `""`:
 | `duplicateIndividual` | `text`, the name, and `line` and `secondLine` for a text file, `row` and `secondRow` for an xlsx |
 
 A line, a row and a column are counted from 1, so a 0 says the field is
-not filled. A file that cannot be read, `ImportError::Unreadable` of
+not filled; the fields a kind fills always hold a value, a name of a
+duplicate column never being empty. A file that cannot be read, `ImportError::Unreadable` of
 `specs/import.md`, is thrown as an `Error` with its message, which
 popnei_web writes to the console.
 
 ### The conversion and the rules of a value
 
-`convertColumn` takes a column as its type and its five arrays, the type
+`convertColumn` takes a column as its type and its five arrays, laid
+out as `TableRead` gives them, the type
 to convert to and the decimal mark, and gives a `Conversion`: with
 `numFailed` 0 the converted column, as its five arrays; otherwise
 `numFailed`, the first row that fails, from 1, and its text, and no
@@ -201,11 +210,16 @@ export function parseInteger(text: string): bigint | undefined;
 export default function __wbg_init (module_or_path?: { module_or_path: InitInput | Promise<InitInput> } | InitInput | Promise<InitInput>): Promise<InitOutput>;
 ```
 
+The `init` that popnei_web awaits is the default export of the file,
+which wasm-bindgen names `__wbg_init`; `InitInput` and `InitOutput` are
+its types, of which popnei_web uses none, calling it with no argument.
 The fields of a class are given in the order of their names, as
 wasm-bindgen writes them, and the arguments of a function keep the names
-of the Rust, `max_bytes`. `max_bytes` is a `u32`, up to 4,294,967,295
-bytes, which is more than the 4,294,967,296 bytes the wasm can hold at
-most; `size` and `numFailed` are numbers, exact up to 2^53. JavaScript
+of the Rust, `max_bytes`. `max_bytes` is a `u32`, so a file can be up to
+4,294,967,295 bytes, all the memory a wasm can have, and no limit a
+caller sets is cut. `size` and `numFailed`, counts of 64 bits in the
+library, are JavaScript numbers here, exact up to 2^53, beyond any file
+the wasm can hold. JavaScript
 cannot make a `TableRead` or a `Conversion` of its own, `private
 constructor()`.
 

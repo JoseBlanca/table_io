@@ -33,7 +33,7 @@ mod hand_written;
 use std::panic;
 
 use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Formula, Workbook, XlsxError};
-use table_io::{SheetCell, read_first_sheet};
+use table_io::xlsx::{SheetCell, read_first_sheet};
 
 use crate::hand_written::stored_zip;
 

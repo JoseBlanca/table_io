@@ -22,7 +22,7 @@ use crate::bounds_tests::hand_written::{
     parts_of_1904_worksheet, parts_of_worksheet, shared_strings, stored_zip, xlsx_of_parts,
 };
 use crate::parts::PartBounds;
-use crate::{
+use crate::xlsx::{
     MAX_PART_BYTES, MAX_SETTINGS_PART_BYTES, MAX_SHEET_PATH_BYTES, MAX_TEXT_BYTES, MAX_TEXTS,
     MAX_UNZIPPED_BYTES, PART_BOUNDS, ReadError, Sheet, SheetCell, read_first_sheet_within,
 };

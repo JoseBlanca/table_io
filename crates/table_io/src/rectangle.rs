@@ -1,8 +1,8 @@
 //! The rectangle of the values of a sheet, and its cells laid out row
 //! after row ("The sheet read" of `docs/specs/read.md`).
 
-use crate::SheetCell;
 use crate::cell::TextCount;
+use crate::xlsx::SheetCell;
 
 /// A position as calamine gives it: the row and the column, both from 0.
 pub(crate) type Position = (u32, u32);
@@ -259,9 +259,9 @@ pub(crate) enum LayoutError {
 
 #[cfg(test)]
 mod tests {
-    use crate::SheetCell;
     use crate::cell::TextCount;
     use crate::rectangle::{LayoutError, MergedRange, Rectangle};
+    use crate::xlsx::SheetCell;
 
     #[test]
     fn a_rectangle_of_more_cells_than_memory_holds_is_an_error() {

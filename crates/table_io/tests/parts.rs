@@ -24,7 +24,7 @@ use std::io::{Cursor, Write};
 use std::ops::Range;
 
 use rust_xlsxwriter::{Workbook, XlsxError};
-use table_io::{ReadError, Sheet, SheetCell, read_first_sheet};
+use table_io::xlsx::{ReadError, Sheet, SheetCell, read_first_sheet};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 

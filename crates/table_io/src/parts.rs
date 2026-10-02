@@ -26,30 +26,30 @@ use quick_xml::events::{BytesStart, Event};
 use zip::ZipArchive;
 use zip::result::ZipError;
 
-use crate::ReadError;
 use crate::attrs::{RawAttrIter, attribute_of, attributes_of};
 use crate::date::DateSystem;
 use crate::encoding::EncodingCheck;
+use crate::xlsx::ReadError;
 
 /// The bounds of the parts of a read, which a test lowers so as to pass
 /// them with a file of a few KB.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PartBounds {
     /// The most bytes the parts may hold together once unzipped,
-    /// [`crate::MAX_UNZIPPED_BYTES`] outside the tests.
+    /// [`crate::xlsx::MAX_UNZIPPED_BYTES`] outside the tests.
     pub(crate) max_unzipped_bytes: u64,
     /// The most bytes each settings part, a part calamine reads whole other
     /// than a table of texts, may hold once unzipped,
-    /// [`crate::MAX_SETTINGS_PART_BYTES`] outside the tests.
+    /// [`crate::xlsx::MAX_SETTINGS_PART_BYTES`] outside the tests.
     pub(crate) max_settings_part_bytes: u64,
     /// The most texts, and the largest `uniqueCount`, each table of texts
-    /// may hold, [`crate::MAX_TEXTS`] outside the tests.
+    /// may hold, [`crate::xlsx::MAX_TEXTS`] outside the tests.
     pub(crate) max_texts: u64,
     /// The most bytes the paths of the sheets may be counted at,
-    /// [`crate::MAX_SHEET_PATH_BYTES`] outside the tests.
+    /// [`crate::xlsx::MAX_SHEET_PATH_BYTES`] outside the tests.
     pub(crate) max_sheet_path_bytes: u64,
     /// The most bytes each part may hold once unzipped, a table of texts
-    /// among them, [`crate::MAX_PART_BYTES`] outside the tests.
+    /// among them, [`crate::xlsx::MAX_PART_BYTES`] outside the tests.
     pub(crate) max_part_bytes: u64,
 }
 
@@ -58,10 +58,10 @@ pub(crate) struct PartBounds {
 /// `bounds`, and the merged ranges of each within `max_cells`; then gives
 /// the date system of the workbook. The zip is let go of before it
 /// returns, so that calamine does not open the file while table_io holds
-/// the list of its parts.
-///
-/// A workbook named by the package relationships but missing is given the
-/// system of 1900; calamine then finds no sheet.
+/// the list of its parts. A file whose package relationships, `_rels/.rels`,
+/// are missing or name no workbook, which calamine refuses too, gives
+/// [`PackageWorkbook::NotNamed`], and one whose workbook is named but is not
+/// in the zip [`PackageWorkbook::Missing`].
 ///
 /// # Errors
 ///
@@ -70,10 +70,8 @@ pub(crate) struct PartBounds {
 /// deflate stream" for a part whose bytes are not those it was saved with,
 /// "unsupported Zip archive: Password required to decrypt file" for a part
 /// saved with a password, and "compression method not supported: …" for a
-/// compression the zip crate does not read, as [`crate::read_first_sheet`]
-/// lists them; "the file names no workbook" when the package
-/// relationships, `_rels/.rels`, are missing or name no workbook, which
-/// calamine refuses too; "the file unzips to more than … bytes" when the parts hold
+/// compression the zip crate does not read, as [`crate::xlsx::read_first_sheet`]
+/// lists them; "the file unzips to more than … bytes" when the parts hold
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
 /// bounds of the parts calamine reads whole ("What xlsx_rs reads before
@@ -91,17 +89,33 @@ pub(crate) fn read_parts(
     bytes: &[u8],
     max_cells: u32,
     bounds: PartBounds,
-) -> Result<DateSystem, ReadError> {
+) -> Result<PackageWorkbook, ReadError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes)).map_err(unreadable_of_zip_error)?;
     read_every_part(&mut archive, max_cells, bounds)?;
     let part_names = PartNames::of_archive(&archive);
     let Some(workbook_folder) = workbook_folder_of(&mut archive, &part_names)? else {
-        return Err(ReadError::Unreadable(
-            "the file names no workbook".to_owned(),
-        ));
+        return Ok(PackageWorkbook::NotNamed);
     };
     let workbook_path = format!("{workbook_folder}workbook.xml");
-    date_system_of(&mut archive, &part_names, &workbook_path)
+    if !part_names.holds(&workbook_path) {
+        return Ok(PackageWorkbook::Missing);
+    }
+    date_system_of(&mut archive, &part_names, &workbook_path).map(PackageWorkbook::Found)
+}
+
+/// The workbook the package relationships name, as calamine finds it: the
+/// part `workbook.xml` in the folder of the target of the relationship of
+/// type `officeDocument`, ignoring case, whatever the target's own name.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum PackageWorkbook {
+    /// A workbook in the zip, with its date system.
+    Found(DateSystem),
+    /// A workbook named but not in the zip, such as the `word/workbook.xml`
+    /// of a `.docx`, whose target is `word/document.xml`.
+    Missing,
+    /// No workbook named: no package relationships, or none of the type
+    /// `officeDocument` with a target.
+    NotNamed,
 }
 
 /// The zip of an xlsx held in memory.
@@ -172,7 +186,7 @@ impl PartKind {
             },
             Self::TextTable => PartBound {
                 max_bytes: bounds.max_part_bytes,
-                message: crate::TOO_MUCH_TEXT,
+                message: crate::xlsx::TOO_MUCH_TEXT,
             },
             Self::Other => PartBound {
                 max_bytes: bounds.max_part_bytes,
@@ -655,6 +669,12 @@ impl PartNames {
         }
     }
 
+    /// Whether the zip has a part calamine opens for `path`, ignoring case.
+    fn holds(&self, path: &str) -> bool {
+        self.zip_name_of_lower_case
+            .contains_key(&path.to_ascii_lowercase())
+    }
+
     /// The name in the zip of the part calamine opens for `path`: the name
     /// that matches it ignoring case, or `path` itself when none does.
     fn zip_name_of<'names>(&'names self, path: &'names str) -> &'names str {
@@ -819,7 +839,7 @@ fn read_text_table<Part: Read>(
     Ok(())
 }
 
-/// The error of a table of texts past [`crate::MAX_TEXTS`].
+/// The error of a table of texts past [`crate::xlsx::MAX_TEXTS`].
 fn too_many_texts() -> ReadError {
     ReadError::Unreadable("too many texts".to_owned())
 }

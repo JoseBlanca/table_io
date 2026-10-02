@@ -5,7 +5,7 @@
 #![allow(clippy::arithmetic_side_effects, reason = "small literals in tests")]
 
 use rust_xlsxwriter::{Chart, ChartType, Format, Workbook, Worksheet, XlsxError};
-use table_io::{ReadError, Refusal, Sheet, SheetCell, read_first_sheet};
+use table_io::xlsx::{ReadError, Refusal, Sheet, SheetCell, read_first_sheet};
 
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;

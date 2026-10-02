@@ -2,8 +2,8 @@
 
 use calamine::{CellErrorType, DataRef};
 
-use crate::SheetCell;
 use crate::date::{DateSystem, cell_of_date};
+use crate::xlsx::SheetCell;
 
 /// The cell of `calamine_value`, as "Each cell" gives it, a date in the
 /// workbook's `date_system`.
@@ -135,9 +135,9 @@ impl TextCount {
 mod tests {
     use calamine::{CellErrorType, DataRef};
 
-    use crate::SheetCell;
     use crate::cell::{TextCount, TooMuchText, cell_of_value};
     use crate::date::DateSystem;
+    use crate::xlsx::SheetCell;
 
     #[test]
     fn texts_up_to_the_bound_are_counted_and_one_byte_more_is_too_much() {

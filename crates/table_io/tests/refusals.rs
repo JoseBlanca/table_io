@@ -10,7 +10,7 @@
 mod hand_written;
 
 use rust_xlsxwriter::{Chart, ChartType, Formula, Workbook};
-use table_io::{ReadError, Refusal, SheetCell, read_first_sheet};
+use table_io::xlsx::{ReadError, Refusal, SheetCell, read_first_sheet};
 
 use crate::hand_written::{text_cell, xlsx_of_worksheet};
 

@@ -1,0 +1,324 @@
+//! The import of a table, `docs/specs/import.md`: the types an application
+//! gives and gets, and `import_table`, which finds the format of a file
+//! from its first bytes, refuses a file too large or of a format the build
+//! does not read, and reads the rest with the module of its format. It is
+//! behind no feature.
+
+use crate::{ColumnValues, Separator, TextOptions, TextRead};
+
+/// What the caller accepts and sets for one import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportOptions {
+    /// The largest file, in bytes; a larger one is refused as
+    /// [`Refusal::TooLarge`] before anything of it is read but its first
+    /// bytes.
+    pub max_bytes: u64,
+    /// The largest number of cells of the rectangle of the values of an
+    /// xlsx, from the first row and column that hold a value to the last
+    /// ones; a text file is bounded by `max_bytes` alone.
+    pub max_cells: u32,
+    /// The options of a text file; ignored for an xlsx.
+    pub text: TextOptions,
+}
+
+/// A table read from a file: the column of the names of the individuals,
+/// the other columns, each typed, and how the file was read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Table {
+    /// The first column of the file, the names of the individuals.
+    pub names: NameColumn,
+    /// The other columns, in the order of the file.
+    pub columns: Vec<Column>,
+    /// The format the file was read as, and with what.
+    pub read: HowRead,
+}
+
+/// The first column of a table, which names the individuals, one for each
+/// row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NameColumn {
+    /// Its name in the header, which may be empty.
+    pub header: String,
+    /// Its column in the file, from 1: in an xlsx, its column of the sheet,
+    /// column A being 1.
+    pub number: u32,
+    /// One name for each row, none empty, no two the same.
+    pub names: Vec<String>,
+}
+
+/// A column of a table other than the first, with its type and values.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Column {
+    /// Its name in the header, not empty, no two the same in a table.
+    pub name: String,
+    /// Its column in the file, from 1: in an xlsx, its column of the sheet,
+    /// column A being 1.
+    pub number: u32,
+    /// One value for each row, as many as the names.
+    pub values: ColumnValues,
+}
+
+/// How a file was read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HowRead {
+    /// As a text file, with the encoding, the separator and the decimal
+    /// mark set or found.
+    Text(TextRead),
+    /// As an xlsx, from its first worksheet that is not hidden.
+    Xlsx {
+        /// The name of that worksheet, as its tab shows it.
+        sheet: String,
+    },
+}
+
+/// Why an import gave no table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportError {
+    /// A file refused, with the format it was found to be, so that the
+    /// application writes a place of the refusal as the user will look for
+    /// it: a line of a text file, a row and a column of the sheet of an
+    /// xlsx.
+    Refused {
+        /// The format found from the first bytes of the file.
+        format: Format,
+        /// The refusal, with what its words need.
+        refusal: Refusal,
+    },
+    /// A file that cannot be read, a damaged one or one past a bound
+    /// table_io checks, with the message of the zip crate, of calamine or
+    /// of table_io, for whoever reports the problem.
+    Unreadable(String),
+}
+
+/// The format of a file, found from its first bytes and not from its name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    /// A text file, a CSV or a TSV: any file that is not of the format
+    /// xlsx.
+    Text,
+    /// A zip, which every xlsx is, or a compound file of the old Office,
+    /// an `.xls` or an xlsx saved with a password.
+    Xlsx,
+}
+
+/// A file the import does not read, with what the words of its refusal
+/// need. A line is a line of a text file, counted from 1; a row and a
+/// column of an xlsx are those of the sheet, from 1, column A being 1.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refusal {
+    /// A file larger than the caller's limit of bytes.
+    TooLarge {
+        /// The size of the file, in bytes.
+        size: u64,
+        /// The caller's limit, [`ImportOptions::max_bytes`].
+        max_bytes: u64,
+    },
+    /// A file of a format whose cargo feature the build leaves out, the
+    /// format being that of [`ImportError::Refused`].
+    FormatNotBuilt,
+    /// A compound file of the old Office that is not an xlsx saved with a
+    /// password: a workbook of Excel 97–2003, an `.xls`.
+    OldExcel,
+    /// An xlsx saved with a password to open it.
+    Encrypted,
+    /// A zip that holds no workbook, such as a `.docx` or a `.zip` of other
+    /// files.
+    NotWorkbook,
+    /// An xlsx whose first worksheet that is not hidden holds no value.
+    EmptySheet {
+        /// The name of that worksheet.
+        sheet: String,
+    },
+    /// An xlsx with a cell holding an error calamine does not know.
+    CellError {
+        /// The text of the error, such as `#GETTING_DATA`.
+        error: String,
+    },
+    /// An xlsx whose rectangle of the values passed the caller's limit of
+    /// cells, given as it was when it passed.
+    SheetTooLarge {
+        /// The name of the sheet.
+        sheet: String,
+        /// The first row of the rectangle, from 1.
+        first_row: u32,
+        /// The first column of the rectangle, column A being 1.
+        first_column: u32,
+        /// The number of rows the rectangle had reached.
+        num_rows: u32,
+        /// The number of columns the rectangle had reached.
+        num_columns: u32,
+    },
+    /// A text file in UTF-16 that ends in the middle of a character.
+    CutShort,
+    /// A file with a byte 0 that is not in UTF-16.
+    NotText,
+    /// A file of variants, a VCF, picked as a table.
+    VariantsFile,
+    /// A text file with a quote that is never closed.
+    UnclosedQuote {
+        /// The line where the cell of the quote starts.
+        line: u32,
+        /// The separator the file was split with.
+        separator: Separator,
+    },
+    /// A cell of the header of an xlsx holding one of the seven errors of
+    /// Excel, such as `#VALUE!`.
+    HeaderError {
+        /// The row of the cell in the sheet.
+        row: u32,
+        /// The column of the cell in the sheet.
+        column: u32,
+        /// The error, its spaces at the ends removed.
+        error: String,
+    },
+    /// A file with no row below its header.
+    Empty,
+    /// A column with no name in the header and a value in some row.
+    UnnamedColumn {
+        /// The column: its place in the row of a text file, its column of
+        /// the sheet in an xlsx.
+        column: u32,
+    },
+    /// A row of a text file with another number of cells than the header.
+    RaggedRow {
+        /// The line of the row.
+        line: u32,
+        /// The number of cells of the header.
+        expected: u32,
+        /// The number of cells of the row.
+        found: u32,
+        /// The separator the file was split with.
+        separator: Separator,
+    },
+    /// Two columns of one name, the first name that repeats one before it
+    /// in the header, read from left to right.
+    DuplicateColumn {
+        /// The name.
+        name: String,
+        /// The column of its first use.
+        first_column: u32,
+        /// The column that repeats it.
+        second_column: u32,
+    },
+    /// A row whose first cell, the name of its individual, is empty.
+    EmptyIndividual {
+        /// The line of a text file, or the row of the sheet of an xlsx.
+        row: u32,
+    },
+    /// An individual named in two rows.
+    DuplicateIndividual {
+        /// The name of the individual.
+        name: String,
+        /// The line or the row of the sheet of its first row.
+        first_row: u32,
+        /// The line or the row of the sheet of the row that repeats it.
+        second_row: u32,
+    },
+}
+
+/// Reads the table of the file `bytes`, a CSV, a TSV or an xlsx, with the
+/// limits and the options of a text file of `options`.
+///
+/// The format is found from the first bytes, not from the name of the
+/// file: one that starts with the bytes of the first part of a zip,
+/// `50 4B 03 04`, or of a compound file of the old Office,
+/// `D0 CF 11 E0 A1 B1 1A E1`, is an xlsx, and any other a text file, the
+/// empty file and a CSV whose header starts with `PK` among them.
+///
+/// # Errors
+///
+/// [`ImportError::Refused`], with the format found, for a file of the
+/// refusals of `docs/specs/import.md`, the first in this order: a file
+/// larger than `options.max_bytes`, [`Refusal::TooLarge`]; a file of a
+/// format whose feature the build leaves out, [`Refusal::FormatNotBuilt`];
+/// then those of an xlsx: [`Refusal::OldExcel`], [`Refusal::Encrypted`],
+/// [`Refusal::NotWorkbook`] for a zip whose package relationships are
+/// missing or name no workbook in it, then [`Refusal::CellError`] and
+/// [`Refusal::SheetTooLarge`] in the order of the file, and
+/// [`Refusal::EmptySheet`].
+///
+/// [`ImportError::Unreadable`] for an xlsx that cannot be read, with the
+/// messages of `docs/specs/read.md`; and, in this version, for every file
+/// that is not refused before its rows, since the table is not made of
+/// them yet: "the table of an xlsx is not built yet" and "the reading of a
+/// text file is not built yet".
+pub fn import_table(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError> {
+    let format = format_of(bytes);
+    // A slice holds at most isize::MAX bytes, which a u64 holds on every
+    // platform Rust builds for; the saturation is never reached.
+    let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    if size > options.max_bytes {
+        return Err(ImportError::Refused {
+            format,
+            refusal: Refusal::TooLarge {
+                size,
+                max_bytes: options.max_bytes,
+            },
+        });
+    }
+    match format {
+        Format::Xlsx => table_of_xlsx(bytes, options),
+        Format::Text => table_of_text(bytes, options),
+    }
+}
+
+/// The eight bytes every compound file of the old Office starts with, an
+/// `.xls` and an xlsx saved with a password among them.
+pub(crate) const COMPOUND_FILE_MARK: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+
+/// The four bytes that start a zip with a part, `PK` and the bytes 3 and
+/// 4, which open the record of its first part. An empty zip starts with
+/// `PK` and the bytes 5 and 6, and is a text file for the import.
+pub(crate) const ZIP_MARK: [u8; 4] = [b'P', b'K', 3, 4];
+
+/// The format of `bytes` by their first bytes ("The format" of
+/// `docs/specs/import.md`).
+fn format_of(bytes: &[u8]) -> Format {
+    if bytes.starts_with(&ZIP_MARK) || bytes.starts_with(&COMPOUND_FILE_MARK) {
+        Format::Xlsx
+    } else {
+        Format::Text
+    }
+}
+
+/// The message of [`ImportError::Unreadable`] for an xlsx whose sheet was
+/// read, until the module `table` makes the table of its rows.
+#[cfg(feature = "xlsx")]
+const TABLE_NOT_BUILT: &str = "the table of an xlsx is not built yet";
+
+/// The table of the xlsx `bytes`, a zip or a compound file of the old
+/// Office, within `options.max_cells`.
+#[cfg(feature = "xlsx")]
+fn table_of_xlsx(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError> {
+    let _sheet = crate::xlsx::import_sheet(bytes, options.max_cells)?;
+    Err(ImportError::Unreadable(TABLE_NOT_BUILT.to_owned()))
+}
+
+/// The refusal of an xlsx in a build without the feature `xlsx`.
+#[cfg(not(feature = "xlsx"))]
+fn table_of_xlsx(_bytes: &[u8], _options: &ImportOptions) -> Result<Table, ImportError> {
+    Err(ImportError::Refused {
+        format: Format::Xlsx,
+        refusal: Refusal::FormatNotBuilt,
+    })
+}
+
+/// The message of [`ImportError::Unreadable`] for a text file, until the
+/// module `csv` reads it.
+#[cfg(feature = "csv")]
+const TEXT_NOT_BUILT: &str = "the reading of a text file is not built yet";
+
+/// The table of the text file `bytes`, with `options.text`.
+#[cfg(feature = "csv")]
+fn table_of_text(_bytes: &[u8], _options: &ImportOptions) -> Result<Table, ImportError> {
+    Err(ImportError::Unreadable(TEXT_NOT_BUILT.to_owned()))
+}
+
+/// The refusal of a text file in a build without the feature `csv`.
+#[cfg(not(feature = "csv"))]
+fn table_of_text(_bytes: &[u8], _options: &ImportOptions) -> Result<Table, ImportError> {
+    Err(ImportError::Refused {
+        format: Format::Text,
+        refusal: Refusal::FormatNotBuilt,
+    })
+}

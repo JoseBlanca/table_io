@@ -8,7 +8,7 @@
 mod hand_written;
 
 use rust_xlsxwriter::{Format, Workbook};
-use table_io::{ReadError, Sheet, SheetCell, read_first_sheet};
+use table_io::xlsx::{ReadError, Sheet, SheetCell, read_first_sheet};
 
 use crate::hand_written::{text_cell, xlsx_of_worksheet};
 

@@ -15,7 +15,7 @@ mod hand_written;
 use std::error::Error;
 
 use rust_xlsxwriter::{Format, Workbook};
-use table_io::{SheetCell, read_first_sheet};
+use table_io::xlsx::{SheetCell, read_first_sheet};
 
 use crate::hand_written::xlsx_of_1904_worksheet;
 

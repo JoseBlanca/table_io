@@ -4,7 +4,7 @@
 //! It is compiled for `wasm32-unknown-unknown`, and the `wasm-bindgen`
 //! command line writes from it the JavaScript and the declarations of the
 //! package `js/table_io`. It holds no rule about a cell: it copies the sheet
-//! or the refusal that `table_io::read_first_sheet` gives into [`XlsxRead`],
+//! or the refusal that `table_io::xlsx::read_first_sheet` gives into [`XlsxRead`],
 //! and turns a file that cannot be read into a JavaScript `Error` with the
 //! message of the zip crate, of calamine or of table_io, whichever failed.
 //!
@@ -13,7 +13,7 @@
 //! compares with `js/table_io/test/table_io.d.ts`: a change of one of them is
 //! a change of that file too.
 
-use table_io::{ReadError, Refusal, Sheet, SheetCell};
+use table_io::xlsx::{ReadError, Refusal, Sheet, SheetCell};
 use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 /// What `readXlsx` gives: the sheet read, or the code of a refusal with the
@@ -62,7 +62,7 @@ pub struct XlsxRead {
 /// the zip crate, of calamine or of table_io, whichever failed.
 #[wasm_bindgen(js_name = readXlsx)]
 pub fn read_xlsx(bytes: &[u8], max_cells: u32) -> Result<XlsxRead, JsError> {
-    match table_io::read_first_sheet(bytes, max_cells) {
+    match table_io::xlsx::read_first_sheet(bytes, max_cells) {
         Ok(sheet) => Ok(read_of_sheet(sheet)),
         Err(ReadError::Refused(refusal)) => Ok(read_of_refusal(refusal)),
         Err(ReadError::Unreadable(message)) => Err(JsError::new(&message)),

@@ -3,8 +3,8 @@
 
 use calamine::{ExcelDateTime, ExcelDateTimeType};
 
-use crate::SheetCell;
 use crate::cell::{LARGEST_EXACT_WHOLE_NUMBER, cell_of_number};
+use crate::xlsx::SheetCell;
 
 /// The date system of a workbook: the day Excel counts its numbers from.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -166,8 +166,8 @@ impl ClockParts {
 mod tests {
     use calamine::{ExcelDateTime, ExcelDateTimeType};
 
-    use crate::SheetCell;
     use crate::date::{DateSystem, cell_of_date};
+    use crate::xlsx::SheetCell;
 
     /// The cell of `number` with a format of date, in the 1904 system.
     fn cell_of_1904_date(number: f64) -> SheetCell {

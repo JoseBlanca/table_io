@@ -2,9 +2,14 @@
 
 Revised on 2 October 2026, when the owner decided that xlsx_rs, the
 reader of xlsx files of popnei_web, becomes **table_io**, a library that
-reads and writes tables for two applications: popnei_web, the web
+imports and exports tables for two applications: popnei_web, the web
 applications of popnei, and Vavilov Explorer, a desktop application of the
-owner (Vavilov Explorer's `docs/design.md`, section 7). xlsx_rs had been
+owner (Vavilov Explorer's `docs/design.md`, section 7). The owner decided
+the same day that table_io is the one abstraction both applications use
+to import a CSV, a TSV or an xlsx as typed columns and to export typed
+columns, so that neither reads or writes these files with code of its
+own, and that its interface is the best one for that, popnei_web being
+changed to it rather than table_io keeping what xlsx_rs exported. xlsx_rs had been
 written on 28 September 2026 as a project of its own, "following the same
 conventions and skills that popnei follows", and its first release,
 `js-v0.1.0-dev.1`, is what popnei_web reads an xlsx with today. What
@@ -15,8 +20,11 @@ its spec under `specs/`. The owner approves these goals before any spec
 of table_io is written, and confirms or changes the target of speed of
 goal 7.
 
-table_io is a library in Rust that reads a table from a CSV, a TSV or the
-first sheet of an xlsx file, and writes one as a CSV or an xlsx. A table
+table_io is a library in Rust that imports a table from a CSV, a TSV or
+the first sheet of an xlsx file, and exports one as a CSV or an xlsx. The
+application gives the bytes of a file and gets the table, or gives the
+table and the format to write and gets the bytes; it never says which
+format a file it imports is in. A table
 here is what both applications hold of the user's file: a row of names,
 the header, over rows of values, the first column naming the
 individuals, the plants or animals the table is about. Reading a file
@@ -26,11 +34,13 @@ sheet chosen, the dates and the merged cells of an xlsx. The **table**
 comes out of the cells by rules that are the same for every format: the
 blank rows skipped, the header, which cells are missing values, the first
 column, and the refusals. The **types** of the columns come last: which
-columns hold numbers, whole numbers, booleans, categories or text. The
-first two steps are what both applications share. The third is not:
-popnei_web gives its columns types of its own, identifier, binary,
-continuous and categorical, which its analyses need, and Vavilov
-Explorer gives them numeric, integer, text, boolean and categorical.
+columns hold numbers, whole numbers, booleans, categories or text,
+guessed by the owner's rule, which the user can change later. All three
+are the same in both applications. The types are the five of Vavilov
+Explorer, numeric, integer, text, boolean and categorical; popnei_web,
+which gives its columns types of its own today, identifier, binary,
+continuous and categorical, works the roles its analyses need out of
+the five in its own code.
 
 The two applications use the library in two ways. **Vavilov Explorer**,
 whose backend is Rust, depends on the library by git, at a revision it
@@ -42,16 +52,14 @@ project to a CSV or an xlsx. **popnei_web** runs in a browser, and takes
 from table_io a **wasm package**: the library compiled to WebAssembly,
 the code a browser runs beside JavaScript, with the JavaScript that loads
 it and the TypeScript declarations of what it exports. Its light worker,
-the thread of the tab that reads the user's files, downloads the package
-the first time a user loads an xlsx, and reads only the cells of an xlsx
-with it: popnei_web reads a CSV and makes the table in TypeScript, by the
-rules of its `docs/specs/worker/individuals.md`, which become table_io's.
-That stays so after this work: popnei_web keeps the release it has, and
-whether it ever reads its CSV through table_io, which would make every
-one of its users download the package, the owner has set aside. Each
-format is a **cargo feature** of the library, a part of it that a user
-of the crate can leave out when it is compiled, so that a package built
-for popnei_web holds only the formats popnei_web reads with it.
+the thread of the tab that reads the user's files, reads only the cells
+of an xlsx with xlsx_rs's package today, and reads a CSV and makes the
+table in TypeScript, by the rules of its
+`docs/specs/worker/individuals.md`, which become table_io's. With
+table_io it imports every table through the package, and its own reader
+goes; that change is made in popnei_web, from its own session, when the
+owner decides it. Each format is a **cargo feature** of the library, a
+part of it that a user of the crate can leave out when it is compiled.
 
 ## The goals, in order
 
@@ -74,11 +82,10 @@ for popnei_web holds only the formats popnei_web reads with it.
    from it, but where a format holds more than text: an error of Excel
    such as `#N/A` is missing in an xlsx and a text in a CSV, and a
    number or a boolean cell of an xlsx is a number or a boolean where the
-   CSV has its text. Until
-   popnei_web reads its CSV with table_io, its rules exist twice, in its
-   TypeScript and here, so the cases of popnei_web's spec are tests of
-   table_io, with the same literals, and a difference between the two is
-   a finding for both.
+   CSV has its text. Both applications call the same code, so the
+   reading cannot drift apart between them. The cases of popnei_web's
+   spec are tests of table_io, with its literals wherever table_io keeps
+   its rule.
 
 3. **A file it cannot read is refused with a reason the user can act
    on, and the application goes on.** A variants file picked by mistake,
@@ -113,16 +120,19 @@ for popnei_web holds only the formats popnei_web reads with it.
    on the owner's Mac on 29 September 2026, 0.30 MB, and the `.wasm` of
    popnei, which every user of popnei_web downloads, 0.71 MB gzipped.
    There is no limit; a release whose package grows names its size before
-   and after in its notes. What
-   table_io adds for Vavilov Explorer is not in the package unless
-   popnei_web asks for it: the reading of a CSV, the types and the
-   writers are left out of its build.
+   and after in its notes. With table_io every user of popnei_web who
+   loads a table downloads the package, a CSV included, where today a
+   user with a CSV downloads nothing; what the import of a text file and
+   the types add to it has not been measured. The export is left out of
+   the package until popnei_web exports a table, since its writer of xlsx
+   would add about 0.35 MB gzipped.
 
 6. **Contracts that hold.** Two programs are written against table_io:
    popnei_web against the declarations of the package, Vavilov Explorer
    against the public Rust interface of the library. A change of either
    is a change in that application too, made together, and a release of
-   the package is never moved once popnei_web names it.
+   the package is never moved once popnei_web names it. The first release
+   of table_io is a new interface, which popnei_web is changed to.
 
 7. **Fast enough for a desktop table.** Vavilov Explorer's tables have
    tens of thousands of rows. The target, proposed in
@@ -139,8 +149,9 @@ for popnei_web holds only the formats popnei_web reads with it.
   the formats, the styles, the formulas, the comments, the other sheets,
   nor anything of a workbook that is not the table. Vavilov Explorer
   writes to a new file, so nothing of another workbook has to be kept.
-- Not each application's choices: the words of a message, the types
-  popnei_web gives its columns, the largest file and table each accepts,
+- Not each application's choices: the words of a message, the roles
+  popnei_web's analyses give a column, the largest file and table each
+  accepts,
   which table_io takes from the caller with each read, and the defaults
   of an export, which Vavilov Explorer's export dialog chooses.
 - Not a reader of `.xls`, `.xlsb` or `.ods`, although calamine, the Rust
@@ -152,9 +163,10 @@ for popnei_web holds only the formats popnei_web reads with it.
 - Not published on crates.io or npm for now: Vavilov Explorer takes the
   library by git and popnei_web installs the package from a GitHub
   Release, by its URL.
-- Not the wiring into the two applications. What table_io needs of them
-  is written down here and given to the owner; their repositories are
-  changed from their own sessions.
+- Not the wiring into the two applications, nor the compatibility of
+  table_io with xlsx_rs's package. What table_io needs of them is written
+  down here and given to the owner; their repositories are changed from
+  their own sessions.
 
 ## How the work is done
 

@@ -89,12 +89,14 @@ fn write_written_xlsx() {
 
 /// `written.csv`, which the test of the package reads until the owner's
 /// `excel_es.csv` exists ("How it is verified" of `docs/specs/package.md`),
-/// written as a Spanish Excel writes a CSV: in Windows-1252, `;` between
-/// the cells, the decimal comma and CRLF. A header and four individuals,
-/// with a text, a number, a whole number, `1152921504606846977`, 2^60 + 1,
-/// past the integers a float holds exactly, a boolean, the height of
-/// `ind3` empty and its count `NA`, and a population quoted with the
-/// separator in it. `ó` is the byte 0xF3, `í` 0xED.
+/// written as a Spanish Excel writes a CSV, in Windows-1252, `;` between
+/// the cells, the decimal comma and CRLF, but with its booleans in English,
+/// `TRUE` and `FALSE`, where a Spanish Excel writes `VERDADERO` and
+/// `FALSO`. A header and four individuals, with a text, a number, a whole
+/// number, `1152921504606846977`, 2^60 + 1, past the integers a float
+/// holds exactly, a boolean, the height of `ind3` empty and its count `NA`,
+/// and a population quoted with the separator in it. `ó` is the byte 0xF3,
+/// `í` 0xED, `ú` 0xFA.
 #[test]
 #[ignore = "writes tests/data/written.csv; run by hand"]
 fn write_written_csv() {

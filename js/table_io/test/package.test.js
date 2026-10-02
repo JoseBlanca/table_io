@@ -241,9 +241,11 @@ test("a table whose header starts at C3 gives the columns of the sheet, C for th
 });
 
 // The table of write_written_csv of crates/table_io/tests/write_fixtures.rs,
-// a CSV as a Spanish Excel writes it: Windows-1252, ";", the decimal comma
-// and CRLF, the population of ind2 quoted with the separator in it, the
-// height of ind3 empty and its Número NA, and 2^60 + 1 exact.
+// a CSV as a Spanish Excel writes it, Windows-1252, ";", the decimal comma
+// and CRLF, but with its booleans in English, TRUE and FALSE, where a
+// Spanish Excel writes VERDADERO and FALSO; the population of ind2 quoted
+// with the separator in it, the height of ind3 empty and its Número NA,
+// and 2^60 + 1 exact.
 test("written.csv is read as Windows-1252 with semicolons and the comma, each column typed", async () => {
     const fields = fieldsOfImport(await dataFile("written.csv"));
 

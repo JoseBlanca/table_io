@@ -118,3 +118,82 @@ errors with api:
   is, a filter of speed.
 - For work package 3: `cell.rs` writes `Infinity` itself where it could
   call `float_text`, the same rule in two places (spec reviewer).
+
+## Work package 3: the whole path for an xlsx
+
+Built on 2 October 2026 by three subagents: task 3.1 alone (8cdae39, the
+spec: when the relationships name no workbook; 9fa5cdd), then 3.2
+(7ed6302, the spec: a file of blank rows alone is empty, and the first
+column's name is among the names compared, both as popnei_web has them;
+491659f) and 3.3 (46882aa, 2a2d51d) side by side, on files kept apart.
+
+The deliverables, checked by the orchestrator at c243a03:
+
+1. `tests/import_format.rs`: 15 tests passed with the defaults, 17 with
+   `xlsx` alone, 8 with `csv` alone.
+2. and 3. `tests/import_xlsx.rs`: 73 passed, 1 ignored for the owner's
+   `libreoffice.xlsx`; every row of the table of the cells of a sheet of
+   `specs/import.md`, 19 tests of the order of the refusals, 20 cases of
+   the guess of the type, and the property of the rows in another order
+   over 300 tables made with a fixed seed.
+4. `npm test` in `js/table_io`: 33 passed, 3 skipped, the cases of a CSV,
+   for work package 4; the declarations generated equal
+   `test/table_io.d.ts`, and name no `readXlsx`.
+5. `cargo doc` lists none of xlsx_rs's types; xlsx_rs's 9 files of tests
+   moved into `src/xlsx_tests/`, the 348 tests listed the same before and
+   after.
+
+`cargo test --workspace`: 328 passed, 20 ignored at c243a03.
+
+Changed in the plan: making xlsx_rs's types private moved from task 3.1
+to task 3.3, since the binding called them until 3.3 replaced it.
+
+What the owner should know:
+
+- The package's `.wasm` grew from 300,682 bytes gzipped to 323,876, with
+  `gzip -9`, and its JavaScript from 3,042 to 6,752: the table step, the
+  types and the new binding, before any reading of a text file.
+- The owner's `spill.xlsx` is refused, as a header error, `#VALUE!` at
+  row 1, column 1: its first row holds the error Excel saves for a spill,
+  where a name of a column would be, the rule popnei_web already has.
+- A short note far to the left of a table, A10 under a table at C6,
+  moves the rectangle of the sheet to column A, and the file is then
+  refused as an empty individual at row 7, where the user sees nothing
+  wrong; popnei_web does the same, and the spec allows it (spec
+  reviewer).
+
+The review, at c243a03, by the categories spec, tests, errors with
+numbers, api, architecture and package:
+
+- Fixed in the specs at 474a9d9: the package relationships read first,
+  so that a zip of other files is not a workbook whatever its other parts
+  hold, where a zipped CSV of 310 MB of genotypes had been an unreadable
+  file (spec); `HowRead::decimal`, the decimal mark of a table, which the
+  binding had decided itself and Vavilov Explorer needs too
+  (architecture); `Display` and `std::error::Error` for `ImportError`,
+  for the logs and `?`, and `Default` for `TextOptions` (api); the index
+  of a column in the package a number checked, since a `u32` wrapped
+  modulo 2^32 and 2^32, 1.9 or `undefined` gave another column with no
+  `Error` (errors, package: two reviewers); the bytes a `Uint8Array`, an
+  `ArrayBuffer` being read as no bytes, which TypeScript stops; and the
+  architecture's sentence on where the ragged row and the header error
+  are found, which contradicted the import spec (architecture).
+- Fixed in the library at 76ff71a and 3e9eb0e: the relationships first;
+  the cells of a sheet split into rows while the sheet's buffer was still
+  held, every slot twice, and every cell of a text file to be its own
+  `String`, about 553 MB for the 10,000,000 cells of a CSV of 20 MB of
+  `0,`, measured natively: the rows are now one flat list, a text cell
+  borrows from the decoded text, and names are moved and not copied, the
+  table step's peak on 200,000 × 10 cells of an xlsx 103.6 MB where it
+  was about 108, the import's peak, 125.3 MB, being calamine's read of
+  the sheet in both (architecture); the doc comments of the column of a
+  text file and of the order of the refusals, and the compound file's
+  mark written once (api); the names `NA` and `-`, the tabs at the ends
+  of a cell, and numbers as names beyond small whole ones, untested
+  (tests, each shown by a change of the code no test caught).
+- Fixed in the binding: listed with its commit below.
+- Not taken: where the binding writes a place as a line or a row, from
+  the format the library gives, which is a translation and not a rule
+  about a cell (architecture); refusing an `ArrayBuffer` in the package,
+  which would need the crate `js-sys`, a new dependency, for a mistake
+  TypeScript stops (errors, package).

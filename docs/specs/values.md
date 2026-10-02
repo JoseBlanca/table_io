@@ -365,7 +365,7 @@ At `convert_column`, each a column literal and the target:
 | integer 9,007,199,254,740,993 | float | 9,007,199,254,740,992 |
 | integer 9,007,199,254,740,994 | float | 9,007,199,254,740,994 |
 | float 2, 3.5, with the point | integer | 1 failed, row 2, `"3.5"` |
-| float 2^63 | integer | 1 failed, row 1, `"9223372036854775808"` |
+| float 2^63 | integer | 1 failed, row 1, `"9223372036854776000"`, the float written as JavaScript writes it |
 | float −2^63 | integer | −9,223,372,036,854,775,808 |
 | float 2, 3 | integer | 2, 3 |
 | float 1.5 with the comma | text | `"1,5"` |

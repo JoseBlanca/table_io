@@ -179,7 +179,7 @@ xlsx_rs's `readXlsx` is gone.
 
 **Tasks.**
 
-- [ ] 3.1 The public types of the import, `import_table` with the format,
+- [x] 3.1 The public types of the import, `import_table` with the format,
   too large, a format not built, and not a workbook, which reads the
   package relationships `specs/read.md` already reads. Deliverable 1. From `specs/import.md`, "The
   format" and "The Rust interface".

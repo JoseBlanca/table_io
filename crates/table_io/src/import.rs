@@ -4,7 +4,7 @@
 //! does not read, and reads the rest with the module of its format. It is
 //! behind no feature.
 
-use crate::{ColumnValues, Separator, TextOptions, TextRead};
+use crate::{ColumnValues, DecimalMark, Separator, TextOptions, TextRead};
 
 /// What the caller accepts and sets for one import.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +71,18 @@ pub enum HowRead {
     },
 }
 
+impl HowRead {
+    /// The decimal mark the values were read with, which a conversion of
+    /// a column of this table takes: the one of a text file, and the point
+    /// for an xlsx.
+    pub fn decimal(&self) -> DecimalMark {
+        match self {
+            Self::Text(text_read) => text_read.decimal,
+            Self::Xlsx { .. } => DecimalMark::Point,
+        }
+    }
+}
+
 /// Why an import gave no table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportError {
@@ -90,6 +102,118 @@ pub enum ImportError {
     Unreadable(String),
 }
 
+/// A refusal or an unreadable file, written for whoever reports the
+/// problem, in English and with its fields, such as "an xlsx refused: the
+/// error #VALUE! in the header, at row 6 and column 5 of the sheet"; the
+/// words a user reads are the application's.
+impl std::fmt::Display for ImportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Refused { format, refusal } => {
+                let format_text = match format {
+                    Format::Text => "a text file",
+                    Format::Xlsx => "an xlsx",
+                };
+                write!(formatter, "{format_text} refused: ")?;
+                write_refusal(formatter, refusal)
+            }
+            Self::Unreadable(message) => write!(formatter, "an unreadable file: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for ImportError {}
+
+/// Writes `refusal` with its fields, for [`ImportError`]'s `Display`.
+fn write_refusal(formatter: &mut std::fmt::Formatter<'_>, refusal: &Refusal) -> std::fmt::Result {
+    match refusal {
+        Refusal::TooLarge { size, max_bytes } => write!(
+            formatter,
+            "too large, {size} bytes, past the limit of {max_bytes} bytes"
+        ),
+        Refusal::FormatNotBuilt => {
+            write!(formatter, "a format this build of table_io does not read")
+        }
+        Refusal::OldExcel => write!(formatter, "a workbook of Excel 97-2003, an .xls"),
+        Refusal::Encrypted => write!(formatter, "a workbook saved with a password"),
+        Refusal::NotWorkbook => write!(formatter, "a zip that holds no workbook"),
+        Refusal::EmptySheet { sheet } => write!(formatter, "the sheet '{sheet}' holds no value"),
+        Refusal::CellError { error } => {
+            write!(
+                formatter,
+                "a cell holds the error {error}, which calamine does not know"
+            )
+        }
+        Refusal::SheetTooLarge {
+            sheet,
+            first_row,
+            first_column,
+            num_rows,
+            num_columns,
+        } => write!(
+            formatter,
+            "the sheet '{sheet}' passes the limit of cells, its rectangle from row \
+             {first_row} and column {first_column} having reached {num_rows} rows of \
+             {num_columns} columns"
+        ),
+        Refusal::CutShort => write!(formatter, "a file in UTF-16 cut short in a character"),
+        Refusal::NotText => write!(formatter, "a byte 0 in a file that is not in UTF-16"),
+        Refusal::VariantsFile => write!(formatter, "a file of variants, a VCF"),
+        Refusal::UnclosedQuote { line, separator } => write!(
+            formatter,
+            "a quote opened in the cell that starts at line {line} is never closed, split \
+             at {}",
+            separator_text(*separator)
+        ),
+        Refusal::HeaderError { row, column, error } => write!(
+            formatter,
+            "the error {error} in the header, at row {row} and column {column} of the sheet"
+        ),
+        Refusal::Empty => write!(formatter, "no row below the header"),
+        Refusal::UnnamedColumn { column } => {
+            write!(formatter, "column {column} has values and no name")
+        }
+        Refusal::RaggedRow {
+            line,
+            expected,
+            found,
+            separator,
+        } => write!(
+            formatter,
+            "line {line} has {found} cells where the header has {expected}, split at {}",
+            separator_text(*separator)
+        ),
+        Refusal::DuplicateColumn {
+            name,
+            first_column,
+            second_column,
+        } => write!(
+            formatter,
+            "the name '{name}' is used by the columns {first_column} and {second_column}"
+        ),
+        Refusal::EmptyIndividual { row } => {
+            write!(formatter, "the row {row} has no name of an individual")
+        }
+        Refusal::DuplicateIndividual {
+            name,
+            first_row,
+            second_row,
+        } => write!(
+            formatter,
+            "the individual '{name}' is in the rows {first_row} and {second_row}"
+        ),
+    }
+}
+
+/// The separator as it is written in a file, quoted, the tab as `\t`.
+fn separator_text(separator: Separator) -> &'static str {
+    match separator {
+        Separator::Tab => "'\\t'",
+        Separator::Semicolon => "';'",
+        Separator::Comma => "','",
+    }
+}
+
 /// The format of a file, found from its first bytes and not from its name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -102,8 +226,9 @@ pub enum Format {
 }
 
 /// A file the import does not read, with what the words of its refusal
-/// need. A line is a line of a text file, counted from 1; a row and a
-/// column of an xlsx are those of the sheet, from 1, column A being 1.
+/// need. A line is a line of a text file, counted from 1, and a column of
+/// a text file its place in the row, from 1; a row and a column of an
+/// xlsx are those of the sheet, from 1, column A being 1.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     /// A file larger than the caller's limit of bytes.
@@ -227,22 +352,31 @@ pub enum Refusal {
 ///
 /// # Errors
 ///
-/// [`ImportError::Refused`], with the format found, for a file of the
-/// refusals of `docs/specs/import.md`, the first in this order: a file
-/// larger than `options.max_bytes`, [`Refusal::TooLarge`]; a file of a
-/// format whose feature the build leaves out, [`Refusal::FormatNotBuilt`];
-/// then those of an xlsx: [`Refusal::OldExcel`], [`Refusal::Encrypted`],
-/// [`Refusal::NotWorkbook`] for a zip whose package relationships are
-/// missing or name no workbook in it, then [`Refusal::CellError`] and
-/// [`Refusal::SheetTooLarge`] in the order of the file, and
-/// [`Refusal::EmptySheet`].
+/// [`ImportError::Refused`], with the format found, for the first of the
+/// refusals of `docs/specs/import.md`, "The refusals", in this order:
 ///
-/// Then the refusals of the rows of `docs/specs/import.md`, "The rows":
-/// [`Refusal::HeaderError`], [`Refusal::Empty`], [`Refusal::UnnamedColumn`]
-/// for the run of empty names at the end of the header, then
-/// [`Refusal::UnnamedColumn`] elsewhere and [`Refusal::DuplicateColumn`],
-/// then row by row [`Refusal::EmptyIndividual`] and
-/// [`Refusal::DuplicateIndividual`].
+/// 1. a file larger than `options.max_bytes`, [`Refusal::TooLarge`];
+/// 2. a file of a format whose feature the build leaves out,
+///    [`Refusal::FormatNotBuilt`];
+/// 3. the refusals of an xlsx before its rows: [`Refusal::OldExcel`],
+///    [`Refusal::Encrypted`], [`Refusal::NotWorkbook`] for a zip whose
+///    package relationships, read before any other part, are missing or
+///    name no workbook in it, then the first in the order of the file of
+///    [`Refusal::CellError`] and [`Refusal::SheetTooLarge`], and
+///    [`Refusal::EmptySheet`] once every cell is read; or those of a text
+///    file before its rows, [`Refusal::CutShort`], [`Refusal::NotText`],
+///    [`Refusal::VariantsFile`], then [`Refusal::UnclosedQuote`];
+/// 4. [`Refusal::HeaderError`], an error of Excel in the header of an
+///    xlsx, the first by position;
+/// 5. no row below the header, [`Refusal::Empty`];
+/// 6. [`Refusal::UnnamedColumn`] for a column with no name and a value in
+///    the run of empty cells at the end of the header, the first by
+///    position;
+/// 7. [`Refusal::RaggedRow`], the first by line;
+/// 8. [`Refusal::UnnamedColumn`] for a column with no name and a value
+///    elsewhere, then [`Refusal::DuplicateColumn`], the first by position;
+/// 9. then, row by row in the order of the file,
+///    [`Refusal::EmptyIndividual`] or [`Refusal::DuplicateIndividual`].
 ///
 /// [`ImportError::Unreadable`] for an xlsx that cannot be read, with the
 /// messages of `docs/specs/read.md`; and, in this version, for every text
@@ -300,12 +434,19 @@ fn table_of_xlsx(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportE
         num_columns,
         cells,
     } = sheet;
-    let rows = rows_of_rectangle(first_row, num_rows, num_columns, cells)?;
+    let row_ends = row_ends_of_rectangle(first_row, num_rows, num_columns, cells.len())?;
+    // Each cell of the sheet made a cell of the table in the same buffer,
+    // the two types being of one size and alignment, so that the rows take
+    // no second copy of the slots of the sheet (docs/architecture.md,
+    // section 6).
+    let cells: Vec<crate::table::Cell<'static>> =
+        cells.into_iter().map(cell_of_sheet_cell).collect();
     crate::table::table_of_rows(
         crate::table::Rows {
             origin: crate::table::Origin::Xlsx,
             first_column,
-            rows,
+            cells,
+            row_ends,
         },
         HowRead::Xlsx { sheet: name },
     )
@@ -317,45 +458,48 @@ fn table_of_xlsx(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportE
 #[cfg(feature = "xlsx")]
 const RECTANGLE_NOT_ITS_CELLS: &str = "the rectangle of the sheet does not hold its cells";
 
-/// The rows of the rectangle of a sheet, `num_rows` rows of `num_columns`
-/// of `cells` from the row `first_row` of the sheet, each with its row.
+/// Where each row of the rectangle of a sheet ends among its `num_cells`
+/// cells, `num_rows` rows of `num_columns` from the row `first_row` of the
+/// sheet, each with its row.
 ///
 /// # Errors
 ///
-/// [`ImportError::Unreadable`] when `cells` are not `num_rows` ×
+/// [`ImportError::Unreadable`] when `num_cells` is not `num_rows` ×
 /// `num_columns`, or a row passes 4,294,967,295.
 #[cfg(feature = "xlsx")]
-fn rows_of_rectangle(
+fn row_ends_of_rectangle(
     first_row: u32,
     num_rows: u32,
     num_columns: u32,
-    cells: Vec<crate::xlsx::SheetCell>,
-) -> Result<Vec<crate::table::Row>, ImportError> {
+    num_cells: usize,
+) -> Result<Vec<crate::table::RowEnd>, ImportError> {
     let not_its_cells = || ImportError::Unreadable(RECTANGLE_NOT_ITS_CELLS.to_owned());
-    let num_cells = u64::from(num_rows).checked_mul(u64::from(num_columns));
-    if num_cells != u64::try_from(cells.len()).ok() {
+    if u64::from(num_rows).checked_mul(u64::from(num_columns)) != u64::try_from(num_cells).ok() {
         return Err(not_its_cells());
     }
     let row_length = usize::try_from(num_columns).map_err(|_| not_its_cells())?;
-    let mut cells = cells.into_iter().map(cell_of_sheet_cell);
-    let mut rows = Vec::new();
+    let mut row_ends = Vec::new();
+    let mut end: usize = 0;
     for row_offset in 0..num_rows {
-        rows.push(crate::table::Row {
+        end = end.checked_add(row_length).ok_or_else(not_its_cells)?;
+        row_ends.push(crate::table::RowEnd {
             place: first_row
                 .checked_add(row_offset)
                 .ok_or_else(not_its_cells)?,
-            cells: cells.by_ref().take(row_length).collect(),
+            end,
         });
     }
-    Ok(rows)
+    Ok(row_ends)
 }
 
 /// The cell of the table of a cell of the sheet.
 #[cfg(feature = "xlsx")]
-fn cell_of_sheet_cell(sheet_cell: crate::xlsx::SheetCell) -> crate::table::Cell {
+fn cell_of_sheet_cell(sheet_cell: crate::xlsx::SheetCell) -> crate::table::Cell<'static> {
     match sheet_cell {
         crate::xlsx::SheetCell::Empty => crate::table::Cell::Empty,
-        crate::xlsx::SheetCell::Text(cell_text) => crate::table::Cell::Text(cell_text),
+        crate::xlsx::SheetCell::Text(cell_text) => {
+            crate::table::Cell::Text(std::borrow::Cow::Owned(cell_text))
+        }
         crate::xlsx::SheetCell::Number(number) => crate::table::Cell::Number(number),
         crate::xlsx::SheetCell::Bool(is_true) => crate::table::Cell::Boolean(is_true),
     }
@@ -388,4 +532,22 @@ fn table_of_text(_bytes: &[u8], _options: &ImportOptions) -> Result<Table, Impor
         format: Format::Text,
         refusal: Refusal::FormatNotBuilt,
     })
+}
+
+#[cfg(all(test, feature = "xlsx"))]
+mod tests {
+    use crate::table::Cell;
+    use crate::xlsx::SheetCell;
+
+    // The cells of a sheet are made the cells of the table in their own
+    // buffer, which Rust's collect into a Vec does only for two types of
+    // one size and alignment; were they to differ, the rows would take a
+    // second copy of the slots of the sheet.
+    #[test]
+    fn a_cell_of_the_table_has_the_size_and_alignment_of_a_cell_of_the_sheet() {
+        assert_eq!(
+            (size_of::<Cell<'static>>(), align_of::<Cell<'static>>()),
+            (size_of::<SheetCell>(), align_of::<SheetCell>())
+        );
+    }
 }

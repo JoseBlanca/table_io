@@ -13,8 +13,7 @@ use crate::xlsx_tests::hand_written::{text_cell, xlsx_of_worksheet};
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
 
-/// The eight bytes every compound file of the old Office starts with.
-const COMPOUND_FILE_MARK: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+use crate::import::COMPOUND_FILE_MARK;
 
 #[test]
 fn a_csv_is_refused_as_not_an_xlsx() {

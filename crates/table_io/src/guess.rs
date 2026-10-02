@@ -3,16 +3,19 @@
 //! every value of the column, and the values made of that type. It is not
 //! public: an application asks for a type by converting a column to it.
 
+use std::borrow::Cow;
+
 use crate::types::{ColumnValues, boolean_text, integer_of_float};
 use crate::value::{DecimalMark, float_text, parse_boolean, parse_float, parse_integer};
 
 /// A value of a column of an import that is not missing, before the type
 /// of its column is guessed: a text, or a number or a boolean cell of an
-/// xlsx.
+/// xlsx. A text borrows from the text of its file where the module of
+/// the format made it no `String`, and becomes one only in a text column.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CellValue {
+pub(crate) enum CellValue<'text> {
     /// A text, its spaces at the ends removed.
-    Text(String),
+    Text(Cow<'text, str>),
     /// The number of a number cell of an xlsx, finite.
     Number(f64),
     /// The value of a boolean cell of an xlsx.
@@ -31,7 +34,10 @@ pub(crate) enum CellValue {
 /// written as JavaScript writes it, with `decimal`, and a boolean cell as
 /// `TRUE` or `FALSE`. The guess depends on the values and not on their
 /// order.
-pub(crate) fn guessed_column(values: Vec<Option<CellValue>>, decimal: DecimalMark) -> ColumnValues {
+pub(crate) fn guessed_column(
+    values: Vec<Option<CellValue<'_>>>,
+    decimal: DecimalMark,
+) -> ColumnValues {
     if values.iter().all(Option::is_none) {
         return ColumnValues::Text(vec![None; values.len()]);
     }
@@ -57,8 +63,8 @@ pub(crate) fn guessed_column(values: Vec<Option<CellValue>>, decimal: DecimalMar
 /// Each value read by `read`, a missing one left missing, or None when
 /// `read` gives None for one value.
 fn each_of_type<To>(
-    values: &[Option<CellValue>],
-    read: impl Fn(&CellValue) -> Option<To>,
+    values: &[Option<CellValue<'_>>],
+    read: impl Fn(&CellValue<'_>) -> Option<To>,
 ) -> Option<Vec<Option<To>>> {
     values
         .iter()
@@ -71,7 +77,7 @@ fn each_of_type<To>(
 
 /// The integer a value is: a text that is a whole number, or a number
 /// cell whose value is whole and from −2^63 to 2^63 − 1.
-fn integer_of_cell_value(cell_value: &CellValue) -> Option<i64> {
+fn integer_of_cell_value(cell_value: &CellValue<'_>) -> Option<i64> {
     match cell_value {
         CellValue::Text(cell_text) => parse_integer(cell_text),
         CellValue::Number(number) => integer_of_float(*number),
@@ -81,7 +87,7 @@ fn integer_of_cell_value(cell_value: &CellValue) -> Option<i64> {
 
 /// The float a value is: a text that is a number with `decimal`, or a
 /// number cell that is finite.
-fn float_of_cell_value(cell_value: &CellValue, decimal: DecimalMark) -> Option<f64> {
+fn float_of_cell_value(cell_value: &CellValue<'_>, decimal: DecimalMark) -> Option<f64> {
     match cell_value {
         CellValue::Text(cell_text) => parse_float(cell_text, decimal),
         CellValue::Number(number) => number.is_finite().then_some(*number),
@@ -90,7 +96,7 @@ fn float_of_cell_value(cell_value: &CellValue, decimal: DecimalMark) -> Option<f
 }
 
 /// The boolean a value is: a text that is a boolean, or a boolean cell.
-fn boolean_of_cell_value(cell_value: &CellValue) -> Option<bool> {
+fn boolean_of_cell_value(cell_value: &CellValue<'_>) -> Option<bool> {
     match cell_value {
         CellValue::Text(cell_text) => parse_boolean(cell_text),
         CellValue::Boolean(is_true) => Some(*is_true),
@@ -100,9 +106,9 @@ fn boolean_of_cell_value(cell_value: &CellValue) -> Option<bool> {
 
 /// The text of a value in a text column: a text as it is, a number cell as
 /// JavaScript writes it with `decimal`, a boolean cell `TRUE` or `FALSE`.
-fn text_of_cell_value(cell_value: CellValue, decimal: DecimalMark) -> String {
+fn text_of_cell_value(cell_value: CellValue<'_>, decimal: DecimalMark) -> String {
     match cell_value {
-        CellValue::Text(cell_text) => cell_text,
+        CellValue::Text(cell_text) => cell_text.into_owned(),
         CellValue::Number(number) => float_text(number, decimal),
         CellValue::Boolean(is_true) => boolean_text(is_true),
     }

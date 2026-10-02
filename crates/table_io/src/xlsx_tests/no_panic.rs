@@ -33,8 +33,7 @@ use crate::xlsx_tests::hand_written::stored_zip;
 /// `MAX_SHEET_CELLS` of popnei_web, the limit its light worker gives.
 const MAX_SHEET_CELLS: u32 = 2_000_000;
 
-/// The eight bytes every compound file of the old Office starts with.
-const COMPOUND_FILE_MARK: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+use crate::import::COMPOUND_FILE_MARK;
 
 /// An xlsx with every kind the spec names for this test: a hidden first
 /// sheet, then a sheet with a text, a number, a boolean, a date, a formula

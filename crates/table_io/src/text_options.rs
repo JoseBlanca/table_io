@@ -40,8 +40,8 @@ pub enum Separator {
 }
 
 /// What the caller sets for a text file; each option that is `None` is
-/// found from the file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// found from the file, which `Default` gives for all three.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TextOptions {
     /// The encoding of the file.
     pub encoding: Option<Encoding>,

@@ -1776,3 +1776,90 @@ fn spill_xlsx_is_a_header_error_of_value_at_a1() {
         })
     );
 }
+
+// The names of the first column and of the header, and the tabs at the
+// ends of a cell, each a break of the code no test above caught.
+
+#[test]
+fn na_and_a_dash_in_the_first_column_are_names() {
+    let import = import(&[
+        ("A1", Text("id")),
+        ("B1", Text("pop")),
+        ("A2", Text("NA")),
+        ("B2", Text("P1")),
+        ("A3", Text("-")),
+        ("B3", Text("P2")),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        import,
+        Ok(table(
+            "id",
+            1,
+            &["NA", "-"],
+            vec![column("pop", 2, texts(&[Some("P1"), Some("P2")]))],
+        ))
+    );
+}
+
+#[test]
+fn tabs_at_the_ends_of_a_value_are_removed() {
+    let import = import(&[
+        ("A1", Text("id")),
+        ("B1", Text("pop")),
+        ("A2", Text("A")),
+        ("B2", Text("\tP1\t")),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        import,
+        Ok(table(
+            "id",
+            1,
+            &["A"],
+            vec![column("pop", 2, texts(&[Some("P1")]))],
+        ))
+    );
+}
+
+#[test]
+fn an_error_after_a_tab_in_the_header_is_a_header_error() {
+    let import = import(&[
+        ("A1", Text("id")),
+        ("B1", Text("\t#REF!")),
+        ("A2", Text("A")),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        import,
+        refused(Refusal::HeaderError {
+            row: 1,
+            column: 2,
+            error: "#REF!".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn numbers_as_names_are_written_as_javascript_writes_them() {
+    let import = import(&[
+        ("A1", Text("id")),
+        ("B1", Number(1e21)),
+        ("A2", Number(1.5e-7)),
+        ("B2", Number(1.0)),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        import,
+        Ok(table(
+            "id",
+            1,
+            &["1.5e-7"],
+            vec![column("1e+21", 2, integers(&[Some(1)]))],
+        ))
+    );
+}

@@ -411,18 +411,22 @@ fn an_xlsx_without_its_workbook_is_refused_as_not_a_workbook() {
 
 /// The method of compression of a part of a zip: 8, deflate, which the
 /// zip crate reads, and 12, bzip2, which the build of table_io does not.
+#[cfg(feature = "xlsx")]
 const DEFLATE: u16 = 8;
 /// See [`DEFLATE`].
+#[cfg(feature = "xlsx")]
 const BZIP2: u16 = 12;
 
 /// The flag of a part of a zip saved with a password, bit 0 of its
 /// general purpose flags.
+#[cfg(feature = "xlsx")]
 const ENCRYPTED: u16 = 1;
 
 /// A zip of one part named `name`, whose bytes in the zip are `stored`,
 /// compressed by `method` with the flags `flags`, and which unzip to
 /// `size` bytes of CRC-32 `crc`: a local header and its bytes, the central
 /// directory that lists it, and the record that ends the zip.
+#[cfg(feature = "xlsx")]
 fn zip_of_one_part(
     name: &str,
     method: u16,
@@ -473,12 +477,14 @@ fn zip_of_one_part(
 
 /// The number of copies of 258 bytes after the first two in
 /// [`deflated_zeros_and_commas`], which make 310,000,160 bytes.
+#[cfg(feature = "xlsx")]
 const NUM_COPIES: u32 = 1_201_551;
 
 /// A deflate stream, of one block of the fixed codes, of `0,` repeated to
 /// 2 + 258 × [`NUM_COPIES`] bytes: the literals `0` and `,`, then each copy
 /// of 258 bytes from 2 bytes back, 13 bits, and the end of the block; about
 /// 2 MB for 310 MB.
+#[cfg(feature = "xlsx")]
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "a bit buffer of fewer than 64 bits, shifted by fewer than 64"
@@ -559,4 +565,99 @@ fn a_zip_of_one_part_saved_with_a_password_is_not_a_workbook() {
     let import = import_table(&bytes, &options_with_max_bytes(MAX_BYTES));
 
     assert_eq!(import, Err(refused(Format::Xlsx, Refusal::NotWorkbook)));
+}
+
+// What the types of the import give a caller besides their fields.
+
+#[test]
+fn the_decimal_mark_of_an_xlsx_is_the_point_and_of_a_text_file_its_own() {
+    let xlsx = table_io::HowRead::Xlsx {
+        sheet: "Hoja1".to_owned(),
+    };
+    let text = table_io::HowRead::Text(table_io::TextRead {
+        encoding: table_io::FoundEncoding::Windows1252,
+        separator: table_io::Separator::Semicolon,
+        decimal: table_io::DecimalMark::Comma,
+        undecoded_line: None,
+    });
+
+    assert_eq!(
+        (xlsx.decimal(), text.decimal()),
+        (table_io::DecimalMark::Point, table_io::DecimalMark::Comma)
+    );
+}
+
+#[test]
+fn the_default_options_of_a_text_file_find_all_three_from_the_file() {
+    assert_eq!(
+        TextOptions::default(),
+        TextOptions {
+            encoding: None,
+            separator: None,
+            decimal: None,
+        }
+    );
+}
+
+#[test]
+fn an_import_error_is_written_in_english_with_its_fields() {
+    let cases = [
+        (
+            refused(
+                Format::Text,
+                Refusal::TooLarge {
+                    size: 25,
+                    max_bytes: 20,
+                },
+            ),
+            "a text file refused: too large, 25 bytes, past the limit of 20 bytes",
+        ),
+        (
+            refused(Format::Xlsx, Refusal::FormatNotBuilt),
+            "an xlsx refused: a format this build of table_io does not read",
+        ),
+        (
+            refused(
+                Format::Xlsx,
+                Refusal::HeaderError {
+                    row: 6,
+                    column: 5,
+                    error: "#VALUE!".to_owned(),
+                },
+            ),
+            "an xlsx refused: the error #VALUE! in the header, at row 6 and column 5 of the sheet",
+        ),
+        (
+            refused(
+                Format::Text,
+                Refusal::RaggedRow {
+                    line: 3,
+                    expected: 2,
+                    found: 1,
+                    separator: table_io::Separator::Comma,
+                },
+            ),
+            "a text file refused: line 3 has 1 cells where the header has 2, split at ','",
+        ),
+        (
+            refused(
+                Format::Xlsx,
+                Refusal::DuplicateIndividual {
+                    name: "A".to_owned(),
+                    first_row: 2,
+                    second_row: 3,
+                },
+            ),
+            "an xlsx refused: the individual 'A' is in the rows 2 and 3",
+        ),
+        (
+            ImportError::Unreadable("Invalid checksum".to_owned()),
+            "an unreadable file: Invalid checksum",
+        ),
+    ];
+
+    for (import_error, text) in cases {
+        let as_error: &dyn std::error::Error = &import_error;
+        assert_eq!(as_error.to_string(), text);
+    }
 }

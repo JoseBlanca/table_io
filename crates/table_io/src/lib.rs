@@ -1,12 +1,22 @@
 //! Reads the first worksheet that is not hidden of an xlsx into its cells,
-//! as `docs/specs/read.md` gives them.
+//! as `docs/specs/read.md` gives them, and gives the rules of a value of
+//! `docs/specs/values.md`: whether a text is missing, the whole number,
+//! the number or the boolean it holds, and the text of a float as
+//! JavaScript writes it.
 //!
 //! The reading of an xlsx is behind the cargo feature `xlsx`, with
 //! calamine, zip and quick-xml, so that a build without it compiles none
-//! of them (`docs/architecture.md`, section 5). The feature `csv` holds
-//! nothing yet. Both are on by default.
+//! of them (`docs/architecture.md`, section 5); the rules of a value are
+//! behind no feature. The feature `csv` holds nothing yet. Both are on by
+//! default.
 
 #![forbid(unsafe_code)]
+
+mod value;
+
+pub use crate::value::{
+    DecimalMark, float_text, is_missing, parse_boolean, parse_float, parse_integer,
+};
 
 #[cfg(feature = "xlsx")]
 mod attrs;

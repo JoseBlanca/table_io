@@ -26,8 +26,8 @@ import init, {
 } from "../wasm/table_io.js";
 import { workbookParts, sheetXml, xlsxOf, zipOf } from "./xlsx.js";
 
-/** MAX_FILE_BYTES of popnei_web, 50 MB, the limit of bytes its light worker gives. */
-const MAX_BYTES = 50_000_000;
+/** MAX_INDIVIDUALS_FILE_BYTES of popnei_web, 20 MB, the limit of bytes its light worker gives. */
+const MAX_BYTES = 20_000_000;
 /** MAX_SHEET_CELLS of popnei_web, the limit of cells its light worker gives. */
 const MAX_CELLS = 2_000_000;
 
@@ -51,8 +51,11 @@ function dataFile(name) {
  * MAX_CELLS and every option to be found unless given, gives back every
  * field of what importTable returns and each column's, and frees it.
  */
-function fieldsOfImport(bytes, { maxBytes = MAX_BYTES, maxCells = MAX_CELLS } = {}) {
-    const read = importTable(bytes, maxBytes, maxCells, "", "", "");
+function fieldsOfImport(
+    bytes,
+    { maxBytes = MAX_BYTES, maxCells = MAX_CELLS, encoding = "", separator = "", decimal = "" } = {},
+) {
+    const read = importTable(bytes, maxBytes, maxCells, encoding, separator, decimal);
     try {
         const columns = [];
         for (let index = 0; index < read.numColumns; index++) {
@@ -274,6 +277,168 @@ test("a ragged row of a text file is refused with its line, its cells, the heade
         expected: 4,
         found: 2,
         separator: "semicolon",
+    });
+});
+
+// The owner's excel_es.csv, saved by Excel in Spanish on Windows as "CSV
+// (delimitado por comas)" ("How it is verified" of docs/specs/package.md).
+test("excel_es.csv is read as Windows-1252 with semicolons and the comma", { skip: "waits for tests/data/excel_es.csv, made by the owner" }, async () => {
+    const fields = fieldsOfImport(await dataFile("excel_es.csv"));
+
+    assert.deepEqual(
+        [fields.refusal, fields.format, fields.encoding, fields.separator, fields.decimal, fields.undecodedLine],
+        ["", "text", "windows-1252", "semicolon", "comma", undefined],
+    );
+});
+
+// Each byte of Windows-1252 that is not ASCII, ó, í, ú, is not UTF-8, and
+// so is the replacement character, the first on line 1.
+test("written.csv read with the encoding set to utf-8 shows the replacement character from line 1", async () => {
+    const fields = fieldsOfImport(await dataFile("written.csv"), { encoding: "utf-8" });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "utf-8",
+        separator: "semicolon",
+        decimal: "comma",
+        undecodedLine: 1,
+        namesHeader: "Individuo",
+        namesNumber: 1,
+        names: ["ind1", "ind2", "ind3", "ind4"],
+        numColumns: 4,
+        columns: [
+            column("Poblaci\uFFFDn", 2, "text", ["Andaluc\uFFFDa", "Castilla; Le\uFFFDn", "Murcia", "Murcia"]),
+            column("Altura", 3, "float", [1.75, 1.62, null, 1.55]),
+            column("N\uFFFDmero", 4, "integer", [1152921504606846977n, -3n, null, 12n]),
+            column("Afectado", 5, "boolean", [true, false, true, false]),
+        ],
+    });
+});
+
+// Split at the comma, the header is one cell and the row of ind1, whose
+// height is 1,75, two.
+test("written.csv read with the separator set to comma is refused at its first row with a comma", async () => {
+    const fields = fieldsOfImport(await dataFile("written.csv"), { separator: "comma" });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        refusal: "raggedRow",
+        format: "text",
+        line: 2,
+        expected: 1,
+        found: 2,
+        separator: "comma",
+    });
+});
+
+test("written.csv read with the decimal mark set to point has its heights as text", async () => {
+    const fields = fieldsOfImport(await dataFile("written.csv"), { decimal: "point" });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "windows-1252",
+        separator: "semicolon",
+        decimal: "point",
+        namesHeader: "Individuo",
+        namesNumber: 1,
+        names: ["ind1", "ind2", "ind3", "ind4"],
+        numColumns: 4,
+        columns: [
+            column("Población", 2, "text", ["Andalucía", "Castilla; León", "Murcia", "Murcia"]),
+            column("Altura", 3, "text", ["1,75", "1,62", null, "1,55"]),
+            column("Número", 4, "integer", [1152921504606846977n, -3n, null, 12n]),
+            column("Afectado", 5, "boolean", [true, false, true, false]),
+        ],
+    });
+});
+
+// The text of UTF-8 `Población` read as Windows-1252, each of the two bytes
+// of ó a character.
+test("a file of UTF-8 read with the encoding set to windows-1252 shows each byte as a character", () => {
+    const fields = fieldsOfImport(utf8("id;Población\nA;x\n"), { encoding: "windows-1252" });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "windows-1252",
+        separator: "semicolon",
+        decimal: "point",
+        namesHeader: "id",
+        namesNumber: 1,
+        names: ["A"],
+        numColumns: 1,
+        columns: [column("PoblaciÃ³n", 2, "text", ["x"])],
+    });
+});
+
+test("a file of commas read with the separator set to semicolon is one column", () => {
+    const fields = fieldsOfImport(utf8("id,pop\nA,P1\n"), { separator: "semicolon" });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "utf-8",
+        separator: "semicolon",
+        decimal: "point",
+        namesHeader: "id,pop",
+        namesNumber: 1,
+        names: ["A,P1"],
+        numColumns: 0,
+        columns: [],
+    });
+});
+
+test("a quoted number read with the comma as separator and the decimal mark set to comma is a float", () => {
+    const fields = fieldsOfImport(utf8('id,h\nA,"1,5"\n'), { decimal: "comma" });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "utf-8",
+        separator: "comma",
+        decimal: "comma",
+        namesHeader: "id",
+        namesNumber: 1,
+        names: ["A"],
+        numColumns: 1,
+        columns: [column("h", 2, "float", [1.5])],
+    });
+});
+
+// The mark FF FE and two bytes for each character, little endian, as
+// Excel writes "Unicode Text".
+test("a file of UTF-16 little endian with its mark is read as utf-16 with the tab", () => {
+    const text = "id\tpop\nA\tP1\n";
+    const bytes = new Uint8Array(2 + 2 * text.length);
+    bytes.set([0xff, 0xfe]);
+    for (let index = 0; index < text.length; index++) {
+        const unit = text.charCodeAt(index);
+        bytes.set([unit & 0xff, unit >> 8], 2 + 2 * index);
+    }
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "utf-16",
+        separator: "tab",
+        decimal: "point",
+        namesHeader: "id",
+        namesNumber: 1,
+        names: ["A"],
+        numColumns: 1,
+        columns: [column("pop", 2, "text", ["P1"])],
+    });
+});
+
+test("a quote never closed is refused as unclosedQuote with the line of its cell and the separator", () => {
+    assert.deepEqual(fieldsOfImport(utf8('id,pop\nA,"P1\nB,P2\n')), {
+        ...NO_TABLE,
+        refusal: "unclosedQuote",
+        format: "text",
+        line: 2,
+        separator: "comma",
     });
 });
 

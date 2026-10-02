@@ -11,6 +11,9 @@
 #![cfg(feature = "xlsx")]
 
 #[cfg(test)]
+mod generated;
+
+#[cfg(test)]
 mod written {
     use std::io::Cursor;
 
@@ -839,5 +842,186 @@ mod written {
         assert_eq!(table.names.header, "\u{FEFF}#CHROM");
         assert_eq!(table.columns[0].name, "ő");
         assert_eq!(table.columns[0].values, texts(&[Some("€")]));
+    }
+}
+
+// The round trip of "What reads back" of docs/specs/export.md, for an
+// xlsx, over the tables of the round trip of a CSV.
+#[cfg(test)]
+mod round_trip {
+    use table_io::{
+        Column, ColumnType, ColumnValues, DecimalMark, ExportError, ExportFormat, ExportRefusal,
+        ImportOptions, NameColumn, TextOptions, convert_column, export_table, import_table,
+        is_missing,
+    };
+
+    use crate::generated::{
+        Generator, MAX_REPAIRS, NUM_TABLES, SEED, generated_table, is_all_missing,
+        is_due_in_every_format, narrowest_type_of_texts, repaired, text_at,
+    };
+
+    /// 2^53, beyond which, either side, an integer is refused.
+    const TWO_TO_THE_53: i64 = 9_007_199_254_740_992;
+
+    /// 2^63, the first whole number past the integers.
+    const TWO_TO_THE_63: f64 = 9_223_372_036_854_775_808.0;
+
+    /// The seven errors of Excel, as the import of an xlsx reads them.
+    const EXCEL_ERRORS: [&str; 7] = [
+        "#N/A", "#DIV/0!", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!",
+    ];
+
+    /// Asserts that `refusal` of `names` and `columns`, exported as an
+    /// xlsx, is due by the rule of the spec it names.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "a refusal of a value names a column from 2 and a row from 1"
+    )]
+    fn assert_due(names: &NameColumn, columns: &[Column], refusal: &ExportRefusal) {
+        let mut names_copy = names.clone();
+        let mut columns_copy = columns.to_vec();
+        let mut text_of = |place| text_at(&mut names_copy, &mut columns_copy, place).clone();
+        let is_due =
+            is_due_in_every_format(names, columns, refusal).unwrap_or_else(|| match refusal {
+                ExportRefusal::ReadsAsMissing { place } => {
+                    let text = text_of(*place);
+                    is_missing(&text) || EXCEL_ERRORS.contains(&text.as_str())
+                }
+                ExportRefusal::ErrorAsName { place } => {
+                    place.row == 0 && EXCEL_ERRORS.contains(&text_of(*place).as_str())
+                }
+                ExportRefusal::SpacesAtEnds { place } => {
+                    let text = text_of(*place);
+                    text.starts_with([' ', '\t']) || text.ends_with([' ', '\t'])
+                }
+                ExportRefusal::IntegerTooLarge { place } => {
+                    let row = usize::try_from(place.row).unwrap() - 1;
+                    match &columns[usize::try_from(place.column).unwrap() - 2].values {
+                        ColumnValues::Integer(integers) => integers[row].is_some_and(|integer| {
+                            integer.unsigned_abs() > TWO_TO_THE_53.unsigned_abs()
+                        }),
+                        ColumnValues::Float(_)
+                        | ColumnValues::Boolean(_)
+                        | ColumnValues::Text(_) => false,
+                    }
+                }
+                ExportRefusal::CannotCarry { place, character } => {
+                    text_of(*place).chars().find(|&text_character| {
+                        text_character == '\u{FFFE}' || text_character == '\u{FFFF}'
+                    }) == Some(*character)
+                }
+                ExportRefusal::FormatNotBuilt
+                | ExportRefusal::NoIndividual
+                | ExportRefusal::WrongLength { .. }
+                | ExportRefusal::EmptyName { .. }
+                | ExportRefusal::DuplicateName { .. }
+                | ExportRefusal::EmptyIndividual { .. }
+                | ExportRefusal::DuplicateIndividual { .. }
+                | ExportRefusal::NotFinite { .. }
+                | ExportRefusal::TextTooLong { .. }
+                | ExportRefusal::TooLargeForSheet { .. }
+                | ExportRefusal::ReadsAsVariantsFile => false,
+            });
+        assert!(
+            is_due,
+            "a refusal not due: {refusal:?} of {names:?} {columns:?}"
+        );
+    }
+
+    /// The type a column of `values` reads back as from an xlsx, by "What
+    /// reads back": text when every value is missing; integer for a float
+    /// column whose every value is whole and from −2^63 to 2^63 − 1; for a
+    /// text column the narrowest type of its values, read with the point;
+    /// else its own.
+    fn type_read_back(values: &ColumnValues) -> ColumnType {
+        if is_all_missing(values) {
+            return ColumnType::Text;
+        }
+        match values {
+            ColumnValues::Text(texts) => narrowest_type_of_texts(texts, DecimalMark::Point),
+            ColumnValues::Float(floats) => {
+                let is_all_integers = floats.iter().flatten().all(|float| {
+                    float.fract() == 0.0 && (-TWO_TO_THE_63..TWO_TO_THE_63).contains(float)
+                });
+                if is_all_integers {
+                    ColumnType::Integer
+                } else {
+                    ColumnType::Float
+                }
+            }
+            ColumnValues::Integer(_) | ColumnValues::Boolean(_) => values.column_type(),
+        }
+    }
+
+    #[test]
+    fn a_table_exported_as_an_xlsx_reads_back_as_itself() {
+        let mut generator = Generator { state: SEED };
+        let options = ImportOptions {
+            max_bytes: 20_000_000,
+            max_cells: 2_000_000,
+            text: TextOptions {
+                encoding: None,
+                separator: None,
+                decimal: None,
+            },
+        };
+        let mut num_exported = 0_u32;
+        let mut num_no_individual = 0_u32;
+        let mut num_repaired = 0_u32;
+        let mut num_narrowed = 0_u32;
+        for _ in 0..NUM_TABLES {
+            let (mut names, mut columns) = generated_table(&mut generator);
+            let mut num_repairs = 0_u32;
+            let bytes = loop {
+                match export_table(&names, &columns, &ExportFormat::Xlsx) {
+                    Ok(bytes) => break Some(bytes),
+                    Err(ExportError::Refused(ExportRefusal::NoIndividual)) => break None,
+                    Err(ExportError::Refused(refusal)) => {
+                        num_repairs += 1;
+                        assert!(num_repairs <= MAX_REPAIRS, "{refusal:?}");
+                        assert_due(&names, &columns, &refusal);
+                        repaired(&mut names, &mut columns, &refusal, num_repairs);
+                    }
+                    Err(error) => panic!("{error:?} of {names:?} {columns:?}"),
+                }
+            };
+            let Some(bytes) = bytes else {
+                assert!(names.names.is_empty());
+                num_no_individual += 1;
+                continue;
+            };
+            num_exported += 1;
+            if num_repairs > 0 {
+                num_repaired += 1;
+            }
+            let context = format!("{names:?} {columns:?}");
+
+            let table = import_table(&bytes, &options).expect(&context);
+
+            assert_eq!(table.names.header, names.header, "{context}");
+            assert_eq!(table.names.names, names.names, "{context}");
+            assert_eq!(table.columns.len(), columns.len(), "{context}");
+            for (read_column, column) in table.columns.iter().zip(&columns) {
+                assert_eq!(read_column.name, column.name, "{context}");
+                let read_type = type_read_back(&column.values);
+                if read_type != column.values.column_type() {
+                    num_narrowed += 1;
+                }
+                assert_eq!(
+                    Ok(&read_column.values),
+                    convert_column(&column.values, read_type, DecimalMark::Point).as_ref(),
+                    "{context}"
+                );
+            }
+        }
+        // The counts the report gives, and a check that each kind of table
+        // was met.
+        assert_eq!(num_exported + num_no_individual, NUM_TABLES);
+        assert!(num_no_individual > 0 && num_repaired > 100 && num_narrowed > 100);
+        println!(
+            "{NUM_TABLES} tables exported as an xlsx: {num_exported} read back, {num_repaired} \
+             of them made again after a refusal, {num_no_individual} refused for no \
+             individual; {num_narrowed} columns read back as another type"
+        );
     }
 }

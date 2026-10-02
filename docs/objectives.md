@@ -33,13 +33,13 @@ sheet chosen, the dates and the merged cells of an xlsx. The **table**
 comes out of the cells by rules that are the same for every format: the
 blank rows skipped, the header, which cells are missing values, the first
 column, and the refusals. The **types** of the columns come last: which
-columns hold numbers, whole numbers, booleans, categories or text,
-guessed by the owner's rule, which the user can change later. All three
-are the same in both applications. The types are the five of Vavilov
-Explorer, numeric, integer, text, boolean and categorical; popnei_web,
-which gives its columns types of its own today, identifier, binary,
-continuous and categorical, works the roles its analyses need out of
-the five in its own code.
+columns hold whole numbers, numbers, booleans or text, the four types
+values have in a file, which the user can change later. All three are
+the same in both applications. What a column means beyond its type,
+whether it is a categorical column of populations, binary, a code, is
+each application's: Vavilov Explorer makes its categorical columns from
+the integer and text columns table_io gives, and popnei_web the binary,
+continuous and categorical columns its analyses need.
 
 The two applications use the library in two ways. **Vavilov Explorer**,
 whose backend is Rust, depends on the library by git, at a revision it
@@ -101,12 +101,9 @@ part of it that a user of the crate can leave out when it is compiled.
 4. **What it writes reads back.** A table exported as a CSV, with any
    separator, decimal mark, encoding and text of a missing value the
    user chooses, or as an xlsx, and imported again, gives the same names,
-   values and types, but where the owner's rule that tells a categorical
-   column from a text one decides otherwise: a column is guessed
-   categorical when some value appears in more than one row and it has
-   fewer than 20 distinct values, so a categorical column of 20
-   populations comes back as text, and a text column of a few repeated
-   values comes back categorical. A value that could not read back, a
+   values and types, but where a column's values read as a narrower type
+   than the one it was written with: a text column of numbers comes back
+   a column of numbers. A value that could not read back, a
    character Windows-1252 does not have, or a text that the import would
    take for missing, empty, `NA` or `-`, whatever the user chose to write
    for a missing value, is a refusal that names its column and row, never

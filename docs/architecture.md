@@ -74,20 +74,20 @@ gets bytes.
   read, its format, and for a text file the encoding, the separator, the
   decimal mark and the line of the first character that could not be
   decoded and stands as �, or for
-  an xlsx the name of the sheet; and the warnings of its columns, such as
-  a column of few whole numbers that may be codes of populations. No part
-  of a table is given with a refusal.
-- **The types** are five, the owner's of `table_io-needs.md`, section 3:
-  numeric, 64-bit floats; integer, 64-bit integers; boolean; text; and
-  categorical, its levels in alphabetical order and for each row the
-  level it holds. The import guesses each column's type by the owner's
-  rule: integer when every value is a whole number, numeric when every
-  value is a number, boolean when every value is `TRUE` or `FALSE` in any
-  case or a boolean cell of an xlsx, categorical when a value appears in
-  more than one row and the column has fewer than 20 distinct values,
-  and text otherwise.
-- **The conversion** of a column to another type, called when the user
-  changes it, reads the values by the rules of the import, with the
+  an xlsx the name of the sheet. No part of a table is given with a
+  refusal.
+- **The types** are four, the types the values have in the file, with
+  Arrow's, the format of columns in memory that Parquet and polars use,
+  as the guide, as the owner decided on 2 October 2026: integer, 64-bit
+  integers, Arrow's `Int64`; float, 64-bit floats, `Float64`; boolean;
+  and text. The import gives each column the narrowest that holds every
+  value: integer when every value is a whole number within the range of
+  a 64-bit integer, written without a decimal mark or an exponent in a
+  text file, a whole number cell in an xlsx; float when every value is a
+  number; boolean when every value is `TRUE` or `FALSE` in any case, or
+  a boolean cell of an xlsx; text otherwise.
+- **The conversion** of a column to another of the four types, called
+  when the user changes it, reads the values by the rules of the import, with the
   decimal mark the import used, and gives the new column or, when some
   value does not convert, how many do not and the first of them with its
   row. The rules of a value, whether a text is missing and the number,
@@ -103,19 +103,19 @@ So a CSV saved with the name `.xlsx`, which popnei_web refuses today with
 words that ask the user to rename it, is read as the CSV it is, and the
 table says it was read as text.
 
-One set of types serves both applications. Vavilov Explorer shows them
-as they are. popnei_web, whose analyses need a binary column, a
-continuous one and a column of populations, works those roles out from
-the five types and their values in its own code: a column of two
-distinct values, for instance, whether categorical, boolean or integer,
-is what its association analyses can take as binary, and which of the
-two is the case stays its choice. Its four types of today, identifier,
-binary, continuous and categorical, are not in table_io. Inside the
-library the guess is made in two parts, the **facts of a column**,
-worked out once from its values, how many distinct values it has,
-whether one repeats, whether every value is a number, a whole number or
-a boolean, and the type chosen from them in a few lines, so that a rule
-changed by the owner changes those lines and not the reading.
+What a column means is the caller's, built on these types. Whether a
+column is categorical, a classification of populations, is the choice
+of each application, by its own rule, and so are its levels, their order
+and the codes of its rows: Vavilov Explorer makes a categorical column
+of a text or an integer column with a repeated value and fewer than 20
+distinct values, by the owner's rule of its `table_io-needs.md`, section
+3, and warns of a column of few whole numbers that may be codes of
+populations; popnei_web works out the binary, continuous and categorical
+columns its analyses need, and which value of a binary column is the
+case. Neither of them is in table_io. The option not taken was a
+categorical type in table_io with Vavilov Explorer's rule, which would
+have put one application's rule of meaning into the reading both
+share.
 
 ## 3. An import, from the bytes to the table
 
@@ -211,8 +211,8 @@ user, and gives the bytes of a new file or a refusal (Vavilov Explorer's
   separator, a quote or a line break.
 - **An xlsx**, in the module `xlsx`, with rust_xlsxwriter: one sheet, the
   names in the first row, a number as a number cell, a boolean as a
-  boolean cell, a text or a category as a text cell, a missing value as
-  an empty cell.
+  boolean cell, a text as a text cell, a missing value as an empty
+  cell. A categorical column of the application is given as text.
 - **A refusal** names the column and the row of a value that would not
   read back as itself: a character Windows-1252 does not have, and a text
   that the import would take for missing, empty, `NA` or `-`, whatever
@@ -220,11 +220,12 @@ user, and gives the bytes of a new file or a refusal (Vavilov Explorer's
 
 An export and an import of each format are tested together: a table
 exported with each choice of the CSV and as an xlsx, and imported again,
-gives its names, values and types back, but where the rule that tells a
-categorical column from a text one guesses the other: a categorical
-column of 20 levels or more, or with no value in two rows, comes back
-text, and a text column with a repeated value and fewer than 20 distinct
-values comes back categorical.
+gives its names, values and types back, but where the values of a column
+read as a narrower type than the one it was written with: a text column
+whose every value is a number comes back integer or float, and one of
+`TRUE` and `FALSE` boolean; and a float column whose every value is
+whole comes back integer from an xlsx, which keeps the number and not
+how it was written. The export spec gives the full list.
 
 ## 5. Each format a feature
 
@@ -370,6 +371,14 @@ that its development build does not stop at a panic of calamine on a
 damaged xlsx that its release build and table_io's tests pass through
 (section 11).
 
+What Vavilov Explorer's `table_io-needs.md` asked of table_io and is now
+its own, by the owner's decision of 2 October 2026 on the types: the
+categorical type, the guess of which columns are categorical, their
+levels in alphabetical order and the code of each row, and the warning
+of a column of few whole numbers. Its import makes them from the integer
+and text columns table_io gives, and its export gives a categorical
+column to table_io as text.
+
 ## 9. What the rename changes
 
 - **The crates.** `crates/xlsx_rs` becomes `crates/table_io`, and
@@ -410,7 +419,7 @@ damaged xlsx that its release build and table_io's tests pass through
   lint that lets only that file import it; the package loaded for every
   table and not only for an xlsx; its reader of a text file in
   TypeScript, `src/worker/individuals/`, and its inference of the types,
-  replaced by the import; its four types replaced by the five of table_io,
+  replaced by the import; its four types replaced by the four of table_io,
   with the roles its analyses need worked out from them (section 2), in
   its project, its project file and its screens; the words of the
   refusals that change, the CSV renamed `.xlsx` that is now read; and

@@ -12,7 +12,7 @@ repository.workspace = true
 # 5): a build with `csv` alone compiles none of the dependencies of `xlsx`.
 default = ["csv", "xlsx"]
 csv = []
-xlsx = ["dep:calamine", "dep:zip", "dep:quick-xml"]
+xlsx = ["dep:calamine", "dep:zip", "dep:quick-xml", "dep:rust_xlsxwriter"]
 
 [dependencies]
 # The version popnei_web's docs/technology.md measured. Its default features
@@ -26,10 +26,18 @@ calamine = { version = "=0.36.1", default-features = false, optional = true }
 # each. Upgraded with calamine.
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"], optional = true }
 quick-xml = { version = "=0.41.0", features = ["encoding"], optional = true }
+# The writer of the export of an xlsx, approved by the owner on 2 October
+# 2026, with which the tests write their xlsx files in memory too. Its
+# default features are none; `constant_memory`, which writes the sheet to
+# a file of the file system as it goes, is left off, since the library
+# uses no file system, so the sheet is held in memory until it is saved.
+# It takes zip 8.6.0 with `deflate`, the copy and the features calamine
+# takes.
+rust_xlsxwriter = { version = "=0.99.1", default-features = false, optional = true }
 
 [dev-dependencies]
-# The xlsx files of the tests are written in memory; the library the writer
-# of popnei_web's stage 6 will write with, in the tests only until then.
+# The same, for the tests of a build without `xlsx`, which write an xlsx in
+# memory to see it refused or too large.
 rust_xlsxwriter = { version = "=0.99.1", default-features = false }
 
 [lints]

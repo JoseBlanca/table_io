@@ -3,9 +3,14 @@
 //! import reads an xlsx with it, through [`import_sheet`]; it is private to
 //! the library (`docs/specs/import.md`, "The Rust interface"), and
 //! [`read_first_sheet`], with its own refusals, is kept for the tests of
-//! `src/xlsx_tests/`, which assert the cells of `docs/specs/read.md`.
+//! `src/xlsx_tests/`, which assert the cells of `docs/specs/read.md`. Its
+//! module `write` writes a table as an xlsx for the export, with
+//! rust_xlsxwriter. It is behind the feature `xlsx`.
 
 use std::io::Cursor;
+
+mod write;
+pub(crate) use write::xlsx_of_table;
 
 use calamine::{Reader, SheetType, SheetVisible, Xlsx, XlsxError};
 

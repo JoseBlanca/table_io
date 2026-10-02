@@ -330,7 +330,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo wasm-check
 cargo clippy -p table_io --no-default-features --features csv --all-targets -- -D warnings
 cargo clippy -p table_io --no-default-features --features xlsx --all-targets -- -D warnings
-! cargo tree -p table_io -e normal --no-default-features --features csv | grep -E 'calamine|zip|quick-xml'
+! cargo tree -p table_io -e normal --no-default-features --features csv | grep -E 'calamine|zip|quick-xml|rust_xlsxwriter'
 cd js/table_io && npm run build && npm test
 ```
 

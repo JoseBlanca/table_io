@@ -403,7 +403,7 @@ fn non_blank_rows(cells: &[Cell<'_>], row_ends: &[RowEnd]) -> Result<Vec<RowSpan
 }
 
 /// Whether a text is one of the seven errors of Excel.
-fn is_excel_error(cell_text: &str) -> bool {
+pub(crate) fn is_excel_error(cell_text: &str) -> bool {
     EXCEL_ERRORS.contains(&cell_text)
 }
 

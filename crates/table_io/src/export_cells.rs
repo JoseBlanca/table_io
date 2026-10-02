@@ -208,7 +208,7 @@ fn number_from(index: usize, first: u32) -> u32 {
 }
 
 /// A count of names or of values, 4,294,967,295 past it.
-fn count_of(length: usize) -> u32 {
+pub(crate) fn count_of(length: usize) -> u32 {
     u32::try_from(length).unwrap_or(u32::MAX)
 }
 

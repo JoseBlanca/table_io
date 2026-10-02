@@ -69,8 +69,8 @@ pub struct CellPlace {
 /// 4,294,967,295.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportRefusal {
-    /// A format whose cargo feature the build leaves out; in this version
-    /// an xlsx in every build, since its writer is not there yet.
+    /// A format whose cargo feature the build leaves out: a CSV without
+    /// `csv`, an xlsx without `xlsx`.
     FormatNotBuilt,
     /// A table with no individual, a header alone, which the import
     /// refuses as empty.
@@ -147,7 +147,8 @@ pub enum ExportRefusal {
     },
     /// A character the file cannot carry, never replaced: in a CSV, U+0000,
     /// a U+FEFF at the start of the name of the names' column, and in
-    /// Windows-1252 a character it does not have.
+    /// Windows-1252 a character it does not have; in an xlsx, U+FFFE and
+    /// U+FFFF, which read back as the texts `_xFFFE_` and `_xFFFF_`.
     CannotCarry {
         /// The cell.
         place: CellPlace,
@@ -306,7 +307,11 @@ fn write_refusal(
 /// missing value as the text chosen; a cell in quotes, a `"` inside
 /// doubled, when it holds the separator, a `"`, `\r` or `\n`, or a space
 /// or a tab at its start or its end; every line ended by `\r\n`, the last
-/// one included.
+/// one included. An xlsx has one sheet, `Sheet1`, the header in its first
+/// row from A1 and a row for each individual below: a float and an
+/// integer as a number cell, a boolean as a boolean cell, a text as a
+/// text cell, and a missing value, and an empty name of the names'
+/// column, as no cell.
 ///
 /// # Errors
 ///
@@ -315,7 +320,7 @@ fn write_refusal(
 /// xlsx only an xlsx gives:
 ///
 /// 1. [`ExportRefusal::FormatNotBuilt`]: a CSV in a build without the
-///    feature `csv`, and an xlsx in every build of this version;
+///    feature `csv`, an xlsx in one without `xlsx`;
 /// 2. [`ExportRefusal::WrongLength`], the first such column from left to
 ///    right;
 /// 3. [`ExportRefusal::NoIndividual`];
@@ -328,7 +333,8 @@ fn write_refusal(
 ///    (xlsx); of a name of an individual,
 ///    [`ExportRefusal::EmptyIndividual`],
 ///    [`ExportRefusal::DuplicateIndividual`]; of a value,
-///    [`ExportRefusal::ReadsAsMissing`], [`ExportRefusal::NotFinite`],
+///    [`ExportRefusal::ReadsAsMissing`], an error of Excel among them in
+///    an xlsx, [`ExportRefusal::NotFinite`],
 ///    [`ExportRefusal::IntegerTooLarge`] (xlsx); and of any text,
 ///    [`ExportRefusal::SpacesAtEnds`] (xlsx),
 ///    [`ExportRefusal::TextTooLong`] (xlsx) and
@@ -343,7 +349,7 @@ pub fn export_table(
 ) -> Result<Vec<u8>, ExportError> {
     let is_built = match format {
         ExportFormat::Csv(_) => cfg!(feature = "csv"),
-        ExportFormat::Xlsx => false,
+        ExportFormat::Xlsx => cfg!(feature = "xlsx"),
     };
     if !is_built {
         return Err(ExportError::Refused(ExportRefusal::FormatNotBuilt));
@@ -356,7 +362,7 @@ pub fn export_table(
     }
     match format {
         ExportFormat::Csv(csv_export) => csv_file(names, columns, csv_export),
-        ExportFormat::Xlsx => Err(ExportError::Refused(ExportRefusal::FormatNotBuilt)),
+        ExportFormat::Xlsx => xlsx_file(names, columns),
     }
 }
 
@@ -379,5 +385,18 @@ fn csv_file(
     _columns: &[Column],
     _csv_export: &CsvExport,
 ) -> Result<Vec<u8>, ExportError> {
+    Err(ExportError::Refused(ExportRefusal::FormatNotBuilt))
+}
+
+/// The bytes of the xlsx of the table, whose shape is checked.
+#[cfg(feature = "xlsx")]
+fn xlsx_file(names: &NameColumn, columns: &[Column]) -> Result<Vec<u8>, ExportError> {
+    crate::xlsx::xlsx_of_table(names, columns)
+}
+
+/// The refusal of an xlsx in a build without the feature `xlsx`, which
+/// [`export_table`] gives before it calls this.
+#[cfg(not(feature = "xlsx"))]
+fn xlsx_file(_names: &NameColumn, _columns: &[Column]) -> Result<Vec<u8>, ExportError> {
     Err(ExportError::Refused(ExportRefusal::FormatNotBuilt))
 }

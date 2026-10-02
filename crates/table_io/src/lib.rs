@@ -3,15 +3,16 @@
 //! `docs/specs/values.md` gives: whether a text is missing, the whole
 //! number, the number or the boolean it holds, the text of a float as
 //! JavaScript writes it, the four types of a column, and the conversion of
-//! a column to another type. It writes a table as a new CSV with
+//! a column to another type. It writes a table as a new CSV or xlsx with
 //! [`export_table`], as `docs/specs/export.md` gives it, or refuses a
 //! table that would not read back as itself.
 //!
-//! The reading of an xlsx is behind the cargo feature `xlsx`, with
-//! calamine, zip and quick-xml, so that a build without it compiles none
-//! of them, and the reading and the writing of a text file behind the
-//! feature `csv` (`docs/architecture.md`, section 5); a build without the
-//! feature of a file's format refuses the file, and the export of it. The
+//! The reading and the writing of an xlsx are behind the cargo feature
+//! `xlsx`, with calamine, zip, quick-xml and rust_xlsxwriter, so that a
+//! build without it compiles none of them, and the reading and the
+//! writing of a text file behind the feature `csv`
+//! (`docs/architecture.md`, section 5); a build without the feature of a
+//! file's format refuses the file, and the export of it. The
 //! import and the export, their options and their refusals, the values
 //! and their types are behind no feature. Both features are on by
 //! default.
@@ -20,8 +21,8 @@
 
 mod export;
 #[cfg_attr(
-    not(feature = "csv"),
-    expect(dead_code, reason = "a build that writes no CSV writes no cell")
+    not(any(feature = "csv", feature = "xlsx")),
+    expect(dead_code, reason = "a build that writes no format writes no cell")
 )]
 mod export_cells;
 #[cfg_attr(

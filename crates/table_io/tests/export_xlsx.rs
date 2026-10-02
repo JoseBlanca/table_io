@@ -613,6 +613,77 @@ mod written {
     }
 
     #[test]
+    fn a_control_right_after_x_and_four_hex_digits_is_refused_with_its_place_and_the_control() {
+        let names = names_of("id", &["a", "b"]);
+        let cases: [(NameColumn, Vec<Column>, CellPlace, char); 4] = [
+            (
+                names.clone(),
+                vec![column("x", texts(&[None, Some("p_x0041\rq")]))],
+                at(2, 2),
+                '\r',
+            ),
+            (
+                names.clone(),
+                vec![column("x", texts(&[Some("_x00ff\u{1}"), None]))],
+                at(2, 1),
+                '\u{1}',
+            ),
+            (
+                names_of("id", &["a", "_x00FF\u{1F}"]),
+                vec![],
+                at(1, 2),
+                '\u{1F}',
+            ),
+            (
+                names.clone(),
+                vec![column("_xAbC9\0", texts(&[None, None]))],
+                at(2, 0),
+                '\0',
+            ),
+        ];
+        for (case_names, case_columns, place, character) in cases {
+            assert_eq!(
+                export_table(&case_names, &case_columns, &ExportFormat::Xlsx),
+                refused(ExportRefusal::CannotCarry { place, character }),
+                "{case_names:?} {case_columns:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn x_and_hex_digits_before_a_tab_a_line_break_or_after_fewer_digits_read_back_as_themselves() {
+        let kept = [
+            "_x0041\tz",
+            "_x0041\nz",
+            "_x004\r",
+            "_x0041_\r",
+            "_x00G1\r",
+            "x0041\r",
+            "\r_x0041",
+        ];
+        let row_names: Vec<String> = (1..=kept.len()).map(|row| format!("r{row}")).collect();
+        let row_name_texts: Vec<&str> = row_names.iter().map(String::as_str).collect();
+        let names = names_of("id", &row_name_texts);
+        let columns = [column(
+            "x",
+            texts(&kept.iter().copied().map(Some).collect::<Vec<_>>()),
+        )];
+        let bytes = xlsx_of(&names, &columns);
+
+        let (_, range) = calamine_sheet(&bytes);
+        let table = read_back(&bytes).unwrap();
+
+        assert_eq!(
+            calamine_cell(&range, 3, 1),
+            Data::String("_x004\r".to_owned())
+        );
+        assert_eq!(
+            table.columns[0].values,
+            texts(&kept.iter().copied().map(Some).collect::<Vec<_>>())
+        );
+    }
+
+    #[test]
     fn a_text_or_a_name_holding_u_fffe_or_u_ffff_is_refused_with_its_place_and_character() {
         let names = names_of("id", &["a", "b"]);
 

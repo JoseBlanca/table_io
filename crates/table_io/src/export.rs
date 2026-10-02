@@ -148,7 +148,10 @@ pub enum ExportRefusal {
     /// A character the file cannot carry, never replaced: in a CSV, U+0000,
     /// a U+FEFF at the start of the name of the names' column, and in
     /// Windows-1252 a character it does not have; in an xlsx, U+FFFE and
-    /// U+FFFF, which read back as the texts `_xFFFE_` and `_xFFFF_`.
+    /// U+FFFF, which read back as the texts `_xFFFE_` and `_xFFFF_`, and a
+    /// control of U+0000 to U+0008 or U+000B to U+001F right after `_x`
+    /// and four digits of hexadecimal, `_x0041` and `\r`, which would read
+    /// back as another text, refused until the owner decides.
     CannotCarry {
         /// The cell.
         place: CellPlace,

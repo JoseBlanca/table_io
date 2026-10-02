@@ -87,9 +87,7 @@ fn sheet_place(place: CellPlace) -> Result<(RowNum, ColNum), ExportError> {
 /// as itself, or None, the first of: a space or a tab at its start or its
 /// end, which the import removes, [`ExportRefusal::SpacesAtEnds`]; more
 /// units of UTF-16 than a cell holds, [`ExportRefusal::TextTooLong`]; and
-/// U+FFFE or U+FFFF, which rust_xlsxwriter writes as `_xFFFE_` and
-/// calamine reads back as those seven characters,
-/// [`ExportRefusal::CannotCarry`].
+/// a character [`uncarried_character`] finds, [`ExportRefusal::CannotCarry`].
 fn text_refusal(text: &str, place: CellPlace) -> Option<ExportRefusal> {
     let is_space_or_tab = |character: char| character == ' ' || character == '\t';
     if text.starts_with(is_space_or_tab) || text.ends_with(is_space_or_tab) {
@@ -105,9 +103,42 @@ fn text_refusal(text: &str, place: CellPlace) -> Option<ExportRefusal> {
             });
         }
     }
-    text.chars()
-        .find(|&character| character == '\u{FFFE}' || character == '\u{FFFF}')
-        .map(|character| ExportRefusal::CannotCarry { place, character })
+    uncarried_character(text).map(|character| ExportRefusal::CannotCarry { place, character })
+}
+
+/// The first character of `text` that an xlsx does not carry, or None:
+/// U+FFFE or U+FFFF, which rust_xlsxwriter writes as `_xFFFE_` and
+/// calamine reads back as those seven characters; and a control
+/// rust_xlsxwriter writes as `_xHHHH_`, [`is_escaped_control`], right
+/// after `_x` and four digits of hexadecimal, which the `_` of its escape
+/// would make an escape too, `_x0041` and `\r` read back as `Ax000D_`.
+/// The second is refused until the owner decides
+/// (`docs/specs/export.md`, "The refusals").
+fn uncarried_character(text: &str) -> Option<char> {
+    text.char_indices().find_map(|(index, character)| {
+        let is_uncarried = character == '\u{FFFE}'
+            || character == '\u{FFFF}'
+            || (is_escaped_control(character)
+                && ends_with_escape_digits(text.get(..index).unwrap_or_default()));
+        is_uncarried.then_some(character)
+    })
+}
+
+/// Whether rust_xlsxwriter 0.99.1 writes `character` as `_xHHHH_`: the
+/// controls U+0000 to U+0008 and U+000B to U+001F, its `match_xml_char`;
+/// U+FFFE and U+FFFF, which it writes so too, are refused whatever comes
+/// before them.
+fn is_escaped_control(character: char) -> bool {
+    matches!(character, '\u{0}'..='\u{8}' | '\u{B}'..='\u{1F}')
+}
+
+/// Whether `text` ends with `_x` and four digits of hexadecimal, in either
+/// case.
+fn ends_with_escape_digits(text: &str) -> bool {
+    match text.as_bytes().last_chunk::<6>() {
+        Some([b'_', b'x', digits @ ..]) => digits.iter().all(u8::is_ascii_hexdigit),
+        Some(_) | None => false,
+    }
 }
 
 /// The float of `integer`, or None for one beyond −2^53 to 2^53, which a

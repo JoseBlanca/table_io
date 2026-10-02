@@ -224,6 +224,17 @@ user, and gives the bytes of a new file or a refusal (Vavilov Explorer's
   that the import would take for missing, empty, `NA` or `-`, whatever
   the text of a missing value is.
 
+The rules every export shares are in the module `export_cells`, as
+`table` holds those of the import: the cells given to the writer of a
+format in the order of the file, the header and then row by row, and
+the refusals that do not depend on the format, a column of the wrong
+length, no individual, an empty or repeated name of a column or of an
+individual, a text that reads back as missing and a float that is not
+finite. The module `export` holds the types of an export and
+`export_table`, which refuses a format not built and a table of the
+wrong shape before any writer is called. The writers of `csv` and
+`xlsx` refuse what their own format cannot hold.
+
 An export and an import of each format are tested together: a table
 exported with each choice of the CSV and as an xlsx, and imported again,
 gives its names, values and types back, but where the values of a column
@@ -237,7 +248,8 @@ how it was written. The export spec gives the full list.
 
 The library has two cargo features, `csv` and `xlsx`, both on by
 default, each with the import and the export of its format; the modules
-`table`, `value` and `types` are not behind a feature. A file of a format
+`table`, `value`, `types`, `export` and `export_cells` are not behind
+a feature. A file of a format
 whose feature is left out is refused as such. calamine, the zip crate,
 quick-xml and rust_xlsxwriter are dependencies of the feature `xlsx`
 only, so that a build with `csv` alone compiles none of them; the import

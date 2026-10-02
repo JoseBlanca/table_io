@@ -236,9 +236,16 @@ Taken from pop_var_caller, where each rule was paid for:
   time elsewhere.
 - Each format behind its feature: the modules `csv` and `xlsx` behind
   `csv` and `xlsx`, calamine, zip, quick-xml and rust_xlsxwriter used
-  only behind `xlsx`, and the modules `table`, `value` and `types` behind
-  neither, so that a build with one feature compiles and refuses a file
-  of the other (`docs/architecture.md`, section 5).
+  only behind `xlsx`, and the modules `table`, `value`, `types`,
+  `export` and `export_cells` behind neither, so that a build with one
+  feature compiles and refuses a file of the other
+  (`docs/architecture.md`, section 5).
+- The rules every export shares, the order of the cells and the
+  refusals that do not depend on the format, are in the module
+  `export_cells` alone, as those of the import are in `table`; the
+  writer of a format refuses only what its format cannot hold, and the
+  shape of the table is checked once, in `export_table`, before any
+  writer.
 
 ## The binding crate and the package
 

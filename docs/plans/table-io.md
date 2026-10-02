@@ -287,8 +287,8 @@ sheet, `Sheet1`, that reads back as itself or is refused with its place.
 
 **Tasks.**
 
-- [ ] 6.1 The writer of an xlsx and its refusals. Deliverables 1 and 3.
-- [ ] 6.2 The round trip of an xlsx. Deliverable 2. Needs 6.1.
+- [x] 6.1 The writer of an xlsx and its refusals. Deliverables 1 and 3.
+- [x] 6.2 The round trip of an xlsx. Deliverable 2. Needs 6.1.
 
 ## 7. The end
 

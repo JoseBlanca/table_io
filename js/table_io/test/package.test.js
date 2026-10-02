@@ -1,23 +1,38 @@
 // The package as it is released, under node: the wasm loaded from its
-// bytes, a sheet read, a refusal, a file calamine cannot read, and the
-// declarations of the contract with popnei_web ("The package, built" of
-// docs/specs/read.md).
+// bytes, the tables and the refusals importTable gives, the Errors it
+// throws for a defect of the caller, convertColumn and the rules of a
+// value, free(), and the declarations of the contract with popnei_web
+// ("How it is verified" of docs/specs/package.md).
 //
-// The owner's excel_en.xlsx, excel_1904.xlsx and encrypted.xlsx, in
-// tests/data/, are read with the cells the owner typed. The files of
-// tests/data/ that crates/table_io/tests/write_fixtures.rs writes,
-// written.xlsx, empty_first_sheet.xlsx, table_at_c2.xlsx, getting_data.xlsx,
-// wide_table_at_c2.xlsx and unique_count.xlsx, and a CSV, are read in any
-// case.
+// The owner's excel_en.xlsx and encrypted.xlsx, in tests/data/, and the
+// files crates/table_io/tests/write_fixtures.rs writes there, written.xlsx,
+// empty_first_sheet.xlsx, getting_data.xlsx, wide_table_at_c2.xlsx and
+// unique_count.xlsx, are read from it; the other cases are an xlsx written
+// by test/xlsx.js. The cases of a text file wait for its reading, work
+// package 4 of docs/plans/table-io.md.
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { before, test } from "node:test";
 
-import init, { readXlsx } from "../wasm/table_io.js";
+import init, {
+    convertColumn,
+    floatText,
+    importTable,
+    isMissing,
+    parseBoolean,
+    parseFloat,
+    parseInteger,
+} from "../wasm/table_io.js";
+import { workbookParts, sheetXml, xlsxOf, zipOf } from "./xlsx.js";
 
-/** MAX_SHEET_CELLS of popnei_web, the limit its light worker gives. */
-const MAX_SHEET_CELLS = 2_000_000;
+/** MAX_FILE_BYTES of popnei_web, 50 MB, the limit of bytes its light worker gives. */
+const MAX_BYTES = 50_000_000;
+/** MAX_SHEET_CELLS of popnei_web, the limit of cells its light worker gives. */
+const MAX_CELLS = 2_000_000;
+
+/** Why the cases of a text file are skipped. */
+const WAITS_FOR_TEXT = "waits for the reading of a text file, work package 4 of docs/plans/table-io.md";
 
 const packageDir = new URL("../", import.meta.url);
 const dataDir = new URL("../../../tests/data/", import.meta.url);
@@ -29,40 +44,278 @@ before(async () => {
     await init({ module_or_path: wasmBytes });
 });
 
-/** The JavaScript type of a cell, "null" for an empty one. */
-function typeOfCell(cell) {
-    return cell === null ? "null" : typeof cell;
+/** The bytes of the file `name` of tests/data/. */
+function dataFile(name) {
+    return readFile(new URL(name, dataDir));
 }
 
 /**
- * Reads `bytes` with the limit `maxCells`, MAX_SHEET_CELLS unless given,
- * gives back the fields of what readXlsx returns, and frees it.
+ * Imports `bytes` with the limits and the options given, MAX_BYTES,
+ * MAX_CELLS and every option to be found unless given, gives back every
+ * field of what importTable returns and each column's, and frees it.
  */
-function fieldsOfRead(bytes, maxCells = MAX_SHEET_CELLS) {
-    const read = readXlsx(bytes, maxCells);
+function fieldsOfImport(bytes, { maxBytes = MAX_BYTES, maxCells = MAX_CELLS } = {}) {
+    const read = importTable(bytes, maxBytes, maxCells, "", "", "");
     try {
+        const columns = [];
+        for (let index = 0; index < read.numColumns; index++) {
+            columns.push({
+                name: read.columnName(index),
+                number: read.columnNumber(index),
+                type: read.columnType(index),
+                missing: read.columnMissing(index),
+                integers: read.columnIntegers(index),
+                floats: read.columnFloats(index),
+                booleans: read.columnBooleans(index),
+                texts: read.columnTexts(index),
+            });
+        }
         return {
             refusal: read.refusal,
-            detail: read.detail,
+            format: read.format,
+            text: read.text,
+            size: read.size,
+            line: read.line,
+            secondLine: read.secondLine,
+            row: read.row,
+            secondRow: read.secondRow,
+            column: read.column,
+            secondColumn: read.secondColumn,
+            expected: read.expected,
+            found: read.found,
+            sheetRows: read.sheetRows,
+            sheetColumns: read.sheetColumns,
+            encoding: read.encoding,
+            separator: read.separator,
+            decimal: read.decimal,
+            undecodedLine: read.undecodedLine,
             sheet: read.sheet,
-            firstRow: read.firstRow,
-            firstColumn: read.firstColumn,
-            numRows: read.numRows,
+            namesHeader: read.namesHeader,
+            namesNumber: read.namesNumber,
+            names: read.names,
             numColumns: read.numColumns,
-            cells: read.cells,
+            columns,
         };
     } finally {
         read.free();
     }
 }
 
-test("a CSV named .xlsx is refused as notXlsx", () => {
-    const fields = fieldsOfRead(new TextEncoder().encode("id,pop\n"));
+/** The fields of a TableRead with no table and no field of a refusal filled. */
+const NO_TABLE = {
+    refusal: "",
+    format: "",
+    text: "",
+    size: 0,
+    line: 0,
+    secondLine: 0,
+    row: 0,
+    secondRow: 0,
+    column: 0,
+    secondColumn: 0,
+    expected: 0,
+    found: 0,
+    sheetRows: 0,
+    sheetColumns: 0,
+    encoding: "",
+    separator: "",
+    decimal: "",
+    undecodedLine: undefined,
+    sheet: "",
+    namesHeader: "",
+    namesNumber: 0,
+    names: [],
+    numColumns: 0,
+    columns: [],
+};
 
-    assert.equal(fields.refusal, "notXlsx");
-    assert.equal(fields.detail, "");
-    assert.equal(fields.sheet, "");
-    assert.deepEqual(fields.cells, []);
+/** The fields of a table of an xlsx, before its sheet, names and columns. */
+const XLSX_TABLE = {
+    ...NO_TABLE,
+    format: "xlsx",
+    decimal: "point",
+};
+
+/**
+ * A column as `fieldsOfImport` gives it: `name`, `number`, `type`, its
+ * values `values`, null for a missing one, in the array of its type, and
+ * the other three arrays empty.
+ */
+function column(name, number, type, values) {
+    const missing = Uint8Array.from(values, (columnValue) => (columnValue === null ? 1 : 0));
+    const ofType = (wanted, makeArray, zero, entryOf) =>
+        type === wanted
+            ? makeArray(values.map((columnValue) => (columnValue === null ? zero : entryOf(columnValue))))
+            : makeArray([]);
+    return {
+        name,
+        number,
+        type,
+        missing,
+        integers: ofType("integer", (entries) => BigInt64Array.from(entries), 0n, (entry) => entry),
+        floats: ofType("float", (entries) => Float64Array.from(entries), 0, (entry) => entry),
+        booleans: ofType("boolean", (entries) => Uint8Array.from(entries), 0, (entry) => (entry ? 1 : 0)),
+        texts: ofType("text", (entries) => entries, "", (entry) => entry),
+    };
+}
+
+// The table of crates/table_io/tests/write_fixtures.rs: B2:B3 merged, so
+// that ind2's population is Andalucía too, C4 empty, and the dates of the
+// column Fecha text in ISO 8601.
+test("written.xlsx is read as its table, each column typed", async () => {
+    const fields = fieldsOfImport(await dataFile("written.xlsx"));
+
+    assert.deepEqual(fields, {
+        ...XLSX_TABLE,
+        sheet: "Individuos",
+        namesHeader: "Individuo",
+        namesNumber: 1,
+        names: ["ind1", "ind2", "ind3", "ind4"],
+        numColumns: 4,
+        columns: [
+            column("Población", 2, "text", ["Andalucía", "Andalucía", "Murcia", "Murcia"]),
+            column("Altura", 3, "float", [1.75, 1.62, null, 1.55]),
+            column("Fecha", 4, "text", ["2024-05-13", "2024-05-14", "2024-05-15", "2024-05-16"]),
+            column("Afectado", 5, "boolean", [true, false, true, false]),
+        ],
+    });
+});
+
+// What "Made by the owner" of docs/specs/read.md says excel_en.xlsx holds:
+// B3:B4 merged, G2:G4 formatted 000, row 5 blank, G6 =NA() and G7 =1/0.
+test("excel_en.xlsx is read as the table the owner typed", async () => {
+    const fields = fieldsOfImport(await dataFile("excel_en.xlsx"));
+
+    assert.deepEqual(fields, {
+        ...XLSX_TABLE,
+        sheet: "Hoja1",
+        namesHeader: "Individuo",
+        namesNumber: 1,
+        names: ["ind1", "ind2", "001", "ind4", "ind5"],
+        numColumns: 6,
+        columns: [
+            column("Población", 2, "text", ["Andalucía", "Castilla y León", "Castilla y León", "Murcia", "Murcia"]),
+            column("Altura", 3, "float", [1.75, 1.62, 1.8, 1.55, 1.7]),
+            column("Fecha", 4, "text", ["2024-05-13", "2024-05-14", "2024-05-15", "2024-05-16", "2024-05-17"]),
+            column("Hora", 5, "text", ["14:30:00", "09:05:00", "18:45:00", "07:00:00", "12:15:00"]),
+            column("Afectado", 6, "boolean", [true, false, true, false, true]),
+            column("Código", 7, "integer", [7n, 12n, 3n, null, null]),
+        ],
+    });
+});
+
+test("an integer of an xlsx past 2^53, 2^60 + 1 written as text, is exact in its BigInt64Array", () => {
+    const bytes = xlsxOf([["id", "n"], ["A", "1152921504606846977"], ["B", -3]]);
+
+    const fields = fieldsOfImport(bytes);
+
+    assert.equal(fields.refusal, "");
+    assert.deepEqual(fields.columns, [column("n", 2, "integer", [1152921504606846977n, -3n])]);
+});
+
+test("written.csv is read as its table", { skip: WAITS_FOR_TEXT }, () => {});
+
+test("a ragged row of a text file is refused with its line, its cells, the header's and the separator", { skip: WAITS_FOR_TEXT }, () => {});
+
+test("an individual in two lines of a text file is refused with its name and its two lines", { skip: WAITS_FOR_TEXT }, () => {});
+
+test("an individual in two rows of an xlsx is refused with its name and its two rows of the sheet", () => {
+    const bytes = xlsxOf([["id", "pop"], ["A", "P1"], ["B", "P2"], ["A", "P3"]]);
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "duplicateIndividual",
+        format: "xlsx",
+        text: "A",
+        row: 2,
+        secondRow: 4,
+    });
+});
+
+test("a row of an xlsx with no individual is refused with its row of the sheet", () => {
+    const bytes = xlsxOf([["id", "pop"], ["A", "P1"], [null, "P2"]]);
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "emptyIndividual",
+        format: "xlsx",
+        row: 3,
+    });
+});
+
+test("an error of Excel in the header is refused as headerError with its row, column and text", () => {
+    const bytes = xlsxOf([["id", { error: "#N/A" }], ["A", 1]]);
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "headerError",
+        format: "xlsx",
+        text: "#N/A",
+        row: 1,
+        column: 2,
+    });
+});
+
+test("a column with no name and a value is refused as unnamedColumn with its column", () => {
+    const bytes = xlsxOf([["id", null, "pop"], ["A", "x", "P1"]]);
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "unnamedColumn",
+        format: "xlsx",
+        column: 2,
+    });
+});
+
+test("two columns of one name are refused as duplicateColumn with the name and both columns", () => {
+    const bytes = xlsxOf([["id", "pop", "pop"], ["A", 1, 2]]);
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "duplicateColumn",
+        format: "xlsx",
+        text: "pop",
+        column: 2,
+        secondColumn: 3,
+    });
+});
+
+test("a sheet of a header alone is refused as empty", () => {
+    assert.deepEqual(fieldsOfImport(xlsxOf([["id", "pop"]])), {
+        ...NO_TABLE,
+        refusal: "empty",
+        format: "xlsx",
+    });
+});
+
+test("a table at C2 of 5 columns with a limit of 16 cells is refused as sheetTooLarge at row 5", async () => {
+    // Rows 2 to 4 are 15 cells; C5 makes the rectangle 4 rows of 5
+    // columns, 20 cells, past the limit.
+    const fields = fieldsOfImport(await dataFile("wide_table_at_c2.xlsx"), { maxCells: 16 });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        refusal: "sheetTooLarge",
+        format: "xlsx",
+        sheet: "Individuos",
+        row: 2,
+        column: 3,
+        sheetRows: 4,
+        sheetColumns: 5,
+    });
+});
+
+test("a file one byte past the limit of bytes is refused as tooLarge with its size", async () => {
+    const bytes = await dataFile("written.xlsx");
+
+    const fields = fieldsOfImport(bytes, { maxBytes: bytes.length - 1 });
+
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        refusal: "tooLarge",
+        format: "xlsx",
+        size: bytes.length,
+    });
 });
 
 test("a compound file of the old Office is refused as oldExcel", () => {
@@ -71,283 +324,308 @@ test("a compound file of the old Office is refused as oldExcel", () => {
     const bytes = new Uint8Array(512);
     bytes.set([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
 
-    const fields = fieldsOfRead(bytes);
-
-    assert.equal(fields.refusal, "oldExcel");
-    assert.equal(fields.sheet, "");
-    assert.deepEqual(fields.cells, []);
+    assert.deepEqual(fieldsOfImport(bytes), { ...NO_TABLE, refusal: "oldExcel", format: "xlsx" });
 });
 
-test("written.xlsx is read with every cell and its type", async () => {
-    const bytes = await readFile(new URL("written.xlsx", dataDir));
-
-    const fields = fieldsOfRead(bytes);
-
-    assert.equal(fields.refusal, "");
-    assert.equal(fields.detail, "");
-    assert.equal(fields.sheet, "Individuos");
-    assert.deepEqual(
-        [fields.firstRow, fields.firstColumn, fields.numRows, fields.numColumns],
-        [1, 1, 5, 5],
-    );
-    // B3, in the population merged over B2 and B3, is "Andalucía", and
-    // the dates of the column Fecha are text in ISO 8601.
-    assert.deepEqual(fields.cells, [
-        "Individuo", "Población", "Altura", "Fecha", "Afectado",
-        "ind1", "Andalucía", 1.75, "2024-05-13", true,
-        "ind2", "Andalucía", 1.62, "2024-05-14", false,
-        "ind3", "Murcia", null, "2024-05-15", true,
-        "ind4", "Murcia", 1.55, "2024-05-16", false,
-    ]);
-    assert.deepEqual(fields.cells.map(typeOfCell), [
-        "string", "string", "string", "string", "string",
-        "string", "string", "number", "string", "boolean",
-        "string", "string", "number", "string", "boolean",
-        "string", "string", "null", "string", "boolean",
-        "string", "string", "number", "string", "boolean",
-    ]);
-});
-
-test("a first sheet with no value is refused as emptySheet with its name", async () => {
-    const bytes = await readFile(new URL("empty_first_sheet.xlsx", dataDir));
-
-    const fields = fieldsOfRead(bytes);
-
-    assert.deepEqual(fields, {
-        refusal: "emptySheet",
-        detail: "",
-        sheet: "Notas",
-        firstRow: 0,
-        firstColumn: 0,
-        numRows: 0,
-        numColumns: 0,
-        cells: [],
+test("encrypted.xlsx is refused as encrypted", async () => {
+    assert.deepEqual(fieldsOfImport(await dataFile("encrypted.xlsx")), {
+        ...NO_TABLE,
+        refusal: "encrypted",
+        format: "xlsx",
     });
 });
 
-test("a table at C2 starts at row 2 and column 3", async () => {
-    const bytes = await readFile(new URL("table_at_c2.xlsx", dataDir));
+test("a zip with no workbook is refused as notWorkbook", () => {
+    const bytes = zipOf([["individuals.csv", "id,pop\nA,P1\n"]]);
 
-    const fields = fieldsOfRead(bytes);
+    assert.deepEqual(fieldsOfImport(bytes), { ...NO_TABLE, refusal: "notWorkbook", format: "xlsx" });
+});
 
-    assert.deepEqual(fields, {
-        refusal: "",
-        detail: "",
-        sheet: "Individuos",
-        firstRow: 2,
-        firstColumn: 3,
-        numRows: 3,
-        numColumns: 3,
-        cells: [
-            "Individuo", "Altura", "Afectado",
-            "ind1", 1.75, true,
-            "ind2", 1.62, false,
-        ],
+test("a first sheet with no value is refused as emptySheet with its name", async () => {
+    assert.deepEqual(fieldsOfImport(await dataFile("empty_first_sheet.xlsx")), {
+        ...NO_TABLE,
+        refusal: "emptySheet",
+        format: "xlsx",
+        sheet: "Notas",
     });
 });
 
 test("a cell saved with an error calamine does not know is refused as cellError with its text", async () => {
-    const bytes = await readFile(new URL("getting_data.xlsx", dataDir));
-
-    const fields = fieldsOfRead(bytes);
-
-    assert.deepEqual(fields, {
+    assert.deepEqual(fieldsOfImport(await dataFile("getting_data.xlsx")), {
+        ...NO_TABLE,
         refusal: "cellError",
-        detail: "#GETTING_DATA",
-        sheet: "",
-        firstRow: 0,
-        firstColumn: 0,
-        numRows: 0,
-        numColumns: 0,
-        cells: [],
+        format: "xlsx",
+        text: "#GETTING_DATA",
     });
 });
 
-test("a table at C2 of 5 columns read with a limit of 16 cells is refused as sheetTooLarge at row 5", async () => {
-    // Rows 2 to 4 are 15 cells; C5 makes the rectangle 4 rows of 5
-    // columns, 20 cells, past the limit.
-    const bytes = await readFile(new URL("wide_table_at_c2.xlsx", dataDir));
+test("an xlsx whose sheet is cut short is unreadable, with calamine's message, and nothing thrown", () => {
+    const parts = workbookParts(sheetXml([["id", "pop"], ["A", "P1"]]));
+    const [sheetName, sheet] = parts[4];
+    // Cut inside the attribute r of the cell A1.
+    parts[4] = [sheetName, sheet.slice(0, sheet.indexOf('r="A1"') + 4)];
 
-    const fields = fieldsOfRead(bytes, 16);
-
-    assert.deepEqual(fields, {
-        refusal: "sheetTooLarge",
-        detail: "",
-        sheet: "Individuos",
-        firstRow: 2,
-        firstColumn: 3,
-        numRows: 4,
-        numColumns: 5,
-        cells: [],
+    assert.deepEqual(fieldsOfImport(zipOf(parts)), {
+        ...NO_TABLE,
+        refusal: "unreadable",
+        text: "Xml error: syntax error: attribute value not closed: `\"` not found before end of input",
     });
 });
 
-test("a file that is not a zip past its first bytes throws an Error with the message of the zip", async () => {
-    const bytes = await readFile(new URL("written.xlsx", dataDir));
+test("a zip cut short is unreadable, with the message of the zip crate", async () => {
+    const bytes = await dataFile("written.xlsx");
 
-    assert.throws(() => readXlsx(bytes.subarray(0, 500), MAX_SHEET_CELLS), {
-        name: "Error",
-        message: "invalid Zip archive: Could not find EOCD",
-    });
-});
-
-/**
- * The cells under `header` in the first row of the sheet of `fields`, from
- * the second row to the last; empty when no cell of the first row is
- * `header`.
- */
-function columnUnder(fields, header) {
-    const column = fields.cells.slice(0, fields.numColumns).indexOf(header);
-    if (column === -1) {
-        return [];
-    }
-    const cells = [];
-    for (let row = 1; row < fields.numRows; row++) {
-        cells.push(fields.cells[row * fields.numColumns + column]);
-    }
-    return cells;
-}
-
-/** Whether `cellText` is a string of the form `pattern`, where each `d` of
- * the pattern is a digit from 0 to 9 and every other character is itself. */
-function hasForm(cellText, pattern) {
-    return (
-        typeof cellText === "string" &&
-        cellText.length === pattern.length &&
-        [...pattern].every((patternCharacter, position) =>
-            patternCharacter === "d"
-                ? /[0-9]/.test(cellText[position])
-                : cellText[position] === patternCharacter,
-        )
-    );
-}
-
-// What "Made by the owner" of docs/specs/read.md says excel_en.xlsx holds,
-// as crates/table_io/tests/owner_files.rs asserts it, with the cells the
-// owner typed. The file is a copy of excel_es.xlsx, since an xlsx stores
-// formulas and errors in English whatever the language of Excel.
-test("excel_en.xlsx gives the cells of English Excel", async () => {
-    const bytes = await readFile(new URL("excel_en.xlsx", dataDir));
-
-    const fields = fieldsOfRead(bytes);
-
-    assert.equal(fields.refusal, "");
-    assert.equal(fields.sheet, "Hoja1");
-    assert.deepEqual(
-        [fields.firstRow, fields.firstColumn, fields.numRows, fields.numColumns],
-        [1, 1, 7, 7],
-    );
-    const headerRow = fields.cells.slice(0, fields.numColumns);
-    for (const name of ["Individuo", "Población", "Altura", "Fecha", "Hora", "Afectado", "Código"]) {
-        assert.ok(headerRow.includes(name), `no ${name} in the header ${JSON.stringify(headerRow)}`);
-    }
-    const expectedInColumns = [
-        ["Altura", 1.75],
-        ["Fecha", "2024-05-13"],
-        ["Hora", "14:30:00"],
-        ["Afectado", true],
-        ["Afectado", false],
-        ["Código", 7],
-    ];
-    for (const [header, cell] of expectedInColumns) {
-        const column = columnUnder(fields, header);
-        assert.ok(
-            column.includes(cell),
-            `no ${JSON.stringify(cell)} under ${header}, which holds ${JSON.stringify(column)}`,
-        );
-    }
-    for (const cell of ["001", "#N/A", "#DIV/0!"]) {
-        assert.ok(fields.cells.includes(cell), `no cell is ${cell}`);
-    }
-    const populations = columnUnder(fields, "Población");
-    assert.ok(
-        populations.some(
-            (population, row) => population !== null && population === populations[row + 1],
-        ),
-        `no population in two rows running, as a merged one is, in ${JSON.stringify(populations)}`,
-    );
-    const rows = [];
-    for (let row = 0; row < fields.numRows; row++) {
-        rows.push(fields.cells.slice(row * fields.numColumns, (row + 1) * fields.numColumns));
-    }
-    assert.ok(rows.some((row) => row.every((cell) => cell === null)), "no blank row");
-    const kinds = [
-        ["Altura", "a number", (cell) => typeof cell === "number"],
-        ["Fecha", "a text dddd-dd-dd", (cell) => hasForm(cell, "dddd-dd-dd")],
-        ["Hora", "a text dd:dd:dd", (cell) => hasForm(cell, "dd:dd:dd")],
-        ["Afectado", "a boolean", (cell) => typeof cell === "boolean"],
-    ];
-    for (const [header, kind, isOfKind] of kinds) {
-        const otherCells = columnUnder(fields, header).filter((cell) => cell !== null && !isOfKind(cell));
-        assert.deepEqual(otherCells, [], `under ${header}, cells that are not ${kind}`);
-    }
-    const individuals = columnUnder(fields, "Individuo");
-    const rowsWithNoPopulation = individuals
-        .map((individual, row) => [individual, populations[row], row + 1])
-        .filter(([individual, population]) => individual !== null && population === null)
-        .map(([, , row]) => row);
-    assert.deepEqual(
-        rowsWithNoPopulation,
-        [],
-        "rows, from 0 for the header, with an Individuo and no Población, as a merged range lost leaves them",
-    );
-
-    // The cells the owner typed, from A1, row after row: B3:B4 merged,
-    // G2:G4 formatted 000, row 5 blank, G6 =NA() and G7 =1/0.
-    assert.deepEqual(fields.cells, [
-        "Individuo", "Población", "Altura", "Fecha", "Hora", "Afectado", "Código",
-        "ind1", "Andalucía", 1.75, "2024-05-13", "14:30:00", true, 7,
-        "ind2", "Castilla y León", 1.62, "2024-05-14", "09:05:00", false, 12,
-        "001", "Castilla y León", 1.8, "2024-05-15", "18:45:00", true, 3,
-        null, null, null, null, null, null, null,
-        "ind4", "Murcia", 1.55, "2024-05-16", "07:00:00", false, "#N/A",
-        "ind5", "Murcia", 1.7, "2024-05-17", "12:15:00", true, "#DIV/0!",
-    ]);
-});
-
-// The owner's file, saved by Excel for Mac in the date system of 1904,
-// with an element workbookPr of another namespace after the one of the
-// workbook, which calamine alone read as the system of 1900, 2020-05-12.
-test("excel_1904.xlsx gives the date and the time as Excel shows them", async () => {
-    const bytes = await readFile(new URL("excel_1904.xlsx", dataDir));
-
-    const fields = fieldsOfRead(bytes);
-
-    assert.deepEqual(fields, {
-        refusal: "",
-        detail: "",
-        sheet: "Sheet1",
-        firstRow: 1,
-        firstColumn: 1,
-        numRows: 2,
-        numColumns: 2,
-        cells: ["Fecha", "Hora", "2024-05-13", "14:30:00"],
+    assert.deepEqual(fieldsOfImport(bytes.subarray(0, 500)), {
+        ...NO_TABLE,
+        refusal: "unreadable",
+        text: "invalid Zip archive: Could not find EOCD",
     });
 });
 
 // A table of texts of two texts that says it holds 400,000,000, for which
 // calamine reserved room before it read the first, and the package
 // trapped, a failure that ends the worker, before table_io checked it.
-test("unique_count.xlsx, whose table of texts says it holds 400,000,000 texts, throws an Error", async () => {
-    const bytes = await readFile(new URL("unique_count.xlsx", dataDir));
-
-    assert.throws(() => readXlsx(bytes, MAX_SHEET_CELLS), {
-        name: "Error",
-        message: "too many texts",
+test("unique_count.xlsx, whose table of texts says it holds 400,000,000 texts, is unreadable", async () => {
+    assert.deepEqual(fieldsOfImport(await dataFile("unique_count.xlsx")), {
+        ...NO_TABLE,
+        refusal: "unreadable",
+        text: "too many texts",
     });
     // The package still reads after it, as it does not after a trap.
-    const written = await readFile(new URL("written.xlsx", dataDir));
-    assert.equal(fieldsOfRead(written).sheet, "Individuos");
+    assert.equal(fieldsOfImport(await dataFile("empty_first_sheet.xlsx")).sheet, "Notas");
 });
 
-test("encrypted.xlsx is refused as encrypted", async () => {
-    const bytes = await readFile(new URL("encrypted.xlsx", dataDir));
+test("a limit of cells of 5 × 10^9 or −1, and a limit of bytes of 1.5, throw an Error", () => {
+    const bytes = xlsxOf([["id", "pop"], ["A", "P1"]]);
 
-    const fields = fieldsOfRead(bytes);
+    assert.throws(() => importTable(bytes, MAX_BYTES, 5e9, "", "", ""), {
+        name: "Error",
+        message: "max_cells is 5000000000, not a whole number from 0 to 4294967295",
+    });
+    assert.throws(() => importTable(bytes, MAX_BYTES, -1, "", "", ""), {
+        name: "Error",
+        message: "max_cells is -1, not a whole number from 0 to 4294967295",
+    });
+    assert.throws(() => importTable(bytes, 1.5, MAX_CELLS, "", "", ""), {
+        name: "Error",
+        message: "max_bytes is 1.5, not a whole number from 0 to 2^53",
+    });
+    assert.throws(() => importTable(bytes, Number.NaN, MAX_CELLS, "", "", ""), { name: "Error" });
+    assert.throws(() => importTable(bytes, 2 ** 53 + 2, MAX_CELLS, "", "", ""), { name: "Error" });
+});
 
-    assert.equal(fields.refusal, "encrypted");
-    assert.equal(fields.sheet, "");
-    assert.deepEqual(fields.cells, []);
+test("the largest limits, 2^53 bytes and 4,294,967,295 cells, are taken", () => {
+    const read = importTable(xlsxOf([["id", "pop"], ["A", "P1"]]), 2 ** 53, 4_294_967_295, "", "", "");
+    try {
+        assert.equal(read.format, "xlsx");
+    } finally {
+        read.free();
+    }
+});
+
+test("an option that is not one of its strings throws an Error, and the package goes on", () => {
+    const bytes = xlsxOf([["id", "pop"], ["A", "P1"]]);
+
+    assert.throws(() => importTable(bytes, MAX_BYTES, MAX_CELLS, "latin1", "", ""), {
+        name: "Error",
+        message: 'the encoding is "latin1", not "", "utf-8" or "windows-1252"',
+    });
+    assert.throws(() => importTable(bytes, MAX_BYTES, MAX_CELLS, "", ",", ""), {
+        name: "Error",
+        message: 'the separator is ",", not "", "tab", "semicolon" or "comma"',
+    });
+    assert.throws(() => importTable(bytes, MAX_BYTES, MAX_CELLS, "", "", "."), {
+        name: "Error",
+        message: 'the decimal mark is ".", not "", "point" or "comma"',
+    });
+    assert.throws(() => parseFloat("1.5", ""), {
+        name: "Error",
+        message: 'the decimal mark is "", not "point" or "comma"',
+    });
+    assert.throws(() => floatText(1.5, "Point"), { name: "Error" });
+    assert.throws(() => convertColumn("int", new Uint8Array([0]), new BigInt64Array([1n]), new Float64Array(), new Uint8Array(), [], "text", "point"), {
+        name: "Error",
+        message: 'the type is "int", not "integer", "float", "boolean" or "text"',
+    });
+    assert.throws(() => convertColumn("text", new Uint8Array([0]), new BigInt64Array(), new Float64Array(), new Uint8Array(), ["1"], "Float", "point"), {
+        name: "Error",
+    });
+
+    assert.equal(fieldsOfImport(bytes).names[0], "A");
+});
+
+test("a column of an index out of range throws an Error, and the package goes on", () => {
+    const read = importTable(xlsxOf([["id", "pop"], ["A", "P1"]]), MAX_BYTES, MAX_CELLS, "", "", "");
+    try {
+        assert.equal(read.numColumns, 1);
+        assert.throws(() => read.columnName(1), { name: "Error", message: "no column 1: the table has 1 columns" });
+        assert.throws(() => read.columnIntegers(7), { name: "Error" });
+        assert.equal(read.columnName(0), "pop");
+    } finally {
+        read.free();
+    }
+});
+
+test("a column of a refusal has no index in range", () => {
+    const read = importTable(zipOf([["a.txt", "x"]]), MAX_BYTES, MAX_CELLS, "", "", "");
+    try {
+        assert.equal(read.refusal, "notWorkbook");
+        assert.throws(() => read.columnTexts(0), { name: "Error", message: "no column 0: the table has 0 columns" });
+    } finally {
+        read.free();
+    }
+});
+
+/** The fields of a Conversion, which it frees. */
+function fieldsOfConversion(conversion) {
+    try {
+        return {
+            numFailed: conversion.numFailed,
+            firstRow: conversion.firstRow,
+            firstText: conversion.firstText,
+            missing: conversion.missing,
+            integers: conversion.integers,
+            floats: conversion.floats,
+            booleans: conversion.booleans,
+            texts: conversion.texts,
+        };
+    } finally {
+        conversion.free();
+    }
+}
+
+/** The arrays of a text column of `texts`, as convertColumn takes them. */
+function textColumn(texts) {
+    return [
+        "text",
+        new Uint8Array(texts.length),
+        new BigInt64Array(),
+        new Float64Array(),
+        new Uint8Array(),
+        texts,
+    ];
+}
+
+test("a text column 1, n.d. converted to float fails at row 2, n.d.", () => {
+    const conversion = convertColumn(...textColumn(["1", "n.d."]), "float", "point");
+
+    assert.deepEqual(fieldsOfConversion(conversion), {
+        numFailed: 1,
+        firstRow: 2,
+        firstText: "n.d.",
+        missing: new Uint8Array(),
+        integers: new BigInt64Array(),
+        floats: new Float64Array(),
+        booleans: new Uint8Array(),
+        texts: [],
+    });
+});
+
+test("a text column 1, 2 converted to float gives the floats 1 and 2", () => {
+    const conversion = convertColumn(...textColumn(["1", "2"]), "float", "point");
+
+    assert.deepEqual(fieldsOfConversion(conversion), {
+        numFailed: 0,
+        firstRow: 0,
+        firstText: "",
+        missing: new Uint8Array([0, 0]),
+        integers: new BigInt64Array(),
+        floats: new Float64Array([1, 2]),
+        booleans: new Uint8Array(),
+        texts: [],
+    });
+});
+
+test("an integer column with a missing value converted to text keeps it missing", () => {
+    const conversion = convertColumn(
+        "integer",
+        new Uint8Array([0, 1, 0]),
+        new BigInt64Array([-9223372036854775808n, 0n, 1152921504606846977n]),
+        new Float64Array(),
+        new Uint8Array(),
+        [],
+        "text",
+        "comma",
+    );
+
+    const fields = fieldsOfConversion(conversion);
+
+    assert.deepEqual(fields.missing, new Uint8Array([0, 1, 0]));
+    assert.deepEqual(fields.texts, ["-9223372036854775808", "", "1152921504606846977"]);
+});
+
+test("a column whose arrays do not match throws an Error", () => {
+    assert.throws(
+        () => convertColumn("float", new Uint8Array([0, 0]), new BigInt64Array(), new Float64Array([1]), new Uint8Array(), [], "text", "point"),
+        { name: "Error", message: "floats has 1 entries and missing 2" },
+    );
+    assert.throws(
+        () => convertColumn("boolean", new Uint8Array([2]), new BigInt64Array(), new Float64Array(), new Uint8Array([1]), [], "text", "point"),
+        { name: "Error", message: "missing holds 2, not 0 or 1" },
+    );
+});
+
+// The floats of the test of float_text of docs/specs/values.md, each
+// with the text node 26.8.2 printed for String(x) on the owner's Mac.
+const FLOAT_TEXTS = [
+    [1, "1"],
+    [1.5, "1.5"],
+    [0.1 + 0.2, "0.30000000000000004"],
+    [1e20, "100000000000000000000"],
+    [1e21, "1e+21"],
+    [1.2345678901234568e21, "1.2345678901234568e+21"],
+    [1e-6, "0.000001"],
+    [1e-7, "1e-7"],
+    [1.5e-7, "1.5e-7"],
+    [-0, "0"],
+    [5e-324, "5e-324"],
+    [Number.MAX_VALUE, "1.7976931348623157e+308"],
+    [Infinity, "Infinity"],
+    [-Infinity, "-Infinity"],
+    [NaN, "NaN"],
+    [-1.5, "-1.5"],
+    [-1.5e-7, "-1.5e-7"],
+    [100000000000000.125, "100000000000000.12"],
+    [12345678901234.0625, "12345678901234.062"],
+    [1.8774474796234095e-7, "1.8774474796234095e-7"],
+    [0.00008012601628271273, "0.00008012601628271273"],
+    [94861526562499990000, "94861526562499990000"],
+    [2.0372681319713593e-10, "2.0372681319713593e-10"],
+    [2 ** -24, "5.960464477539063e-8"],
+];
+
+test("floatText writes each float of values.md's test as node's String does", () => {
+    for (const [number, text] of FLOAT_TEXTS) {
+        assert.equal(String(number), text, `node's String of ${text}`);
+        assert.equal(floatText(number, "point"), String(number), `floatText of ${text}`);
+    }
+    assert.equal(floatText(1.5, "comma"), "1,5");
+    assert.equal(floatText(1.5e-7, "comma"), "1,5e-7");
+});
+
+test("parseInteger gives 2^63 − 1 as the bigint 9223372036854775807n", () => {
+    assert.equal(parseInteger("9223372036854775807"), 9223372036854775807n);
+    assert.equal(parseInteger("9223372036854775808"), undefined);
+    assert.equal(parseInteger("12.0"), undefined);
+});
+
+test("isMissing, parseFloat and parseBoolean are the rules of a value", () => {
+    assert.equal(isMissing("NA"), true);
+    assert.equal(isMissing("na"), false);
+    assert.equal(parseFloat("-1,75", "comma"), -1.75);
+    assert.equal(parseFloat("1,5", "point"), undefined);
+    assert.equal(parseBoolean("True"), true);
+    assert.equal(parseBoolean("VERDADERO"), undefined);
+});
+
+test("free() releases a TableRead and a Conversion once, and a read after it throws", () => {
+    const read = importTable(zipOf([["a.txt", "x"]]), MAX_BYTES, MAX_CELLS, "", "", "");
+    read.free();
+    assert.throws(() => read.refusal, { message: "null pointer passed to rust" });
+
+    const conversion = convertColumn(...textColumn(["1"]), "float", "point");
+    conversion.free();
+    assert.throws(() => conversion.floats, { message: "null pointer passed to rust" });
 });
 
 /**

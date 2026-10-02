@@ -1,7 +1,7 @@
 {
   "name": "table_io",
   "version": "0.2.0",
-  "description": "Reads the first visible sheet of an xlsx into its cells, in WebAssembly",
+  "description": "Imports a table from a CSV, a TSV or an xlsx as typed columns, in WebAssembly",
   "repository": "https://github.com/JoseBlanca/table_io",
   "license": "MIT",
   "type": "module",

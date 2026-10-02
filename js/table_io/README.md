@@ -1,10 +1,12 @@
 # table_io, the wasm package
 
-The WebAssembly build of table_io, which reads the first visible sheet of
-an xlsx into its cells, for popnei_web's light worker. It is what
-wasm-bindgen generates from the crate `crates/table_io_js`, with no code of
-its own around it. What each cell and each refusal is, is in
-`docs/specs/read.md` of the repository, github.com/JoseBlanca/table_io.
+The WebAssembly build of table_io, which imports a table from the bytes
+of a CSV, a TSV or an xlsx as typed columns, for popnei_web's light
+worker. It is what wasm-bindgen generates from the crate
+`crates/table_io_js`, with no code of its own around it. What an import
+gives and refuses is in `docs/specs/import.md` of the repository,
+github.com/JoseBlanca/table_io, the rules of a value and of a conversion in
+`docs/specs/values.md`, and the package in `docs/specs/package.md`.
 
 ## What it exports
 
@@ -13,37 +15,70 @@ its own around it. What each cell and each refusal is, is in
   argument, it fetches the `.wasm` from beside `table_io.js`, as a browser
   or a bundler resolves it. Under node, whose `fetch` does not read a
   file, give it the bytes: `init({ module_or_path: bytes })`.
-- `readXlsx(bytes, maxCells)`, which reads the `Uint8Array` of an xlsx and
-  returns an `XlsxRead`. Its `refusal` is `""` for a sheet read, and then
-  `sheet` is its name; `firstRow` and `firstColumn`, the first row and
-  column of the rectangle of its values, numbered from 1 as Excel numbers
-  them; `numRows` and `numColumns`, the size of that rectangle; and
-  `cells`, row after row, each `null`, a string, a number or a boolean.
-  Otherwise `refusal` is `"notXlsx"`, `"oldExcel"`, `"encrypted"`,
-  `"emptySheet"`, `"cellError"` or `"sheetTooLarge"`, with the fields
-  that refusal's words need. A sheet whose rectangle would hold more than
-  `maxCells` cells is refused as `"sheetTooLarge"`.
-- `readXlsx` throws an `Error` for a file it cannot read, a file cut
-  short or damaged, or one past a bound table_io checks before calamine,
-  with the message of the zip crate, of calamine or of table_io, whichever
-  failed.
+- `importTable(bytes, max_bytes, max_cells, encoding, separator, decimal)`,
+  which reads the `Uint8Array` of a file, its format found from its first
+  bytes, and returns a `TableRead`. `max_bytes` is the largest file
+  accepted, in bytes, a whole number from 0 to 2^53; `max_cells` the
+  largest rectangle of the values of an xlsx, in cells, a whole number
+  from 0 to 4,294,967,295. `encoding` is `""` to find it, `"utf-8"` or
+  `"windows-1252"`; `separator` `""`, `"tab"`, `"semicolon"` or
+  `"comma"`; `decimal` `""`, `"point"` or `"comma"`; the three are for a
+  text file and ignored for an xlsx.
+- A `TableRead` holds a table or a refusal. Its `refusal` is `""` for a
+  table, and then `format` is `"text"` or `"xlsx"`; `encoding`,
+  `separator`, `decimal` and `undecodedLine` how a text file was read, and
+  `decimal` `"point"` for an xlsx; `sheet` the sheet of an xlsx;
+  `namesHeader`, `namesNumber` and `names` the first column of the file,
+  which names the individuals; and `numColumns` the number of the other
+  columns. Each of them is read by its index, from 0, with `columnName`,
+  `columnNumber`, `columnType`, `"integer"`, `"float"`, `"boolean"` or
+  `"text"`, and five arrays: `columnMissing`, 1 for a missing value, and
+  `columnIntegers`, a `BigInt64Array`, `columnFloats`, `columnBooleans`
+  and `columnTexts`, of which the one of the column's type holds its
+  values and the other three are empty.
+- Otherwise `refusal` is the kind of the refusal, `"tooLarge"`,
+  `"oldExcel"`, `"raggedRow"` and the others of `docs/specs/package.md`,
+  with `format` and the fields its words need, the others 0 or `""`. A
+  file that cannot be read, cut short or damaged, is the kind
+  `"unreadable"`, with the message of the zip crate, of calamine or of
+  table_io in `text`.
+- `convertColumn(column_type, missing, integers, floats, booleans, texts,
+  to, decimal)`, which converts a column, given as a `TableRead` gives
+  it, to the type `to`, and returns a `Conversion`: with `numFailed` 0 the
+  column converted, as its five arrays; otherwise how many values do not
+  convert, and the row, from 1, and the text of the first.
+- `isMissing(text)`, `parseInteger(text)`, a `bigint`, `parseFloat(text,
+  decimal)`, `parseBoolean(text)` and `floatText(number, decimal)`, the
+  rules of a value the import reads by; the three parses give `undefined`
+  for a text that holds no such value.
 
-An `XlsxRead` lives in the memory of the wasm, up to `maxCells` cells of
-it. JavaScript's garbage collector frees it too, through a
+Every function throws an `Error` only for a defect of the caller: a limit
+that is not a whole number in its range, an option or a type that is not
+one of its strings, an index of a column out of range, or a column given
+to `convertColumn` whose arrays do not match. A file refused or that
+cannot be read is never thrown.
+
+A `TableRead` and a `Conversion` live in the memory of the wasm.
+JavaScript's garbage collector frees them too, through a
 `FinalizationRegistry` that wasm-bindgen registers, but at a time nobody
-chooses, which may be after the next file is read: so call `free()` in a
-`finally`. Read each field once, `cells` above all, which makes a new
-array at each read.
+chooses, which may be after the next file is read: so call `free()` once,
+in a `finally`; a second `free()`, or a field read after it, throws. Each
+read of a field or of a column copies it out whole, a new array each
+time, so read each once into a variable.
 
 ```js
-import init, { readXlsx } from "table_io";
+import init, { importTable } from "table_io";
 
 await init();
-const read = readXlsx(bytes, 2_000_000);
+const read = importTable(bytes, 50_000_000, 2_000_000, "", "", "");
 try {
     if (read.refusal === "") {
-        const cells = read.cells;
-        // ...
+        const names = read.names;
+        for (let index = 0; index < read.numColumns; index++) {
+            const columnType = read.columnType(index);
+            const missing = read.columnMissing(index);
+            // ...
+        }
     }
 } finally {
     read.free();

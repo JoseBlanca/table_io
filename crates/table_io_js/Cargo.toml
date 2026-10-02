@@ -1,6 +1,6 @@
 [package]
 name = "table_io_js"
-description = "The wasm-bindgen binding of table_io, which exports readXlsx."
+description = "The wasm-bindgen binding of table_io, which exports importTable, convertColumn and the rules of a value."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

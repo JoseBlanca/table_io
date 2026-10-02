@@ -171,19 +171,14 @@ each answer is a small change that can be made on `main` after it.
    that starts so, so either choice changes nothing a user does today;
    until the owner decides, these names are written as they are.
 
-What is left for the owner to do, besides deciding:
-
-- Make the text files the tests wait for, `excel_es.csv`,
-  `excel_es_utf8.csv`, `excel_mac.csv`, `excel_unicode.txt` and
-  `libreoffice.csv` (`specs/text-files.md`, "How it is verified"), and
-  open in Excel the files of an export that `specs/export.md` lists,
-  the smallest and the largest floats among them, to see that Excel
-  shows them as written; their tests are ignored until then.
-- Open the three issues under "The issues to open", two here and one in
-  rust_xlsxwriter's repository, when the repository's issues are used.
-- Decide when popnei_web and Vavilov Explorer move to table_io; what
-  each changes is in `docs/architecture.md`, sections 8 and 9, and is
-  done from their own sessions.
+The owner ordered the merge into `main` and the push on 2 October 2026,
+with the five questions above still open. The owner's text files, the
+look in Excel of the files of an export, and the three issues under "The
+issues to open" are deferred by the owner; the tests of the files stay
+ignored until then. When popnei_web and Vavilov Explorer move to
+table_io is the owner's to decide; what each changes is in
+`docs/architecture.md`, sections 8 and 9, and is done from their own
+sessions.
 
 ## The rename of the repository on GitHub
 

@@ -12,34 +12,30 @@ objectives, the architecture, the specs and the plan were put on `main`
 by the owner's order the same day, at 8bb8982; nothing of the code is on
 `main`, and nothing is pushed.
 
-Paused on 2 October 2026, at the owner's word, so that a fresh session
-goes on. Work packages 1, 2 and 3 are done, reviewed and written below.
-Work package 4 is begun: tasks 4.1 and 4.2 were with one subagent, which
-committed 746f18e, a change of `specs/text-files.md` (a line past 2^32 −
-1 unreadable, and the header of a separator whose quote is never
-closed), and whose code the orchestrator committed as it was left, in
-the commit after it, marked unfinished; `cargo test --workspace` passes
-there, 441 tests and 25 ignored. The session that goes on:
+Work packages 1 to 4 are done, reviewed and written below; work
+package 5, the export of a CSV, is next.
 
-1. Enters the worktree `.claude/worktrees/table-io`, branch
-   `plan/table-io`, and runs every check of the coding skill.
-2. Finishes tasks 4.1 and 4.2 from that commit, with a subagent given
-   the plan's work package 4 and what is left: the checks; the peak of
-   memory of `import_table` over a CSV of 20,000,000 bytes of `0,`
-   cells, measured at 619 MB natively, mostly the growth of the vector of
-   cells to a capacity of 16.7 million for 9.76 million cells, which a
-   counting pass of the split before the vectors are made was to lower,
-   and over 100,000 rows × 50 columns, both written here; the property of
-   the round trip of `specs/text-files.md`, if it is not in
-   `tests/import_text.rs` yet; and every difference between popnei_web's
-   TypeScript and the spec, which goes to the owner and is not bent
-   either way.
-3. Ticks 4.1 and 4.2, goes on with task 4.3, then the review of work
-   package 4, and then work packages 5 to 7.
+One question waits on the owner, and nothing of the plan rests on it.
+A file of UTF-8 without the mark of its encoding, cut short in the
+middle of an accented letter, as an interrupted copy leaves it, is not
+valid UTF-8, so it is read as Windows-1252, and every accented letter of
+the file is shown wrong: `España` becomes `EspaÃ±a`, with only the line
+"Read as Windows-1252" for the user to see why. popnei_web reads it the
+same way today, and `specs/text-files.md` says so. The options:
 
-Nothing waits on the owner to go on. At the end the report asks for
-the merge, and tells the owner of the note far to the left of a table,
-in the section on work package 3.
+- Keep it so. table_io and popnei_web read the file alike; the user who
+  sees the wrong letters can set UTF-8 and gets every letter right but
+  the last, cut, one.
+- Read a file whose only fault as UTF-8 is a character cut at its end
+  as UTF-8, its last character not decoded and its line given as the
+  line not decoded. Every letter but the cut one is right with no
+  action of the user, and table_io then differs from popnei_web there,
+  a change of `specs/text-files.md` and a few lines of `csv.rs`.
+
+The recommendation is to keep it so: a file cut in the middle of a
+letter is also cut in the middle of a row, which the user sees as a row
+of the wrong length or a value missing at the end, and the difference
+from popnei_web would be one more for its move to table_io.
 
 ## The rename of the repository on GitHub
 
@@ -244,3 +240,135 @@ numbers, api, architecture and package:
   about a cell (architecture); refusing an `ArrayBuffer` in the package,
   which would need the crate `js-sys`, a new dependency, for a mistake
   TypeScript stops (errors, package).
+
+## Work package 4: text files
+
+Built on 2 October 2026 by three subagents: tasks 4.1 and 4.2 by one, in
+two sessions (746f18e, the spec: a line past 2^32 − 1 unreadable and the
+header of a separator whose quote is never closed; e1fbf9d, left
+unfinished when the first session paused; 5a17ce2), task 4.3 by another
+(e544e33, b151bb9), and a spec correction of the orchestrator (970c47c).
+
+The deliverables, checked by the orchestrator at b151bb9 and again after
+the review's fixes at 87c8a86:
+
+1. and 2. `cargo test -p table_io --test import_text`: 102 passed and 5
+   ignored at b151bb9, 111 passed and 5 ignored at 87c8a86, the same with
+   `csv` alone; every case of "How it is verified" of
+   `specs/text-files.md`, the 256 bytes of Windows-1252 among them, and
+   every row of the table of texts of `specs/import.md`, each a literal.
+3. The round trip of a text file: 3,000 tables made with a fixed seed,
+   each read back with its separator set, and 1,263 of them also with
+   none set, those whose separator the search can find.
+4. `cargo test -p table_io --test no_panic`: an xlsx of 5,649 bytes
+   written by rust_xlsxwriter, 1,446,144 copies, and a CSV of 93 bytes in
+   Windows-1252, 23,808 copies at b151bb9 and 121,600 at 87c8a86, when
+   the same CSV in UTF-8 with its mark, in UTF-16 with its mark, and
+   after `##` were added; each cut short at every length and each byte
+   changed to the 255 other values. No copy panicked, in table_io or in
+   calamine. It takes 52 s of the 62 s of `cargo test --workspace`.
+5. The five tests of the owner's text files, `excel_es.csv`,
+   `excel_es_utf8.csv`, `excel_mac.csv`, `excel_unicode.txt` and
+   `libreoffice.csv`, are ignored, and with `--ignored` each fails on the
+   missing file.
+6. `npm test` in `js/table_io`: 38 of 38 at b151bb9; 46 passed and 1
+   skipped at 87c8a86, the skipped one waiting for `excel_es.csv`.
+   `written.csv` is read, and `raggedRow`, `duplicateIndividual` and
+   `unclosedQuote` of a text file have their places.
+
+`cargo test --workspace`: 452 passed, 26 ignored at 87c8a86.
+
+The size of the package at the end of the work package, the bound of
+work package 6, after `npm run build`: `wasm/table_io_bg.wasm` 651,318
+bytes, 330,332 with `gzip -9`; `wasm/table_io.js` 37,489 bytes, 6,758
+with `gzip -9`. At the end of work package 3 the `.wasm` was 323,876
+bytes gzipped.
+
+Changed in the plan: nothing. The orchestrator made the builds of the
+tests compile the dependencies optimised, `[profile.dev.package."*"]
+opt-level = 2`, which the architecture now says (section 11), since the
+no-panic test took 108 s of the 126 s of the tests; it takes 52 s now.
+The package is built with the release profile and does not change.
+
+What the owner should know:
+
+- table_io and popnei_web's own reader were run side by side under node
+  over 280,000 random inputs by the implementer and 140,252 by the spec
+  reviewer, the marks, UTF-16, Windows-1252, quotes, each line end and
+  every option among them. They gave the same table or the same refusal
+  in all of them but one kind: a file of UTF-16 that starts with three
+  marks of its encoding, as one saved three times with a mark would.
+  popnei_web names its first column with an invisible character before
+  `id`, and table_io names it `id`, as the spec says; the spec's account
+  of popnei_web was corrected (970c47c). Nothing was changed in either.
+- The memory of a text file. popnei_web refuses a file of more than
+  20,000,000 bytes. The import of such a file, measured as the wasm's
+  memory under node 26.8.2 after `importTable`, at 87c8a86: 335.8 MB for
+  a header of 100 names over rows of a name and 99 `0`; 548.0 MB for the
+  same rows with their 99 cells empty; 610.5 MB, the most found, for
+  `id,v` over 2,500,000 rows of `a,`, which is refused as a duplicate
+  individual. Each cell is 16 bytes, and a file of only separators holds
+  as many cells as bytes. Whether a browser's worker gives that much has
+  not been tried; the time of a large file is measured in work package 7.
+
+The review, at b151bb9, by all seven categories, spec, tests, numbers,
+errors, api, architecture and package:
+
+- Fixed, the time: a header of K empty names over R rows took time in
+  proportion to K × R, 2.90 s for 40,000 by 40,000 and about 16,000 s
+  estimated for a file of 20 MB, during which popnei_web's worker would
+  not answer; the columns are now found in one pass, 0.01 s for the same
+  file (numbers). popnei_web has the same loop.
+- Fixed, the memory: a blank row kept a cell for each column, so a file
+  of 20 MB of line breaks took 501.4 MB and now takes 21.4 MB, and a
+  header of 20 MB of commas 581.4 MB, now 361.4 MB (architecture,
+  numbers). The import spec's bound of the cells of a text file by its
+  bytes, half of them and one, was false, an empty cell taking no byte;
+  it is now their number and one (numbers).
+- Fixed, the tests: fourteen rules that had code and no test that failed
+  when the code was broken, among them the header of a quote never
+  closed, the line of a quote opened in the second cell of a row, a lone
+  carriage return as the line end of Excel for Mac, `""y` as a cell, the
+  ragged row before an empty or duplicate individual, and the separator
+  chosen by the header counted without its empty end; each new test was
+  seen to fail under the reviewer's change of the code (spec, tests,
+  errors, three reviewers on the same points). The no-panic test reached
+  none of the decoding of UTF-16 or of a UTF-8 mark (errors, tests). The
+  package's tests set no option of a text file, so a separator `;` read
+  as `,` would have passed all 38 (package, tests, errors).
+- Fixed, the code against the spec: a row of more than 4,294,967,295
+  cells is unreadable, as the spec says, and not only a ragged one
+  (spec). The decimal mark is counted by the table step, which the
+  spec and the architecture now say (architecture). Doc comments of the
+  ragged row, of the line not decoded, of the errors and of the
+  borrowing of the text, and two tuples of positions made structs
+  (api). `written.csv` said to be as a Spanish Excel writes it, with its
+  booleans in English, which a Spanish Excel writes as `VERDADERO`; now
+  said as it is (package). `.gitattributes` keeps the line ends of the
+  text files of `tests/data` (package).
+- Not taken, as issues: the two values that tell the table step what it
+  reads, where it came from and how far it is read, can be given in
+  pairs that mean nothing, which no caller builds today (api); the
+  header counted for the separator and by the table step by two pieces
+  of code that agree over 1,000,000 random texts and could drift
+  (architecture).
+- Not taken: that the decimal mark counts the cells of the columns that
+  are dropped (tests); such a column holds only missing values, which
+  are not counted.
+- For the owner: a UTF-8 file cut short in the middle of an accented
+  letter, below.
+
+## The issues to open
+
+When the repository's issues are used for table_io, these are opened:
+
+- The table step is given where a table came from and how far it is
+  read as two values whose pairs no type forbids: an xlsx with a decimal
+  mark still to find, or a text file read as an xlsx. Each is built in
+  one place today. One value that holds both would let the compiler
+  refuse a wrong pair (review of work package 4, api).
+- The header without its empty end is counted twice, once to find the
+  separator in `csv.rs` and once in the table step; the two agree over
+  1,000,000 random texts, and a change of "The header" of
+  `specs/import.md` has to be made in both (review of work package 4,
+  architecture).

@@ -2,7 +2,10 @@
 //! it is verified" of `docs/specs/values.md` a literal input and its
 //! literal output.
 
-use table_io::{DecimalMark, float_text, is_missing, parse_boolean, parse_float, parse_integer};
+use table_io::{
+    ColumnType, ColumnValues, ConversionFailure, DecimalMark, convert_column, float_text,
+    is_missing, parse_boolean, parse_float, parse_integer,
+};
 
 /// The bits of a float, so that two floats are compared exactly, `-0` and
 /// `0` told apart.
@@ -168,4 +171,236 @@ fn a_float_halfway_between_two_shortest_texts_takes_the_one_whose_last_digit_is_
         float_text(12_345_678_901_234.062_5, DecimalMark::Point),
         "12345678901234.062"
     );
+}
+
+/// A text column of `texts`, None for a missing value.
+fn texts(texts: &[Option<&str>]) -> ColumnValues {
+    ColumnValues::Text(texts.iter().map(|text| text.map(str::to_owned)).collect())
+}
+
+/// What a conversion says when `num_failed` values do not convert, the
+/// first in `first_row` with the text `first_text`.
+fn failure(num_failed: u64, first_row: u32, first_text: &str) -> ConversionFailure {
+    ConversionFailure {
+        num_failed,
+        first_row,
+        first_text: first_text.to_owned(),
+    }
+}
+
+#[test]
+fn whole_numbers_of_a_text_column_convert_to_integers_and_a_missing_value_stays_missing() {
+    assert_eq!(
+        convert_column(
+            &texts(&[Some("1"), Some("2"), None]),
+            ColumnType::Integer,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Integer(vec![Some(1), Some(2), None]))
+    );
+}
+
+#[test]
+fn texts_that_are_not_numbers_fail_to_convert_to_float_with_their_count_and_the_first() {
+    assert_eq!(
+        convert_column(
+            &texts(&[Some("1"), Some("n.d."), Some("2"), Some("x")]),
+            ColumnType::Float,
+            DecimalMark::Point
+        ),
+        Err(failure(2, 2, "n.d."))
+    );
+}
+
+#[test]
+fn numbers_of_a_text_column_with_the_comma_convert_to_floats() {
+    assert_eq!(
+        convert_column(
+            &texts(&[Some("1,5"), Some("2")]),
+            ColumnType::Float,
+            DecimalMark::Comma
+        ),
+        Ok(ColumnValues::Float(vec![Some(1.5), Some(2.0)]))
+    );
+}
+
+#[test]
+fn a_text_that_is_not_true_or_false_fails_to_convert_to_boolean() {
+    assert_eq!(
+        convert_column(
+            &texts(&[Some("TRUE"), Some("no")]),
+            ColumnType::Boolean,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 2, "no"))
+    );
+}
+
+#[test]
+fn an_integer_column_converts_to_float_and_a_missing_value_stays_missing() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Integer(vec![Some(3), None]),
+            ColumnType::Float,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Float(vec![Some(3.0), None]))
+    );
+}
+
+#[test]
+fn an_integer_a_float_cannot_hold_becomes_the_nearest_float() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Integer(vec![Some(9_007_199_254_740_993)]),
+            ColumnType::Float,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Float(vec![Some(9_007_199_254_740_992.0)]))
+    );
+}
+
+#[test]
+fn an_integer_past_2_to_the_53_that_a_float_holds_is_that_float() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Integer(vec![Some(9_007_199_254_740_994)]),
+            ColumnType::Float,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Float(vec![Some(9_007_199_254_740_994.0)]))
+    );
+}
+
+#[test]
+fn a_float_that_is_not_whole_fails_to_convert_to_integer_with_its_text() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(2.0), Some(3.5)]),
+            ColumnType::Integer,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 2, "3.5"))
+    );
+}
+
+#[test]
+#[ignore = "the spec's literal 9223372036854775808 is not the text of the float 2^63 that \
+            its rule gives, 9223372036854776000 as node writes it; a question to the owner"]
+fn the_float_2_to_the_63_fails_to_convert_to_integer() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(9_223_372_036_854_775_808.0)]),
+            ColumnType::Integer,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 1, "9223372036854775808"))
+    );
+}
+
+#[test]
+fn the_float_2_to_the_63_is_not_made_the_largest_integer() {
+    let conversion = convert_column(
+        &ColumnValues::Float(vec![Some(9_223_372_036_854_775_808.0)]),
+        ColumnType::Integer,
+        DecimalMark::Point,
+    );
+    assert_eq!(
+        conversion.map_err(|failure| (failure.num_failed, failure.first_row)),
+        Err((1, 1))
+    );
+}
+
+#[test]
+fn the_float_minus_2_to_the_63_converts_to_the_smallest_integer() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(-9_223_372_036_854_775_808.0)]),
+            ColumnType::Integer,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Integer(vec![Some(
+            -9_223_372_036_854_775_808
+        )]))
+    );
+}
+
+#[test]
+fn whole_floats_convert_to_integers() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(2.0), Some(3.0)]),
+            ColumnType::Integer,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Integer(vec![Some(2), Some(3)]))
+    );
+}
+
+#[test]
+fn a_float_converted_to_text_with_the_comma_is_written_with_the_comma() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(1.5)]),
+            ColumnType::Text,
+            DecimalMark::Comma
+        ),
+        Ok(texts(&[Some("1,5")]))
+    );
+}
+
+#[test]
+fn booleans_converted_to_text_are_true_and_false_in_capitals() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Boolean(vec![Some(true), Some(false)]),
+            ColumnType::Text,
+            DecimalMark::Point
+        ),
+        Ok(texts(&[Some("TRUE"), Some("FALSE")]))
+    );
+}
+
+#[test]
+fn a_boolean_fails_to_convert_to_integer() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Boolean(vec![Some(true)]),
+            ColumnType::Integer,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 1, "TRUE"))
+    );
+}
+
+#[test]
+fn an_integer_fails_to_convert_to_boolean() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Integer(vec![Some(1)]),
+            ColumnType::Boolean,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 1, "1"))
+    );
+}
+
+#[test]
+fn an_integer_column_of_missing_values_converts_to_boolean_as_missing_values() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Integer(vec![None, None]),
+            ColumnType::Boolean,
+            DecimalMark::Point
+        ),
+        Ok(ColumnValues::Boolean(vec![None, None]))
+    );
+}
+
+#[test]
+fn a_column_gives_its_type_and_its_number_of_rows() {
+    let column = ColumnValues::Boolean(vec![Some(true), None, Some(false)]);
+    assert_eq!(column.column_type(), ColumnType::Boolean);
+    assert_eq!(column.len(), 3);
+    assert!(!column.is_empty());
 }

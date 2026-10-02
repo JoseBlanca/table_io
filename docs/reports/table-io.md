@@ -66,3 +66,55 @@ tests, package and architecture:
 - For work package 6: the feature `deflate` of zip turns on
   `deflate-zopfli`, a compressor the reading never uses; its size is
   measured when the export comes (architecture reviewer).
+
+## Work package 2: the values
+
+Built on 2 October 2026 by one subagent, both tasks, in commits 47b8aac
+(task 2.1), 4c43635 (the spec: the row of a failed conversion past
+2^32 − 1), 1e684b1 (task 2.2), ed39437 and 1db2c74 (a literal of the spec
+corrected, below).
+
+The deliverables, checked by the orchestrator:
+
+1. and 2. `cargo test -p table_io --test values`: 36 passed after the
+   review, 30 before it, with the defaults and with `csv` alone; the
+   file did not exist at a6a5581, where the work package started. Every
+   literal of `specs/values.md`, "How it is verified", and every row of
+   its table at `convert_column` is a test.
+3. `npm test` in `js/table_io`: 13 of 13.
+
+`cargo test --workspace`: 240 passed, 19 ignored.
+
+What the owner should know: one literal of the spec was wrong, the text
+of the float 2^63 in a failed conversion, written as the integer's digits
+where the spec's own rule gives JavaScript's `9223372036854776000`; the
+subagent asked rather than chose, and the spec was corrected (ed39437).
+`float_text` was compared with node 26.8.2's `String(x)` over 3,304,228
+floats by the implementer, 570,837 and 3,240,000 more by the spec
+reviewer and 6,370,000 by the numbers reviewer, with no difference; it
+takes about 0.65 µs a float on the owner's Mac, against 0.33 µs for
+Rust's own layout, which differs from JavaScript's on 20,892 of the
+3,304,228, all ties.
+
+The review, at 1db2c74, by the categories spec, tests, numbers, and
+errors with api:
+
+- Fixed, in the spec at 5725e67 and in the code at d0b568a: two of the
+  three checks of a tie held by no test, which each reviewer showed by
+  removing one, all 30 tests passing and 7,613 to 58,000 floats then
+  written otherwise than node writes them (spec, tests, numbers, three
+  reviewers on the same point); five floats that catch each removal
+  added to the spec and the tests, by their bits. Seven conversions and
+  `-Infinity` without a test (spec, tests). The cap of the row of a
+  failure at 4,294,967,295 missing from the doc comment (api), now said
+  and held by a test on 64-bit targets. `is_empty`, which clippy asks
+  for, public but not in the spec (api). A test that could not fail
+  alone, removed (tests). What a text `NA` that a caller did not mark
+  missing is: a value, `None` alone being missing, which an import never
+  gives otherwise; written in the spec (spec, errors).
+- Not taken: the third check of a tie, which skips the exact one when no
+  tie is possible, can fail no test, since without it every text is the
+  same and the comparison with node 2.2 s becomes 8.7 s; kept as what it
+  is, a filter of speed.
+- For work package 3: `cell.rs` writes `Infinity` itself where it could
+  call `float_text`, the same rule in two places (spec reviewer).

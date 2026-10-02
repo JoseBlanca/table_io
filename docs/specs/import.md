@@ -64,7 +64,14 @@ table says it was read as a text file. A zip that holds no workbook, a
 the owner decided on 2 October 2026, so that the application can say
 that it is a zip and not an Excel workbook, which the user can act on.
 It is found from the package relationships, the part `_rels/.rels` of
-the zip that names its main part, which `specs/read.md` already reads:
+the zip that names its main part, which `specs/read.md` already reads,
+and which is read first, within the bound of a part of settings of
+`specs/read.md`, 50,000,000 bytes, before any other part is read or
+bounded, so that a zip of other files is not a workbook whatever its
+other parts hold: a zipped CSV of genotypes that unzips to 310 MB, which
+a user of popnei_web may pick by mistake, is not a workbook and not a
+file past a bound (review of work package 3 of `plans/table-io.md`, 2
+October 2026):
 a zip without them, or whose relationships name no workbook, is not a
 workbook. The relationships name no workbook when none of them is of the
 type `officeDocument` with a target, or when the folder of that target,
@@ -307,6 +314,20 @@ pub enum HowRead {
     Text(TextRead),
     Xlsx { sheet: String },
 }
+
+impl HowRead {
+    /// The decimal mark the values were read with, which a conversion of
+    /// a column of this table takes: the one of a text file, and the point
+    /// for an xlsx.
+    pub fn decimal(&self) -> DecimalMark;
+}
+
+/// A refusal or an unreadable file, written for whoever reports the
+/// problem, in English and with its fields, not as the words a user
+/// reads, which are the application's: Display and std::error::Error, so
+/// that a caller passes it on with `?`.
+impl std::fmt::Display for ImportError;
+impl std::error::Error for ImportError;
 
 pub fn import_table(bytes: &[u8], options: &ImportOptions) -> Result<Table, ImportError>;
 ```

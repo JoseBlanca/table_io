@@ -235,7 +235,9 @@ pub enum FoundEncoding { Utf8, Utf16, Windows1252 }
 
 pub enum Separator { Tab, Semicolon, Comma }
 
-/// What the caller sets for a text file; None is found from the file.
+/// What the caller sets for a text file; None is found from the file,
+/// which `Default` gives for all three.
+#[derive(Default)]
 pub struct TextOptions {
     pub encoding: Option<Encoding>,
     pub separator: Option<Separator>,

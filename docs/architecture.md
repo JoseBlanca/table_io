@@ -177,9 +177,11 @@ xlsx one of the seven errors of Excel, `#N/A`, `#DIV/0!`, `#NAME?`,
 `#NULL!`, `#NUM!`, `#REF!` and `#VALUE!`; a text; or, from an xlsx, a number
 or a boolean. A refusal is found here in the order popnei_web's spec
 gives when a file has several problems, and names its place by the first
-step's line or row. The rules that belong to one format stay in its
-module: a row of the wrong length and a quote never closed are a text
-file's, an error of Excel in the header an xlsx's.
+step's line or row. A quote never closed is found by the module of a
+text file, as it splits the text; a row of the wrong length, which only a
+text file can have, and an error of Excel in the header, which only an
+xlsx can have, are found by the table step, in the order of the refusals
+of `specs/import.md`, which puts them among its rules.
 
 The rules of a value, in the module `value`, are what the table step, the
 types and the conversion use: whether a text is missing, the number a

@@ -98,7 +98,16 @@ number of the other columns, which `columnName`, `columnNumber`,
 `columnType` and the five arrays of a column, `columnMissing` and the
 four of the values, give by their index, from 0. The array of another
 type than the column's is empty, `columnIntegers` of a text column an
-empty `BigInt64Array`; an index out of range is thrown as an `Error`.
+empty `BigInt64Array`; an index that is not a whole number from 0 to
+`numColumns` − 1 is thrown as an `Error`. The index is a number checked
+by the binding, `f64` in the Rust, as the limits are: taken as a `u32`,
+JavaScript would wrap it modulo 2^32, and 2^32, 1.9 or `undefined` would
+give a column with no `Error`, as the review of work package 3 of
+`plans/table-io.md` saw on 2 October 2026. The bytes are a
+`Uint8Array`, as the declarations say: wasm-bindgen's JavaScript reads an
+`ArrayBuffer` or a `DataView` given in its place as no bytes, an empty
+file, which popnei_web's compiler of TypeScript refuses before it
+runs.
 
 With a refusal, `refusal` is its kind, in camelCase, and the fields its
 words need are filled, the others 0 or `""`:

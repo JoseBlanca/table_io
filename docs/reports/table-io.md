@@ -12,8 +12,9 @@ objectives, the architecture, the specs and the plan were put on `main`
 by the owner's order the same day, at 8bb8982; nothing of the code is on
 `main`, and nothing is pushed.
 
-Work packages 1 to 5 are done, reviewed and written below; work
-package 6, the export of an xlsx, is next.
+Work packages 1 to 6 are done, reviewed and written below, but for
+deliverable 3 of work package 6, which waits on the owner; work package
+7, the end, is next.
 
 Two questions wait on the owner, and nothing of the plan rests on them.
 
@@ -467,6 +468,92 @@ api and architecture; the package was not touched:
   which are found as the header is written, so the line is built twice
   by one function.
 
+## Work package 6: the export of an xlsx
+
+Built on 2 October 2026 by one subagent, both tasks: e214f5c (the spec:
+what an xlsx writes for an empty first name, a float and the characters
+of a text), 5654294 (task 6.1) and 44e39f8 (task 6.2).
+
+The deliverables, checked by the orchestrator at 44e39f8 and again after
+the review's fixes at abf9d61:
+
+1. `cargo test -p table_io --test export_xlsx`: 26 passed at 44e39f8, 28
+   at abf9d61, each file read back by `import_table` and, since the
+   review, its cells by calamine too; rust_xlsxwriter 0.99.1 is a
+   dependency of the feature `xlsx`, and `cargo tree` for `csv` alone
+   names none of the crates of the xlsx, the coding skill's check now
+   naming rust_xlsxwriter.
+2. The round trip of an xlsx, over 2,000 tables made with a fixed seed:
+   1,831 read back as themselves, 1,552 of them after a refusal, each
+   refusal checked to be due; 169 had no individual; 794 columns read
+   back as a narrower type. Each refusal only an xlsx gives is met: spaces
+   at the ends 1,376 times, an integer past 2^53 1,207, U+FFFE or U+FFFF
+   1,094, an error of Excel as a name 233 and as a value 115, a control
+   character after `_x` and four hex digits 259.
+3. Not met, and with the owner: the package's `.wasm` is 651,456 bytes,
+   330,388 with `gzip -9`, against 651,318 and 330,332 at the end of work
+   package 4, 138 bytes more; `wasm/table_io.js` is unchanged, 37,489 and
+   6,758. The question is in "State".
+
+`cargo test --workspace`: 538 passed, 26 ignored at abf9d61. `npm test`:
+46 passed, 1 skipped.
+
+Changed in the plan: nothing; deliverable 3 is ticked with its task, and
+left open here until the owner answers.
+
+What the owner should know:
+
+- The memory of an export of an xlsx: 456 MB at its peak for a table of
+  20,000 rows and 100 columns, half floats and half texts, which takes
+  61 MB itself, natively, in a release build on the owner's Mac, an Apple
+  M5 Pro; 0.73 s, a file of 9.2 MB. rust_xlsxwriter holds every cell and
+  the whole XML of the sheet before it zips it, and its mode of low
+  memory writes to temporary files, which the library does not use. Now
+  in `specs/export.md`, "How it runs".
+- rust_xlsxwriter reads the clock to date the file it makes, and natively
+  writes the parts of the file on a second thread. The date makes two
+  exports of one table differ in their bytes, in the properties of the
+  file, as two files saved by Excel do. In a build for the web, reading
+  the clock stops the program: an export of an xlsx in the package would
+  end popnei_web's worker, which the architecture reviewer and the
+  errors reviewer each saw under node. The package does not export
+  today; the question is in "State".
+- A file larger than 4 GiB inside the xlsx, which a table of 1,048,575
+  rows and 100 columns of floats reaches after about 20 GB of memory,
+  fails as an export that failed, with a message about an option of
+  zip, and not as a refusal. The option would make every file need a
+  reader of large zips, which rust_xlsxwriter's documentation says Excel
+  is and other programs may not be; it is left off, and the spec says so.
+
+The review, at 44e39f8, by all seven categories:
+
+- Fixed, a wrong cell: rust_xlsxwriter writes a control character as
+  `_x000D_` after it has escaped the text's own `_x` sequences, so a text
+  holding `_x0041` followed by a carriage return read back as `Ax000D_`,
+  a value or the name of an individual, with no refusal (spec). No way
+  was found through rust_xlsxwriter to write it so that it reads back,
+  so such a text is refused as a character the file cannot carry, the
+  spec saying this is the default until the owner decides; the round
+  trip now makes such texts. The fault is rust_xlsxwriter's, and goes to
+  the issues.
+- Fixed, the tests: eight literal tests read the file back by the import
+  only, which gives the same integer for a text cell `001` and a number
+  cell 1, so a writer that put numbers and booleans where the spec says
+  texts passed them; they now check calamine's cells (tests). The round
+  trip never met an error of Excel; it does now, and asserts that each
+  refusal only an xlsx gives is met (tests). Two tests of a cell past the
+  sheet checked only that the export failed (errors).
+- Fixed, the documents: the order of two refusals of one cell (spec);
+  the doc comments of the error of Excel as a name, which concerns the
+  header alone, of a text read as missing and of a failed export (api);
+  the memory and the option of large files (architecture, errors). The
+  test of a space or a tab at the ends of a text is one function, used by
+  the import and the writer (architecture).
+- With the owner: the clock in a build for the web, with the 138 bytes;
+  an integer past 2^53 that a cell holds exactly (numbers); whether Excel
+  shows the smallest and the largest floats as written, added to the file
+  the owner opens in Excel when it is made (numbers).
+
 ## The issues to open
 
 When the repository's issues are used for table_io, these are opened:
@@ -481,3 +568,8 @@ When the repository's issues are used for table_io, these are opened:
   1,000,000 random texts, and a change of "The header" of
   `specs/import.md` has to be made in both (review of work package 4,
   architecture).
+- rust_xlsxwriter 0.99.1 escapes the `_x` sequences of a text before it
+  writes its control characters as `_xHHHH_`, so `_x0041` followed by a
+  carriage return is read back as `Ax000D_` by calamine and, by the rule
+  of the format, by Excel; table_io refuses such a text meanwhile. For
+  rust_xlsxwriter's repository (review of work package 6, spec).

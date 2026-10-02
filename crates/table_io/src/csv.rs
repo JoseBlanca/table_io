@@ -6,9 +6,9 @@
 //! give it. It is behind the feature `csv`.
 //!
 //! A cell that needs no change of its text borrows it from the decoded
-//! text, which is the bytes themselves for a file of valid UTF-8 with no
-//! mark, so that such a file is held once (`docs/specs/text-files.md`,
-//! "How it runs").
+//! text, which is the bytes themselves for a file of valid UTF-8, with or
+//! without its mark, so that such a file is held once
+//! (`docs/specs/text-files.md`, "How it runs").
 
 use std::borrow::Cow;
 
@@ -280,20 +280,25 @@ enum CellSpan {
         /// The place past its last byte.
         end: usize,
     },
-    /// A cell that starts with a quote: what is inside its quotes, its
-    /// doubled quotes not yet made one, and what follows the closing quote.
-    Quoted {
-        /// The place past the opening quote.
-        inner_start: usize,
-        /// The place of the closing quote, or the end of the text when the
-        /// quote is never closed.
-        inner_end: usize,
-        /// The place past the closing quote.
-        trail_start: usize,
-        /// The place past the last byte that follows the closing quote,
-        /// its spaces at the end left out.
-        trail_end: usize,
-    },
+    /// A cell that starts with a quote.
+    Quoted(QuotedSpan),
+}
+
+/// A cell that starts with a quote, by the places of its bytes in the
+/// text: what is inside its quotes, its doubled quotes not yet made one,
+/// and what follows the closing quote.
+#[derive(Debug, Clone, Copy)]
+struct QuotedSpan {
+    /// The place past the opening quote.
+    inner_start: usize,
+    /// The place of the closing quote, or the end of the text when the
+    /// quote is never closed.
+    inner_end: usize,
+    /// The place past the closing quote.
+    trail_start: usize,
+    /// The place past the last byte that follows the closing quote, its
+    /// spaces at the end left out.
+    trail_end: usize,
 }
 
 /// Why a split stopped before the end of the text.
@@ -385,12 +390,12 @@ fn split<'text>(
                         None => {
                             sink.cell(
                                 text,
-                                CellSpan::Quoted {
+                                CellSpan::Quoted(QuotedSpan {
                                     inner_start,
                                     inner_end: length,
                                     trail_start: length,
                                     trail_end: length,
-                                },
+                                }),
                             );
                             sink.row_end(row_line);
                             return Err(SplitStop::UnclosedQuote { line: cell_line });
@@ -420,12 +425,12 @@ fn split<'text>(
                 }
                 sink.cell(
                     text,
-                    CellSpan::Quoted {
+                    CellSpan::Quoted(QuotedSpan {
                         inner_start,
                         inner_end,
                         trail_start,
                         trail_end: end_without_blanks(trail_start, place),
-                    },
+                    }),
                 );
             } else {
                 let start = place;
@@ -464,13 +469,13 @@ fn split<'text>(
 
 /// The parts of the text of a quoted cell: inside its quotes, its doubled
 /// quotes not yet made one, and after its closing quote.
-fn quoted_parts(
-    text: &str,
-    inner_start: usize,
-    inner_end: usize,
-    trail_start: usize,
-    trail_end: usize,
-) -> (&str, &str) {
+fn quoted_parts(text: &str, span: QuotedSpan) -> (&str, &str) {
+    let QuotedSpan {
+        inner_start,
+        inner_end,
+        trail_start,
+        trail_end,
+    } = span;
     // The places are those of the split, each at an ASCII byte or the end
     // of the text, so at the boundary of a character; the default is
     // never taken.
@@ -487,13 +492,8 @@ fn quoted_parts(
 fn cell_of_span(text: &str, span: CellSpan) -> Cell<'_> {
     let cell_text = match span {
         CellSpan::Plain { start, end } => Cow::Borrowed(text.get(start..end).unwrap_or_default()),
-        CellSpan::Quoted {
-            inner_start,
-            inner_end,
-            trail_start,
-            trail_end,
-        } => {
-            let (inner, trail) = quoted_parts(text, inner_start, inner_end, trail_start, trail_end);
+        CellSpan::Quoted(quoted) => {
+            let (inner, trail) = quoted_parts(text, quoted);
             if inner.contains("\"\"") {
                 Cow::Owned(inner.replace("\"\"", "\"") + trail)
             } else if trail.is_empty() {
@@ -517,12 +517,12 @@ fn cell_of_span(text: &str, span: CellSpan) -> Cell<'_> {
 fn is_empty_span(span: CellSpan) -> bool {
     match span {
         CellSpan::Plain { start, end } => start == end,
-        CellSpan::Quoted {
+        CellSpan::Quoted(QuotedSpan {
             inner_start,
             inner_end,
             trail_start,
             trail_end,
-        } => inner_start == inner_end && trail_start == trail_end,
+        }) => inner_start == inner_end && trail_start == trail_end,
     }
 }
 
@@ -655,13 +655,8 @@ fn kind_of_span(text: &str, span: CellSpan) -> CellKind {
     };
     match span {
         CellSpan::Plain { start, end } => kind_of_text(text.get(start..end).unwrap_or_default()),
-        CellSpan::Quoted {
-            inner_start,
-            inner_end,
-            trail_start,
-            trail_end,
-        } => {
-            let (inner, trail) = quoted_parts(text, inner_start, inner_end, trail_start, trail_end);
+        CellSpan::Quoted(quoted) => {
+            let (inner, trail) = quoted_parts(text, quoted);
             if inner.contains('"') {
                 // A doubled quote, one `"` of the text of the cell.
                 CellKind::Value
@@ -811,7 +806,7 @@ impl<'text> SplitSink<'text> for SeparatorCount {
 /// [`ImportError::Unreadable`] for a line past line 4,294,967,295, or a
 /// row of more than 4,294,967,295 cells.
 fn found_separator(text: &str) -> Result<Separator, ImportError> {
-    let mut tries = Vec::with_capacity(SEPARATORS_BY_PRECEDENCE.len());
+    let mut tries: Vec<SeparatorTry> = Vec::with_capacity(SEPARATORS_BY_PRECEDENCE.len());
     for separator in SEPARATORS_BY_PRECEDENCE {
         let mut count = SeparatorCount::new();
         let is_closed = match split(text, separator, &mut count) {
@@ -824,23 +819,38 @@ fn found_separator(text: &str) -> Result<Separator, ImportError> {
                 return Err(ImportError::Unreadable(CELLS_PAST_U32.to_owned()));
             }
         };
-        tries.push((separator, count.num_counted(), is_closed && count.fits()));
+        tries.push(SeparatorTry {
+            separator,
+            num_counted: count.num_counted(),
+            fits: is_closed && count.fits(),
+        });
     }
-    let most_cells = |candidates: &mut dyn Iterator<Item = &(Separator, usize, bool)>| {
+    let most_cells = |candidates: &mut dyn Iterator<Item = &SeparatorTry>| {
         candidates
-            .fold(
-                None,
-                |best: Option<(Separator, usize)>, &(separator, num_counted, _)| match best {
-                    Some((_, best_counted)) if best_counted >= num_counted => best,
-                    Some(_) | None => Some((separator, num_counted)),
-                },
-            )
-            .filter(|&(_, num_counted)| num_counted >= 2)
-            .map(|(separator, _)| separator)
+            .fold(None, |best: Option<&SeparatorTry>, candidate| match best {
+                Some(best_try) if best_try.num_counted >= candidate.num_counted => best,
+                Some(_) | None => Some(candidate),
+            })
+            .filter(|best_try| best_try.num_counted >= 2)
+            .map(|best_try| best_try.separator)
     };
-    Ok(most_cells(&mut tries.iter().filter(|&&(_, _, fits)| fits))
-        .or_else(|| most_cells(&mut tries.iter()))
-        .unwrap_or(Separator::Comma))
+    Ok(
+        most_cells(&mut tries.iter().filter(|candidate| candidate.fits))
+            .or_else(|| most_cells(&mut tries.iter()))
+            .unwrap_or(Separator::Comma),
+    )
+}
+
+/// A separator as the search tried it.
+#[derive(Debug, Clone, Copy)]
+struct SeparatorTry {
+    /// The separator.
+    separator: Separator,
+    /// The number of cells it gives the header, without the run of empty
+    /// cells at its end whose columns hold no value.
+    num_counted: usize,
+    /// Whether it fits the text, a quote never closed with it not fitting.
+    fits: bool,
 }
 
 #[cfg(test)]

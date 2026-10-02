@@ -62,7 +62,7 @@ pub struct TextRead {
     /// The mark between the whole part and the decimals of a number.
     pub decimal: DecimalMark,
     /// The line of the first character that could not be decoded, and
-    /// stands as U+FFFD, `�`, counted from 1; `None` when every character
-    /// was decoded.
+    /// stands as U+FFFD, `�`, or of the first U+FFFD the file itself holds,
+    /// counted from 1; `None` when the text has no U+FFFD.
     pub undecoded_line: Option<u32>,
 }

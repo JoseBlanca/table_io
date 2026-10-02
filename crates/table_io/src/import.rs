@@ -306,9 +306,10 @@ pub enum Refusal {
     },
     /// A row of a text file with another number of cells than the header.
     RaggedRow {
-        /// The line of the row.
+        /// The line where the row starts, from 1.
         line: u32,
-        /// The number of cells of the header.
+        /// The number of cells of the header, without the run of empty
+        /// cells at its end that is dropped.
         expected: u32,
         /// The number of cells of the row.
         found: u32,

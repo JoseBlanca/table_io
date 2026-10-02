@@ -96,11 +96,22 @@ and a conversion to text.
   one of the read or the conversion, `1,5` with the comma. JavaScript
   writes the shortest digits that read back as the same float, and lays
   them out plainly from 10^−6 to below 10^21 and with an exponent outside
-  (ECMAScript's `Number::toString`); `-0` is `0`. Rust's `{:e}` gives the
-  same shortest digits, `1.2345678901234568e20`, and its `{}` lays every
+  (ECMAScript's `Number::toString`); `-0` is `0`, and a negative float is
+  `-` before the text of its absolute value. Rust's `{:e}` gives the
+  shortest digits too, `1.2345678901234568e20`, and its `{}` lays every
   digit out plainly, `1000000000000000000000` for 10^21 (tried with Rust
   1.98.0 on 2 October 2026), so table_io takes the digits and the
-  exponent of `{:e}` and lays them out as ECMAScript does. The form is
+  exponent of `{:e}` and lays them out as ECMAScript does. The two
+  differ when the float lies exactly halfway between two strings of
+  shortest digits: ECMAScript takes the one whose last digit is even, and
+  Rust's `{:e}` the one above, so that 100000000000000.125 is
+  `100000000000000.12` in JavaScript and `…13` from `{:e}`; 712 of
+  1,209,654 floats tried in the review of 2 October 2026 differed so,
+  each in its last digit, both texts reading back as the same float.
+  table_io takes JavaScript's: when the exact decimal value of the float,
+  which `{:.767e}` writes in full, is the halfway point between the
+  digits of `{:e}` and the same digits less one in the last place, and
+  the last digit of `{:e}` is odd, it takes the digits less one. The form is
   JavaScript's because popnei_web wrote it so, and a name a user saw in
   popnei_web stays the same. The layout, from the shortest digits `d`, k
   of them, and the exponent n of `{:e}` plus 1, so that the number is
@@ -111,10 +122,9 @@ and a conversion to text.
   - otherwise the first digit, then the mark and the rest when k > 1,
     then `e`, `+` or `-`, and the absolute value of n − 1, `1e+21`,
     `1.5e-7`.
-- **A boolean**: `TRUE` or `FALSE`, as Excel shows it. popnei_web wrote
-  `true` and `false`, as JavaScript's `String` writes them; this is a
-  change for it, decided here since nothing else reads the form and a
-  user of Excel sees `TRUE`.
+- **A boolean**: `TRUE` or `FALSE`, as Excel shows it, where popnei_web
+  wrote `true` and `false`, as JavaScript's `String` writes them
+  (**Open 3**, below).
 
 A float a caller made itself may be infinite or not a number, which no
 import gives: its text is `Infinity`, `-Infinity` or `NaN`, as
@@ -182,7 +192,7 @@ words. A missing value stays missing and never fails.
 
 | from \ to | integer | float | boolean | text |
 |---|---|---|---|---|
-| integer | itself | each value exactly a float: every one from −2^53 to 2^53, both included, and beyond only where the float is the same number | no value converts | always |
+| integer | itself | always, each value the nearest float | no value converts | always |
 | float | each value whole and from −2^63 to 2^63 − 1 | itself | no value converts | always |
 | boolean | no value converts | no value converts | itself | always |
 | text | each a whole number | each a number with the decimal mark | each a boolean | itself |
@@ -194,11 +204,14 @@ boolean, as the owner's rule of the booleans has it. A conversion to text
 writes each value as "The text of a value" says, with the decimal mark of
 the conversion.
 
-From integer to float, a whole number beyond 2^53 is held by a float
-only when it is one of the whole numbers a float can hold, 2^53 + 2 but
-not 2^53 + 1, and otherwise does not convert: a float cannot hold it, and
-the conversion would give the nearest float in its place, which is the
-value changed without a word that `objectives.md`, goal 4, refuses.
+From integer to float, a whole number beyond 2^53 that a float cannot
+hold, 2^53 + 1 but not 2^53 + 2, becomes the nearest float, as a text
+`9007199254740993` does when it is read as a float, and as Vavilov
+Explorer's design has it, "from integer to numeric, always" (**Open 2**,
+below). From float to integer, the range is checked against 2^63 itself
+and not against `i64::MAX as f64`, which Rust rounds to 2^63, so that a
+float of 2^63 does not convert and is never made the integer 2^63 − 1
+by a cast that saturates.
 
 ## The Rust interface
 
@@ -306,7 +319,7 @@ None.
 At `parse_float`, with the comma: `"12"` 12, `"-1,75"` −1.75, `",5"`
 0.5, `"5,"` 5, `"1,2E-03"` 0.0012, `"+,5e+2"` 50; `"1.234,5"`, `"1,5 "`,
 `"Inf"`, `"inf"`, `"NaN"`, `"infinity"`, `"1e999"`, `"-"`, `"NA"`, `","`,
-`"e5"`, `"1e"`, `"1.5"` None. With the point: `"1.5"` 1.5, `"1,5"` None,
+`"e5"`, `"1e"`, `"1.5"` None; `"1e-999"` 0. With the point: `"1.5"` 1.5, `"1,5"` None,
 `"0.1"` the float 0.1.
 
 At `parse_boolean`: `"TRUE"`, `"true"`, `"True"` true, `"FALSE"`,
@@ -318,7 +331,9 @@ At `float_text`, with the point: 1 `"1"`, 1.5 `"1.5"`, 0.1 + 0.2
 10^−6 `"0.000001"`, 10^−7 `"1e-7"`, 1.5 × 10^−7 `"1.5e-7"`, −0 `"0"`,
 5 × 10^−324 `"5e-324"`, the largest float `"1.7976931348623157e+308"`,
 infinity `"Infinity"`, NaN `"NaN"`; with the comma, 1.5 `"1,5"` and
-1.5 × 10^−7 `"1,5e-7"`. Each of these is what node 26.8.2 prints for
+1.5 × 10^−7 `"1,5e-7"`; −1.5 `"-1.5"`, −1.5 × 10^−7 `"-1.5e-7"`; the
+ties 100000000000000.125 `"100000000000000.12"` and 12345678901234.0625
+`"12345678901234.062"`. Each of these is what node 26.8.2 prints for
 `String(x)` on the owner's Mac, which the test of the package checks
 again (`specs/package.md`).
 
@@ -331,9 +346,11 @@ At `convert_column`, each a column literal and the target:
 | text `"1,5"`, `"2"` with the comma | float | 1.5, 2 |
 | text `"TRUE"`, `"no"` | boolean | 1 failed, row 2, `"no"` |
 | integer 3, missing | float | 3, missing |
-| integer 9,007,199,254,740,993 | float | 1 failed, row 1, `"9007199254740993"` |
+| integer 9,007,199,254,740,993 | float | 9,007,199,254,740,992 |
 | integer 9,007,199,254,740,994 | float | 9,007,199,254,740,994 |
-| float 2, 3.5 | integer | 1 failed, row 2, `"3.5"` |
+| float 2, 3.5, with the point | integer | 1 failed, row 2, `"3.5"` |
+| float 2^63 | integer | 1 failed, row 1, `"9223372036854775808"` |
+| float −2^63 | integer | −9,223,372,036,854,775,808 |
 | float 2, 3 | integer | 2, 3 |
 | float 1.5 with the comma | text | `"1,5"` |
 | boolean true, false | text | `"TRUE"`, `"FALSE"` |
@@ -368,6 +385,31 @@ The owner decides these; until then the implementer follows the
    Recommended: (a), since the same sheet then gives the same types as
    its CSV, which `objectives.md`, goal 2, asks, and a user who types 1
    in Excel means a whole number. Meanwhile, (a).
+2. **A whole number beyond 2^53 made a float.** A float holds every whole
+   number up to 2^53 and only some beyond, so 9,007,199,254,740,993
+   becomes 9,007,199,254,740,992. It happens in three places: an integer
+   column converted to float; a text `9007199254740993` converted to
+   float; and the guess of the type, a column of such codes holding one
+   value that is not whole, `1.5`, which makes the column float. The
+   options: (a) the nearest float in all three, as a decimal text such as
+   `0.1` is always the nearest float and as Vavilov Explorer's design
+   converts "from integer to numeric, always"; (b) a value that is not
+   exactly a float does not convert, in the two conversions, and such a
+   column is text at the guess, so that no digit is lost without a word.
+   Recommended: (a), since a user who asks for a float asks for a
+   measurement, which 16 digits hold, and a code of more than 16 digits
+   is better kept as text or integer, which the import gives it unless a
+   value in the column is not whole. Meanwhile, (a).
+3. **A boolean written as text, `TRUE` or `true`.** A boolean cell of an
+   xlsx is written as text when it is a name of the header or of the
+   first column, and when a column is converted to text. popnei_web wrote
+   `true`, as JavaScript does, so an individual named by a boolean cell is
+   `true` there today. The options: (a) `TRUE`, as Excel shows the cell
+   and as a CSV saved by Excel in English writes it; (b) `true`, as
+   popnei_web wrote it. Recommended: (a), since the user sees `TRUE` in
+   Excel, and a name of popnei_web's that changes is only that of an
+   individual named by a boolean cell, which no table the owner has made
+   holds. Meanwhile, (a).
 
 ## Not in this spec
 

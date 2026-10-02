@@ -46,7 +46,13 @@ column a copy in the wasm's memory made every time the list was read,
 and each to be freed. So the table crosses as one object, `TableRead`, with its
 columns read one by one by their index, each as arrays of JavaScript,
 and the conversion takes and gives arrays: one `free()` for an import and
-one for a conversion, which popnei_web calls in a `finally`.
+one for a conversion, which popnei_web calls once, in a `finally`. A
+second `free()` throws, "null pointer passed to rust", and so does a
+field read after it (tried under node 26.8.2 on 2 October 2026), so
+`free()` is not mixed with `using`, which calls `[Symbol.dispose]` and
+frees too. Each read of an array field or of a column's array copies it
+out whole, a new array each time, so popnei_web reads each once into a
+variable: `t.names[i]` in a loop copies the names once for each row.
 
 A column is five arrays, of which the one of its type holds its values:
 
@@ -73,8 +79,9 @@ defect of the caller, thrown as an `Error`.
 | the format found | `"text"`, `"xlsx"` |
 | an encoding found | `"utf-8"`, `"utf-16"`, `"windows-1252"`; `""` for an xlsx |
 | an encoding set | `""` to find it, `"utf-8"`, `"windows-1252"` |
-| a separator | `"tab"`, `"semicolon"`, `"comma"`, and `""` to find it or for an xlsx |
-| a decimal mark | `"point"`, `"comma"`, and `""` to find it or for an xlsx |
+| a separator | `"tab"`, `"semicolon"`, `"comma"`; `""` to find it, or found for an xlsx |
+| a decimal mark found | `"point"`, `"comma"`; `"point"` for an xlsx, whose text cells are read with it (`specs/values.md`) |
+| a decimal mark set | `""` to find it, `"point"`, `"comma"` |
 
 ### What an import gives
 
@@ -96,6 +103,7 @@ words need are filled, the others 0 or `""`:
 
 | `refusal` | fields filled |
 |---|---|
+| `unreadable` | `text`, the zip crate's, calamine's or table_io's message |
 | `tooLarge` | `size`, in bytes |
 | `formatNotBuilt` | `text`, `"text"` or `"xlsx"` |
 | `oldExcel`, `encrypted`, `cutShort`, `notText`, `variantsFile`, `empty` | none |
@@ -113,9 +121,15 @@ words need are filled, the others 0 or `""`:
 
 A line, a row and a column are counted from 1, so a 0 says the field is
 not filled; the fields a kind fills always hold a value, a name of a
-duplicate column never being empty. A file that cannot be read, `ImportError::Unreadable` of
-`specs/import.md`, is thrown as an `Error` with its message, which
-popnei_web writes to the console.
+duplicate column never being empty. The limit of a refusal of size,
+`max_bytes` and `max_cells` of `specs/import.md`, is not repeated: the
+caller gave it. A file that cannot be read, `ImportError::Unreadable` of
+`specs/import.md`, is a value too, the kind `unreadable`, whose message
+popnei_web writes to the console, so that an `Error` thrown by the
+package is always a defect of the caller, an option or an index that is
+wrong, and popnei_web can tell the two apart: today it takes every
+`Error` of xlsx_rs's `readXlsx` for a file that could not be read
+(`src/worker/xlsxCells.ts`).
 
 ### The conversion and the rules of a value
 
@@ -205,21 +219,36 @@ export function parseFloat(text: string, decimal: string): number | undefined;
 
 export function parseInteger(text: string): bigint | undefined;
 
-/** Fetches and compiles table_io_bg.wasm, from beside table_io.js when
-    it is called with no argument. */
 export default function __wbg_init (module_or_path?: { module_or_path: InitInput | Promise<InitInput> } | InitInput | Promise<InitInput>): Promise<InitOutput>;
 ```
 
-The `init` that popnei_web awaits is the default export of the file,
-which wasm-bindgen names `__wbg_init`; `InitInput` and `InitOutput` are
-its types, of which popnei_web uses none, calling it with no argument.
-The fields of a class are given in the order of their names, as
-wasm-bindgen writes them, and the arguments of a function keep the names
-of the Rust, `max_bytes`. `max_bytes` is a `u32`, so a file can be up to
-4,294,967,295 bytes, all the memory a wasm can have, and no limit a
-caller sets is cut. `size` and `numFailed`, counts of 64 bits in the
-library, are JavaScript numbers here, exact up to 2^53, beyond any file
-the wasm can hold. JavaScript
+Left out of the block, as wasm-bindgen writes them after these lines:
+the types `InitInput`, `InitOutput` and `SyncInitInput`, the function
+`initSync`, and the doc comment of `__wbg_init`. The `init` that
+popnei_web awaits is the default export of the file, which wasm-bindgen
+names `__wbg_init`; popnei_web calls it with no argument, and it fetches
+`table_io_bg.wasm` from beside `table_io.js`. The fields of a class are
+given in the order of their names, as wasm-bindgen writes them, and the
+arguments of a function keep the names of the Rust, `max_bytes`.
+
+The two limits are numbers of JavaScript, `f64` in the Rust: an argument
+`u32` of wasm-bindgen is taken by JavaScript modulo 2^32, so that 5 ×
+10^9 reached the Rust as 705,032,704 and −1 as 4,294,967,295 in the
+trial of the review, 2 October 2026, a limit changed without a word. So
+the binding takes each as a number and throws an `Error` for one that is
+not a whole number from 0 to 2^53 for `max_bytes` or to 4,294,967,295
+for `max_cells`. `size` and `numFailed`, counts of 64 bits in the
+library, are numbers here, exact up to 2^53, beyond any file the wasm
+can hold.
+
+wasm-bindgen copies the bytes into the memory of the wasm before the
+library sees them, and that memory never shrinks, so a file larger than
+the limit is refused only once it is in that memory. popnei_web keeps its
+own check of the size of the `File`, before it reads its bytes, as it has
+it today (its `docs/specs/worker/individuals.md`, "The bytes and the
+encoding", point 1), so that a VCF of gigabytes picked by mistake is
+never read; the package's `tooLarge` is the same rule for a caller that
+has the bytes already. JavaScript
 cannot make a `TableRead` or a `Conversion` of its own, `private
 constructor()`.
 
@@ -258,7 +287,9 @@ explains is looked into before the release.
 ## How it is verified
 
 Under node 26.8.2, with `node --test`, over the package as it is packed,
-its `init` given the bytes of the `.wasm`:
+its `init` given the bytes of the `.wasm` as `init({ module_or_path:
+bytes })`, which is the form wasm-bindgen asks for; the bytes alone print
+a warning of deprecated parameters:
 
 - `importTable` over the owner's `excel_es.csv` and `excel_en.xlsx` when
   they are in `tests/data/`, and until then over a CSV and an xlsx written
@@ -269,8 +300,10 @@ its `init` given the bytes of the `.wasm`:
 - a refusal of each shape of the table above: `raggedRow` with its line,
   counts and separator, `duplicateIndividual` of a text file with its two
   lines and of an xlsx with its two rows, `sheetTooLarge`, `tooLarge`;
-- an unreadable xlsx, a zip with no workbook: an `Error` thrown, with the
-  library's message;
+- an unreadable xlsx, a zip with no workbook: the kind `unreadable`, with
+  the library's message in `text`, and nothing thrown;
+- the limits 5 × 10^9 and −1 for `max_cells`, and 1.5 for `max_bytes`:
+  an `Error` thrown;
 - an option or a type that is not one of the strings, and an index out of
   range: an `Error` thrown, the worker going on;
 - `convertColumn` of a text column `"1"`, `"n.d."` to `"float"`: 1

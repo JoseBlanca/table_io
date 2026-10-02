@@ -44,7 +44,11 @@ header, the name of the names' column and then each column's, and a row
 for each individual, its name and then its values. A row is counted from
 1 among the rows of the table, the first below the header being row 1,
 and the header is row 0; a column from 1, the names' being column 1, as
-the user will find them in the file.
+the user will find them in the file. A row, a column or a count of a
+refusal past 4,294,967,295, the largest number its `u32` holds, which no
+table an application holds in memory reaches, is given as 4,294,967,295,
+as `specs/values.md` names the row of a conversion; a choice made on 2
+October 2026 by that rule, since no such table can be tried.
 
 ### A CSV
 

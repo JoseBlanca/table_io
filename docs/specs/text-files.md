@@ -96,8 +96,13 @@ against the caller's limit before (`specs/import.md`).
    stands where a character was lost.
 6. Every U+FEFF at the start of the text that is left, which a file can
    hold after its mark when it was saved twice with one, is removed;
-   popnei_web removes up to three, by the bytes, by `TextDecoder` and by
-   its reader, which only a file of four marks tells apart.
+   popnei_web removes up to three from a text of UTF-8, by the bytes, by
+   `TextDecoder` and by its reader, and up to two from a text of UTF-16,
+   by `TextDecoder` and by its reader, so a file of UTF-8 with four marks
+   or of UTF-16 with three tells the two apart: `FF FE` three times and
+   then `id,pop`, `A,P1` in UTF-16LE gives popnei_web a first column
+   named U+FEFF and `id`, and table_io one named `id`, found on 2 October
+   2026 by running both under node.
 
 Windows-1252 gives each byte the character of Unicode of the same
 number, U+0000 to U+00FF, except the 32 bytes from `80` to `9F`, which

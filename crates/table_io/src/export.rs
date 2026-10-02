@@ -51,7 +51,9 @@ pub enum MissingText {
 }
 
 /// A cell of the file written: the header is row 0, the first individual
-/// row 1; the names' column is column 1, the first other column column 2.
+/// row 1, the name at index `i` of the names' column row `i` + 1; the
+/// names' column is column 1, and the column at index `j` of the other
+/// columns given to [`export_table`] column `j` + 2.
 /// A row or a column past 4,294,967,295 is given as 4,294,967,295.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CellPlace {
@@ -76,7 +78,8 @@ pub enum ExportRefusal {
     /// A column with another number of values than there are names of
     /// individuals, a defect of the caller.
     WrongLength {
-        /// The column.
+        /// The column, of [`CellPlace`]: the column at index `j` of the
+        /// other columns is column `j` + 2.
         column: u32,
         /// The number of names of individuals.
         expected: u32,
@@ -86,7 +89,8 @@ pub enum ExportRefusal {
     /// An empty name of a column other than the names', or of the names'
     /// column of a table with no other column.
     EmptyName {
-        /// The column.
+        /// The column, of [`CellPlace`]: 1 for the names' column, `j` + 2
+        /// for the column at index `j` of the other columns.
         column: u32,
     },
     /// Two columns of one name, the names' column among them: the first
@@ -307,12 +311,31 @@ fn write_refusal(
 /// # Errors
 ///
 /// [`ExportError::Refused`] for the first of the refusals of
-/// `docs/specs/export.md`, "The refusals": those of the whole table, in
-/// this order, [`ExportRefusal::FormatNotBuilt`], which an xlsx is in this
-/// version, [`ExportRefusal::WrongLength`] for the first such column,
-/// [`ExportRefusal::NoIndividual`], and [`ExportRefusal::ReadsAsVariantsFile`];
-/// then the first refusal of a cell in the order of the file, the header
-/// and then row by row, each from left to right.
+/// `docs/specs/export.md`, "The refusals", in this order; those marked
+/// xlsx only an xlsx gives:
+///
+/// 1. [`ExportRefusal::FormatNotBuilt`]: a CSV in a build without the
+///    feature `csv`, and an xlsx in every build of this version;
+/// 2. [`ExportRefusal::WrongLength`], the first such column from left to
+///    right;
+/// 3. [`ExportRefusal::NoIndividual`];
+/// 4. [`ExportRefusal::TooLargeForSheet`], xlsx;
+/// 5. [`ExportRefusal::ReadsAsVariantsFile`], a CSV only;
+/// 6. then the first refusal of a cell in the order of the file, the
+///    header and then row by row, each from left to right; of a name of
+///    the header, [`ExportRefusal::EmptyName`],
+///    [`ExportRefusal::DuplicateName`], [`ExportRefusal::ErrorAsName`]
+///    (xlsx); of a name of an individual,
+///    [`ExportRefusal::EmptyIndividual`],
+///    [`ExportRefusal::DuplicateIndividual`]; of a value,
+///    [`ExportRefusal::ReadsAsMissing`], [`ExportRefusal::NotFinite`],
+///    [`ExportRefusal::IntegerTooLarge`] (xlsx); and of any text,
+///    [`ExportRefusal::SpacesAtEnds`] (xlsx),
+///    [`ExportRefusal::TextTooLong`] (xlsx) and
+///    [`ExportRefusal::CannotCarry`].
+///
+/// [`ExportError::Failed`] for an error of rust_xlsxwriter, which the
+/// checks should leave none of; a CSV never gives it.
 pub fn export_table(
     names: &NameColumn,
     columns: &[Column],

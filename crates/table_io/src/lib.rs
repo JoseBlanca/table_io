@@ -389,7 +389,7 @@ fn read_first_sheet_within(
     };
     // Read once the cells are, so that a sheet refused as it is read is not
     // read a second time for its merged ranges; their number is bounded by
-    // parts::read_parts, since calamine holds them all ("What table_io reads
+    // parts::read_parts, since calamine holds them all ("What xlsx_rs reads
     // before calamine" of docs/specs/read.md, point 4).
     let merged_ranges: Vec<MergedRange> = workbook
         .merge_cells_by_sheet_name(&sheet_name)

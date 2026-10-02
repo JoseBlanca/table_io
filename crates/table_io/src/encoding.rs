@@ -1,4 +1,4 @@
-//! The rule of UTF-8 by the bytes of a part, as "What table_io reads before
+//! The rule of UTF-8 by the bytes of a part, as "What xlsx_rs reads before
 //! calamine" of `docs/specs/read.md`, point 5, gives it: whether calamine
 //! could decode a part in an encoding other than UTF-8, found in the bytes
 //! of the part as they pass, a read of the zip at a time.

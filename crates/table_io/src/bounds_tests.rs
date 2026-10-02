@@ -516,7 +516,7 @@ fn with_largest_part(parts: &[(String, String)], part_name: &str) -> (Vec<(Strin
 }
 
 // A part calamine does not hold whole is bounded too, since one cell of the
-// sheet can hold a text as large as the sheet ("What table_io reads before
+// sheet can hold a text as large as the sheet ("What xlsx_rs reads before
 // calamine", point 5); docProps/padding.xml is a part calamine never opens.
 #[test]
 fn a_part_other_than_a_table_of_texts_past_the_bound_is_too_large_and_one_at_it_read() {

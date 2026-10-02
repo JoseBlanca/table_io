@@ -20,7 +20,7 @@ xlsx = ["dep:calamine", "dep:zip", "dep:quick-xml"]
 # of a workbook, are left off: table_io writes a date from calamine's own
 # parts of it.
 calamine = { version = "=0.36.1", default-features = false, optional = true }
-# The zip and the XML table_io reads itself before calamine ("What table_io
+# The zip and the XML table_io reads itself before calamine ("What xlsx_rs
 # reads before calamine" of docs/specs/read.md), at the versions and with
 # the features calamine takes them, so that the package holds one copy of
 # each. Upgraded with calamine.

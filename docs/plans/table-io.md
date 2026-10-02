@@ -75,8 +75,9 @@ xlsx with `readXlsx` as before, imported as `table_io`.
    listed at the start, their count written in the report; it fails at
    the start, there being no package `table_io`.
 2. The features `csv` and `xlsx`, both on by default, calamine, zip and
-   quick-xml behind `xlsx`: `cargo tree -p table_io --no-default-features
-   --features csv` names none of them, and `cargo build -p table_io
+   quick-xml behind `xlsx`: `cargo tree -p table_io -e normal
+   --no-default-features --features csv` names none of them, the
+   dev-dependency rust_xlsxwriter's zip left out by `-e normal`, and `cargo build -p table_io
    --no-default-features --features csv` and `--features xlsx` both
    succeed; at the start there is no feature `csv`.
 3. `npm run build && npm test` in `js/table_io` passes the 13 tests, the

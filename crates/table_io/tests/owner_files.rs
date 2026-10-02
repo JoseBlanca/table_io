@@ -394,7 +394,7 @@ fn libreoffice_xlsx_gives_the_cells_of_libreoffice_calc() {
 // `<x15:workbookPr chartTrackingRefBase="1"/>` inside `<extLst>` of
 // `xl/workbook.xml`, which calamine 0.36.1 (`xlsx/mod.rs`, `read_workbook`)
 // takes by its local name for the `workbookPr` of the workbook, and it sets
-// the date system back to 1900: A2 was read as 2020-05-12 until table_io
+// the date system back to 1900: A2 was read as 2020-05-12 until xlsx_rs
 // took the date system from the `workbookPr` of the root itself.
 #[test]
 fn excel_1904_xlsx_gives_the_date_as_excel_shows_it() {

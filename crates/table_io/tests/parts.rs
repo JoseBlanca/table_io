@@ -1,4 +1,4 @@
-//! The parts of the zip table_io reads itself before calamine ("What table_io
+//! The parts of the zip table_io reads itself before calamine ("What xlsx_rs
 //! reads before calamine" of `docs/specs/read.md`): every part read to its
 //! end, so that a part whose checksum fails refuses the file, and the bytes
 //! so read counted and bounded; the date system, from the `workbookPr` that
@@ -1006,7 +1006,7 @@ fn parts_with_decoy_sheet() -> Vec<(String, String)> {
 }
 
 // calamine reads the content of a defined name as text, and lists no sheet
-// in it; table_io listed this one, of the same name, and counted the merged
+// in it; xlsx_rs listed this one, of the same name, and counted the merged
 // ranges of the decoy, none.
 #[test]
 fn a_sheet_listed_inside_a_defined_name_does_not_hide_the_merged_ranges_of_the_sheet_read() {
@@ -1800,7 +1800,7 @@ const PARTS_CALAMINE_HOLDS: [&str; 5] = [
 
 // quick-xml takes the encoding of the first declaration whose encoding it
 // knows, and so would read these in UTF-8; the rule of UTF-8 by the bytes
-// checks every declaration, and refuses them ("What table_io reads before
+// checks every declaration, and refuses them ("What xlsx_rs reads before
 // calamine" of docs/specs/read.md, point 5).
 #[test]
 fn a_part_calamine_reads_whole_with_a_second_declaration_of_windows_1252_is_unreadable() {

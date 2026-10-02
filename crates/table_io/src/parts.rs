@@ -1,5 +1,5 @@
 //! The parts of the zip table_io reads itself before calamine, as "What
-//! table_io reads before calamine" of `docs/specs/read.md` gives them.
+//! xlsx_rs reads before calamine" of `docs/specs/read.md` gives them.
 //!
 //! An xlsx is a zip of parts, each an XML file: the workbook, which lists
 //! the sheets and holds the settings of the file, the date system among
@@ -76,7 +76,7 @@ pub(crate) struct PartBounds {
 /// calamine refuses too; "the file unzips to more than … bytes" when the parts hold
 /// more than `bounds.max_unzipped_bytes` bytes together; "a part of the
 /// file is too large", "too much text" and "too many texts", for the
-/// bounds of the parts calamine reads whole ("What table_io reads before
+/// bounds of the parts calamine reads whole ("What xlsx_rs reads before
 /// calamine", point 3), and "a part of the file is too large" for any other
 /// part past `bounds.max_part_bytes`, counted three times when it is found
 /// in another encoding (point 5); "a part of the file is not in UTF-8" for
@@ -159,7 +159,7 @@ impl PartKind {
     /// `bounds`, and the message of the error past it: every part is held to
     /// the bound of every part, a settings part to the bound of settings
     /// parts too, and a table of texts past it is "too much text" ("What
-    /// table_io reads before calamine" of `docs/specs/read.md`, points 3 and
+    /// xlsx_rs reads before calamine" of `docs/specs/read.md`, points 3 and
     /// 5).
     fn bound_of_bytes(self, bounds: &PartBounds) -> PartBound {
         match self {
@@ -182,7 +182,7 @@ impl PartKind {
     }
 
     /// What an encoding other than UTF-8, found in a part of this kind by
-    /// the rule of UTF-8, does to the read ("What table_io reads before
+    /// the rule of UTF-8, does to the read ("What xlsx_rs reads before
     /// calamine" of `docs/specs/read.md`, point 5).
     fn other_encoding(self) -> OtherEncoding {
         match self {
@@ -442,7 +442,7 @@ impl SheetPaths {
 
 /// A count of the times the bytes of a name of an element come right after
 /// `<` or `:`, in bytes given a read at a time, a match split between two
-/// reads counted too, and nothing of them held ("What table_io reads before
+/// reads counted too, and nothing of them held ("What xlsx_rs reads before
 /// calamine" of `docs/specs/read.md`, point 4).
 ///
 /// Every element of that name, with a prefix or without, has those bytes
@@ -692,7 +692,7 @@ fn xml_reader_over<Part: BufRead>(part: Part) -> XmlReader<Part> {
 }
 
 /// The folder of the workbook, such as `xl/`, as calamine's
-/// `read_package_relationships` finds it ("What table_io reads before
+/// `read_package_relationships` finds it ("What xlsx_rs reads before
 /// calamine" of `docs/specs/read.md`, point 2): the elements of local name
 /// `Relationship` after the first start of `Relationships` and before the
 /// next end of an element of that local name; in each, `Type` and `Target`
@@ -855,7 +855,7 @@ fn is_number_past(digits: &[u8], max_number: u64) -> bool {
     number > max_number
 }
 
-/// The date system of the workbook `path` ("What table_io reads before
+/// The date system of the workbook `path` ("What xlsx_rs reads before
 /// calamine" of `docs/specs/read.md`, point 2): that of the last element
 /// `workbookPr` that is a direct child of its root element, whatever the
 /// namespace of either, 1904 when its attribute `date1904` is `1` or

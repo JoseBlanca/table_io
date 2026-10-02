@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: How an implementation plan is written in xlsx_rs. Use it when writing or revising a document under docs/plans/, which turns one or more settled specs into work packages with deliverables that can be checked, each made of tasks that a subagent can carry out. The following-plans skill is the one that executes it.
+description: How an implementation plan is written in table_io. Use it when writing or revising a document under docs/plans/, which turns one or more settled specs into work packages with deliverables that can be checked, each made of tasks that a subagent can carry out. The following-plans skill is the one that executes it.
 ---
 
 # Writing implementation plans
@@ -77,7 +77,7 @@ node, the cells of every kind of the spec's table, the refusals. When it
 is done the project is in a state that works, with every check of the
 `coding` skill passing, whatever comes after.
 
-The strongest check xlsx_rs has is the package as it is released, read
+The strongest check table_io has is the package as it is released, read
 under node over a file the owner made, since that is what popnei_web
 runs. So the first work package makes the whole path exist, from the
 library crate to the package loaded under node, with the least in it,
@@ -88,9 +88,10 @@ or of the declarations at the end, when everything sits on it.
 
 Each work package has:
 
-- **What it gives**, in a sentence or two, in the words of popnei_web,
-  the user of the package: what it can read, or what it is refused with,
-  when the work package is done.
+- **What it gives**, in a sentence or two, in the words of the
+  application that uses it, popnei_web through the package or Vavilov
+  Explorer through the library: what it can import or export, or what it
+  is refused with, when the work package is done.
 - **Its deliverables, each with the way to check it.** This is what makes
   it a work package. The check is something that can be run and that can
   fail: the tests of a part of the spec, named by that part, "every row
@@ -101,10 +102,10 @@ Each work package has:
   putting it into the spec is a task, which the `spec` reviewer of the
   work package checks like the rest.
   A check fails on the commit the work starts from, and it fails because
-  the thing is not there yet. `cargo test -p xlsx_rs dates` does not:
+  the thing is not there yet. `cargo test -p table_io dates` does not:
   when no test has `dates` in its name cargo runs 0 tests, prints `ok`
   and exits with 0. So a check made of cargo tests names the tests, or
-  says how many have to run: `cargo test -p xlsx_rs -- --list` prints
+  says how many have to run: `cargo test -p table_io -- --list` prints
   their names and their count. A check that is already true before the
   work checks nothing.
 - **What it stands on**: the work packages before it, and what has to be

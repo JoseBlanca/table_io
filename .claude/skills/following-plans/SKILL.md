@@ -1,6 +1,6 @@
 ---
 name: following-plans
-description: How an approved implementation plan of xlsx_rs is carried out. Use it when the owner asks to run, execute, implement or continue a plan under docs/plans/. The session is an orchestrator: it works in a worktree and a branch of the plan, sends each task or work package to a subagent, checks what comes back, has each work package reviewed, keeps a work report, and goes on until the plan is done or the owner is needed. It never merges into main.
+description: How an approved implementation plan of table_io is carried out. Use it when the owner asks to run, execute, implement or continue a plan under docs/plans/. The session is an orchestrator: it works in a worktree and a branch of the plan, sends each task or work package to a subagent, checks what comes back, has each work package reviewed, keeps a work report, and goes on until the plan is done or the owner is needed. It never merges into main.
 ---
 
 # Following an implementation plan
@@ -200,7 +200,7 @@ After each work package, a short section:
   first time, a skill that was unclear or wrong with the sentence that
   misled, a way of working that cost something. Not a log of what happened.
   Every number in it carries what it is measured against, as every number
-  in xlsx_rs does. The tokens a task's subagent used, which the result of
+  in table_io does. The tokens a task's subagent used, which the result of
   the `Agent` tool gives, say nothing on their own; set beside the tokens
   the review and the fixes of that same task cost, they say what a task of
   that size really costs, and that is what sizes the tasks of the next

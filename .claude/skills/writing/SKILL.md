@@ -1,27 +1,29 @@
 ---
 name: writing
-description: How prose is written in xlsx_rs. Use it before writing or revising anything a person will read, a document under docs/, a spec, an implementation plan, a README, the notes of a release, a doc comment, a commit message, a GitHub issue or a pull request. Chat replies follow the same principles, and the ones that matter most there are in CLAUDE.md.
+description: How prose is written in table_io. Use it before writing or revising anything a person will read, a document under docs/, a spec, an implementation plan, a README, the notes of a release, a doc comment, a commit message, a GitHub issue or a pull request. Chat replies follow the same principles, and the ones that matter most there are in CLAUDE.md.
 ---
 
 # Writing
 
-Adapted on 28 September 2026 from the writing skill of popnei, whose
-conventions xlsx_rs follows.
+Adapted on 28 September 2026 for xlsx_rs, which became table_io on 2
+October 2026, from the writing skill of popnei, whose conventions
+table_io follows.
 
 ## The reader
 
-What is written in xlsx_rs is read by one of two people.
+What is written in table_io is read by one of two people.
 
 The first is the owner of the project, a population geneticist who
-programs in Python and Rust, and who wrote popnei and popnei_web, the
-library and the web applications xlsx_rs is made for. They know Excel as
-its users do, and the decisions recorded in `docs/`. They do not know
-what is inside an xlsx, a zip of XML files with a table of texts shared by
-the cells and a table of styles where the format of a date lives, nor how
-a page loads a wasm package. So a part of the file format, a record of
-the zip, a kind of cell of the XML, a behaviour of wasm-bindgen, gets a
-sentence that says what it is and why it matters here, before it is
-relied on. What a user sees in Excel can be brief.
+programs in Python and Rust, and who wrote popnei, its web applications
+popnei_web and the desktop application Vavilov Explorer, the two
+applications table_io is made for. They know Excel as its users do, and
+the decisions recorded in `docs/`. They do not know what is inside an
+xlsx, a zip of XML files with a table of texts shared by the cells and a
+table of styles where the format of a date lives, nor the encodings a
+CSV is saved in, nor how a page loads a wasm package. So a part of the
+file format, a record of the zip, a kind of cell of the XML, a behaviour
+of wasm-bindgen, gets a sentence that says what it is and why it matters
+here, before it is relied on. What a user sees in Excel can be brief.
 
 They were not in the session: they did not see the files that were
 opened, the commands that were run, or the names that came up along the
@@ -30,8 +32,9 @@ worked on, what the question was, and where it sits in the project. A
 sentence or two is usually enough.
 
 The second reader arrives later, a contributor or another session of the
-assistant, or a session of popnei_web that needs to know what the package
-gives. They know Rust and have only the page.
+assistant, or a session of popnei_web or of Vavilov Explorer that needs
+to know what the package or the library gives. They know Rust and have
+only the page.
 
 Both read in order to do something: to decide, to build, or to check. A
 text is good when its reader gets through it once, without asking a
@@ -81,7 +84,7 @@ semantics and surface are names of bags. Write what is in the bag. When
 the list cannot be written, the thing is not yet understood.
 
 A problem is written as what can go wrong, not as the rule it breaks:
-"`worksheet_range` builds the whole rectangle of the sheet before xlsx_rs
+"`worksheet_range` builds the whole rectangle of the sheet before table_io
 can look at its size, so a note in the last column of Excel, XFD, at row
 200, would make it hold 3,276,800 cells before the read is refused".
 That says what would happen and how large it is. "It breaks the memory
@@ -111,7 +114,7 @@ code to maintain, memory for speed. Each kind is named, and each option
 gets its value in both: "With the reader built by popnei_web, a change of
 it is one commit there, and each start of popnei_web's development server
 takes about 1 s more on the owner's Mac, 5.2 s the first time. With the
-reader in xlsx_rs, the server takes nothing more, and a change of the
+reader in table_io, the server takes nothing more, and a change of the
 reader waits for a release, about ten minutes by hand, an estimate." The
 two kinds are laid side by side for the reader to weigh. A sentence that
 mirrors them around one word, "one costs a second and the other costs a
@@ -129,9 +132,9 @@ inside it. The reader lacks four kinds of names:
   work, "the second trial". The reader needs what the thing is, "a crate
   thrown away after, with calamine and the struct of the spec, built on
   27 September 2026".
-- Names from the code. That a type is called `XlsxRead` does not make it
-  a word the reader has. Say what it is, what the exported function
-  returns, the cells or a refusal, whose fields JavaScript reads one by
+- Names from the code. That a type is called `TableRead` does not make
+  it a word the reader has. Say what it is, what the exported import
+  returns, the table or a refusal, whose fields JavaScript reads one by
   one, and then the name can be used.
 - Ordinary words that mean something narrower here. When a document leans
   on the difference between an empty cell and a cell missing from the
@@ -143,10 +146,11 @@ inside it. The reader lacks four kinds of names:
   so the words go in the text before the table.
 
 One name for each thing. Before a new name is added, count the ones the
-document already uses for it. For the things of the domain, a sheet, a
-cell, the rectangle of the values, a refusal, the name is the one
-`docs/specs/read.md` gives, and Excel's own word where the user sees one.
-The spec chooses the word and the text still explains it.
+document already uses for it. For the things of the domain, a table, a
+column, a value, a sheet, a cell, the rectangle of the values, a
+refusal, the name is the one the specs give, and Excel's own word where
+the user sees one. The spec chooses the word and the text still explains
+it.
 
 ### What the reader came for goes first
 
@@ -241,11 +245,15 @@ list defines and nothing else. Importance is shown by position.
   a row is numbered from 1, as Excel numbers it. How it is implemented
   stays out unless the caller sees it.
 - **Commit messages.** A lower case subject that says what changed, and a
-  body with the why and the numbers. Nothing about the session.
+  body with the why and the numbers. Nothing about the session. A change
+  of the public Rust interface, or of a value an import gives, says what
+  changed for a caller, since the commit message is all that whoever
+  moves Vavilov Explorer's pin reads.
 - **GitHub issues.** The title states the finding or the task. The body
-  says what was seen, on what file and how to see it again, what it means
-  for a user of popnei_web, and what is proposed or asked. It is read months later by
-  somebody who has nothing else.
+  says what was seen, on what file and how to see it again, what it
+  means for a user of popnei_web or of Vavilov Explorer, and what is
+  proposed or asked. It is read months later by somebody who has nothing
+  else.
 - **The notes of a release.** The commit it was made from and the date,
   the versions of Rust and wasm-bindgen, the tests that ran and the ones
   that did not, the sizes of the `.wasm` and its JavaScript, what a user

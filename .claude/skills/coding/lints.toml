@@ -1,7 +1,7 @@
-# The lint table of xlsx_rs, taken on 28 September 2026 from popnei's,
-# /Users/jose/devel/popnei/.claude/skills/coding/lints.toml, with its
-# comments. It goes into the Cargo.toml of the workspace, and each crate
-# takes it with
+# The lint table of table_io, taken for xlsx_rs on 28 September 2026
+# from popnei's, /Users/jose/devel/popnei/.claude/skills/coding/lints.toml,
+# with its comments. It goes into the Cargo.toml of the workspace, and
+# each crate takes it with
 #
 #     [lints]
 #     workspace = true

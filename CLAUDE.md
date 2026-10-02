@@ -1,19 +1,26 @@
-# xlsx_rs: how the assistant works here
+# table_io: how the assistant works here
 
-xlsx_rs is a small Rust library that reads the first visible sheet of an
-xlsx file into its cells, compiled to WebAssembly and released as a wasm
-package for the web applications of popnei, popnei_web. What it is for
-and what it is not is in `docs/objectives.md`, its parts, its interface
-with popnei_web and how it is released in `docs/architecture.md`, and
-what each module does in its spec under `docs/specs/`. popnei_web is at
-`/Users/jose/devel/popnei_web`, and popnei, whose conventions this
-project follows, at `/Users/jose/devel/popnei`.
+table_io is a Rust library that imports a table from a CSV, a TSV or the
+first visible sheet of an xlsx file as typed columns, and exports typed
+columns to a CSV or an xlsx. It was xlsx_rs, the reader of the cells of
+an xlsx for popnei_web, until the owner widened it on 2 October 2026. It
+has two applications: popnei_web, the web applications of popnei, which
+takes it compiled to WebAssembly and released as a wasm package, and
+Vavilov Explorer, a desktop application of the owner, whose backend
+depends on the Rust library by git. What it is for and what it is not is
+in `docs/objectives.md`, its parts, its two contracts and how it is
+released in `docs/architecture.md`, and what each module does in its
+spec under `docs/specs/`. popnei_web is at `/Users/jose/devel/popnei_web`,
+Vavilov Explorer at `/Users/jose/devel/vavilov-explorer`, whose
+`docs/table_io-needs.md` says what it needs of table_io, and popnei,
+whose conventions this project follows, at `/Users/jose/devel/popnei`.
 
 The owner is a population geneticist who programs in Python and Rust. They
 use Excel as its users do, and have not had to know what is inside an
-xlsx, a zip of XML files, nor how a wasm package is loaded by a page. So a
-problem of the file format or of the web is for the assistant to catch,
-and when one reaches the owner it is said as what a user of popnei_web
+xlsx, a zip of XML files, nor the encodings a CSV can be saved in, nor
+how a wasm package is loaded by a page. So a problem of the file format
+or of the web is for the assistant to catch, and when one reaches the
+owner it is said as what a user of popnei_web or of Vavilov Explorer
 would see or be unable to do.
 
 The skills are under `.claude/skills/` and the subagents under
@@ -34,16 +41,32 @@ is carried out the same way, as the `following-plans` skill says. Nothing
 is merged into `main`, nothing is pushed, and no release is made, without
 the owner's order.
 
-## The contract with popnei_web
+## The two contracts
 
-What the package declares, the function `readXlsx`, the struct `XlsxRead`
-and the `init` that loads the wasm, is what popnei_web's light worker is
-written against (`docs/architecture.md`, section 4). A change to it is a
-change in both projects: a new release here, and in popnei_web a change
-of the code that reads the package and a new URL in its `package.json`,
-in the same piece of work. What popnei_web makes of the cells, which
-values are missing, how a refusal is worded, is popnei_web's, and a
-session here that needs it changed says so and does not change it here.
+Two programs are written against table_io, each against a part of it
+that does not change unseen (`docs/architecture.md`, section 8).
+
+- popnei_web's light worker is written against what the package
+  declares: the functions it exports, among them `importTable` and
+  `convertColumn`, what they return, and the `init` that loads the wasm.
+  A change to it is a change in both projects: a new release here, and
+  in popnei_web a change of the code that reads the package and a new URL
+  in its `package.json`, in the same piece of work.
+- Vavilov Explorer is written against the public Rust interface of the
+  library, at a revision of `main` it pins. A change to it is a change in
+  Vavilov Explorer in the same piece of work, made from its own session
+  when it moves its pin, and the commit here says what changed for a
+  caller; a value read differently is named in the commit message too.
+
+The rules by which the cells become a table, the header, the missing
+values, the first column, the types and the refusals, are table_io's,
+taken from popnei_web's `docs/specs/worker/individuals.md`, and the same
+for both applications. What each application makes of the table is its
+own: what a column means, a categorical column or the roles of
+popnei_web's analyses, how a refusal is worded, the largest file it
+accepts, the defaults of an export. A session here that needs one of
+those changed says so and does not change it here, nor in the other
+repository.
 
 ## Replies in chat
 

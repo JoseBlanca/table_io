@@ -1,12 +1,13 @@
 ---
 name: writing-specs
-description: How a spec is written in xlsx_rs. Use it when writing or revising a document under docs/specs/, which says what one module of xlsx_rs has to do, what calamine gives it and what the files of Excel, LibreOffice and Google Sheets hold, its Rust interface and the declarations of its package, how the result is verified and what is left for the owner to decide. The prose follows the writing skill, which is read first.
+description: How a spec is written in table_io. Use it when writing or revising a document under docs/specs/, which says what one module of table_io has to do, what calamine or the other crates it stands on give it, the rules of popnei_web it takes, what the files of Excel, LibreOffice and Google Sheets hold, its Rust interface and the declarations of its package, how the result is verified and what is left for the owner to decide. The prose follows the writing skill, which is read first.
 ---
 
 # Writing specs
 
-Adapted on 28 September 2026 from the writing-specs skill of popnei. A
-spec says what one module of xlsx_rs has to do and how we will know that
+Adapted on 28 September 2026 for xlsx_rs from the writing-specs skill of
+popnei, and revised on 2 October 2026 when xlsx_rs became table_io. A
+spec says what one module of table_io has to do and how we will know that
 it does it. It is written before the code of the module and it is what the
 implementation plan and the tests are made from. It does not give the
 order of the work, which is the plan's, and it does not repeat
@@ -18,14 +19,16 @@ what goes into a spec, in which order, and what stays out.
 ## The example
 
 `docs/specs/read.md`, the reading of an xlsx into cells, written in
-popnei_web on 27 and 28 September 2026, reviewed twice against the source
-of calamine 0.36.1 and two crates of trial, approved by the owner on 28
-September 2026, and moved here whole. Read it before writing a spec, for
-its order, for how it says what the user of popnei_web sees before the
-rule, for how it gives each claim about calamine with the function it was
-read in or the trial that saw it, for how it marks what the owner decided
-with the date and the option not taken, and for how its verification
-gives each case as a file and the literal cells it gives.
+popnei_web on 27 and 28 September 2026, reviewed twice against the
+source of calamine 0.36.1 and two crates of trial, approved by the owner
+on 28 September 2026, and moved here whole; since 2 October 2026 the
+spec of the module `xlsx` of table_io, with a note at its top that says
+what changed. Read it before writing a spec, for its order, for how it
+says what the user of popnei_web sees before the rule, for how it gives
+each claim about calamine with the function it was read in or the trial
+that saw it, for how it marks what the owner decided with the date and
+the option not taken, and for how its verification gives each case as a
+file and the literal cells it gives.
 
 ## The two readers
 
@@ -63,9 +66,12 @@ into two specs along a line the code will also have.
 1. Read the source of calamine, or of the other crate the module stands
    on, at the version `Cargo.toml` pins, in `~/.cargo/registry/src/`: the
    functions the module will call and the ones they call. What calamine
-   gives is the specification of what xlsx_rs receives, and what it gives
-   for a case is known from its code, or from running it, not from its
-   documentation.
+   gives is the specification of what table_io receives, and what it
+   gives for a case is known from its code, or from running it, not from
+   its documentation. A rule taken from popnei_web is read in its
+   `docs/specs/worker/individuals.md` and in the TypeScript that applies
+   it, `src/worker/individuals/`, with its tests, since what that code
+   does is what a user of popnei_web sees today.
 2. Try it: a crate of trial under `tmp/`, which git ignores, that calls
    calamine on the files of the cases, written with rust_xlsxwriter or
    made by the owner, and prints what comes back. It costs minutes, and it
@@ -76,12 +82,13 @@ into two specs along a line the code will also have.
    whole sheet, a format taken for a date. These are what the spec is most
    needed for.
 4. Make the sketch the writing skill asks for. The names of the things are
-   those of `read.md`: a sheet, a cell, the rectangle of the values, a
-   refusal, and Excel's own word where the user sees one.
+   those of the specs: a table, a column, a value, a sheet, a cell, the
+   rectangle of the values, a refusal, and Excel's own word where the
+   user sees one.
 5. Ask the owner, in a reply in chat, what would rewrite the spec if it
    were answered after the writing. Two things. The first is what the
    module adds that others will call: the Rust functions and types, the
-   exported function and what its package declares, each in a line, with
+   exported functions and what the package declares, each in a line, with
    the one at which each check of "How it is verified" will be made. The
    second is any open point whose other answer would change the parts
    around it and not one sentence. Each is asked as the writing skill asks
@@ -102,32 +109,40 @@ again.
 
 ## The parts of a spec
 
-One spec for each module, in `docs/specs/<module>.md`: `read.md` for the
-reading, and `write.md` for the writing when it comes.
+One spec for each module, or for each part an application calls, in
+`docs/specs/<name>.md`: `values.md` for the values and the types,
+`text-files.md` and `read.md` for the cells of a text file and of an
+xlsx, `import.md` for the import, `export.md` for the export and
+`package.md` for the package.
 
-**The opening.** What the module gives to its user, popnei_web today, in a
+**The opening.** What the module gives to its users, Vavilov Explorer,
+popnei_web through the package, or the modules that call it, in a
 paragraph. The date, that there is no code yet or what there is, and the
 specs and documents it depends on.
 
-**What it does**, first as what a user of popnei_web sees, the table of
-their first sheet as in Excel, and what goes wrong when the module is
-wrong; then the rules, each under a `###` heading that names its subject,
-with a table where the cases are parallel, as "Each cell" of `read.md`
-has one row for each value of calamine.
+**What it does**, first as what a user of either application sees, the
+table of their file as in Excel or as the program that saved it meant
+it, and what goes wrong when the module is wrong; then the rules, each
+under a `###` heading that names its subject, with a table where the
+cases are parallel, as "Each cell" of `read.md` has one row for each
+value of calamine.
 
 **The refusals**, when the module can refuse: each, in the order the
 code meets them, with what it carries for its words and what the user is
 most likely to have done.
 
 **The Rust interface.** The types and the signatures of the library crate
-that the binding crate calls, in a code block, with a sentence before each
-one. Nothing private.
+that an application calls, Vavilov Explorer or the binding crate, in a
+code block, with a sentence before each one. Nothing private. They are
+the contract with Vavilov Explorer (`docs/architecture.md`, section 8),
+and a spec that changes them says what Vavilov Explorer changes with
+them.
 
-**The exported function and the declarations**, when the module adds to
+**The exported functions and the declarations**, when the module adds to
 what the package exports: the Rust of the binding crate, and what
 wasm-bindgen declares of it, taken from a build and not written by hand.
 These declarations are the contract with popnei_web
-(`docs/architecture.md`, section 4), and a spec that changes them says
+(`docs/architecture.md`, section 8), and a spec that changes them says
 what popnei_web changes with them.
 
 **Its size**, when the module adds to the package: what it adds, raw and
@@ -138,15 +153,15 @@ gzipped, measured in a crate of trial or in the build.
 **How it runs**, when there is something to say: the memory at its
 largest, what is read once and what for each cell.
 
-**How it is verified.** The tests at the library's public function, each a
-file and the literal cells or refusal it gives, and whether the file is
-written by the test or made by the owner, with what it must hold; the test
-of the built package under node; and what popnei_web checks on its side.
-Each check names the function it is made at, the highest at which the
-value can be seen: a check at a private helper keeps that helper from
-changing. A helper is checked alone only for what no file can hold, as
-`read.md` checks the dates of the 1904 system, which rust_xlsxwriter does
-not write.
+**How it is verified.** The tests at the library's public function, each
+a file and the literal table, cells or refusal it gives, and whether the
+file is written by the test or made by the owner, with what it must
+hold; the test of the built package under node; and what each
+application checks on its side. Each check names the function it is made
+at, the highest at which the value can be seen: a check at a private
+helper keeps that helper from changing. A helper is checked alone only
+for what no file can hold, as `read.md` checks the dates of the 1904
+system, which rust_xlsxwriter does not write.
 
 **Open points.** What the owner has to decide, as described below.
 
@@ -162,10 +177,11 @@ Decided: the spec states it, with the reason when there was a real choice.
 When there was no choice there is no reason to give, and one is not made
 up.
 
-Inherited: calamine gives it this way and xlsx_rs passes it on. "calamine
+Inherited: calamine gives it this way and table_io passes it on. "calamine
 0.36.1 knows seven errors and refuses the sheet at any other" is a
 complete entry, because it tells the reader what may move with the next
-version of calamine.
+version of calamine. A rule of popnei_web that table_io keeps is
+inherited too, with the heading of popnei_web's spec it comes from.
 
 Open: the owner decides. The writer does not decide it for them and does
 not leave it as a sentence that can be read both ways. Where it comes up,
@@ -179,8 +195,8 @@ that says the owner decides them and the implementer follows the
 
 What the writer can decide alone, a name, the layout of a private struct,
 is decided and not listed. Few open points, each one worth the owner's
-time: what changes a cell a user sees, a refusal, or the declarations of
-the package.
+time: what changes a value a user sees, a refusal, the declarations of
+the package or the public Rust interface.
 
 While nothing has been built from a spec, a changed decision is changed in
 the text and git keeps the history. Once code has been built from it the
@@ -211,10 +227,12 @@ Last, the review. The code is made from the spec, so a wrong sentence in
 it becomes wrong code, and the writer who misread calamine will not find
 the misreading by reading the spec again. The spec goes to the
 `spec-reviewer` subagent, with the path of the spec and the functions of
-calamine it is about. It checks the claims against calamine's source and
-by running them, recomputes the numbers, looks for what is missing, for
-points that should be open or should not be, for conflicts with the
-architecture and with what popnei_web reads, and for what could go.
+calamine, rust_xlsxwriter, the standard library or wasm-bindgen it is
+about. It checks the claims against their source and by running them,
+recomputes the numbers, looks for what is missing, for points that
+should be open or should not be, for conflicts with the architecture,
+with what popnei_web reads and does today and with what Vavilov Explorer
+needs, and for what could go.
 
 A change made to a spec after its review is checked against every other
 place that speaks of the same thing: search the spec for the name and for

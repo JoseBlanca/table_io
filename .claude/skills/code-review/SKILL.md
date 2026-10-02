@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: How code is reviewed in xlsx_rs and what is done with the findings. Use it after the tasks of a work package of an implementation plan are committed and before the work package is reported as done, or when the owner asks for a review of a commit, a branch or a module. The session that asks for the review sends one reviewer subagent per category, each with a fresh context, then evaluates every finding and fixes the ones that hold.
+description: How code is reviewed in table_io and what is done with the findings. Use it after the tasks of a work package of an implementation plan are committed and before the work package is reported as done, or when the owner asks for a review of a commit, a branch or a module. The session that asks for the review sends one reviewer subagent per category, each with a fresh context, then evaluates every finding and fixes the ones that hold.
 ---
 
 # Code review
@@ -42,30 +42,32 @@ for and how. Send every one that applies, in parallel, in one message.
 
 | category | applies when |
 |---|---|
-| `spec` | always: the code against the spec, what calamine gives and the files of the cases |
+| `spec` | always: the code against the spec, what calamine and rust_xlsxwriter give and the files of the cases |
 | `tests` | always: whether each test can fail, and the numbers the change claims |
 | `numbers` | the change has integer or float arithmetic, casts, dates, comparisons |
-| `errors` | always: panics, the refusals and the errors, what popnei_web receives when a read fails |
+| `errors` | always: panics, the refusals and the errors, what an application receives when an import or an export fails |
 | `api` | the change adds or alters types, signatures, names or doc comments |
-| `architecture` | the change touches how the cells are read and kept, the memory, a dependency, the profile |
+| `architecture` | the change touches how the cells are read and kept, which step holds a rule, the memory, a dependency, a feature, the profile |
 | `package` | the change touches the binding crate, the package or its declarations |
 
 When in doubt, send it. A reviewer with nothing to report costs little.
 
 The subagent is `code-reviewer`. Its prompt gives the category, the
 commit under review, the files in scope, the path of the spec item, the
-output of the checks, and the context of step 4. `spec` and `tests` build
-and change code to see what happens, so each works in a tree of its
-own, because two agents that edit one checkout overwrite each other and
-then no result can be trusted. The orchestrator makes those trees, `git
--C /Users/jose/devel/xlsx_rs worktree add --detach
-.claude/worktrees/review-<category> <commit>`, and gives each reviewer
-its path: `isolation: "worktree"` makes the tree in the repository the
-session was started in, which on 28 September 2026 was popnei_web, and
-the two reviewers sent so found no xlsx_rs in it. The prompt still tells
-the reviewer to confirm the commit with `git rev-parse HEAD` before
-anything else. The trees are removed after the review. The other
-categories only read, and share the checkout of the plan.
+output of the checks, and the context of step 4. `spec` and `tests`
+build and change code to see what happens, so each works in a tree of
+its own, because two agents that edit one checkout overwrite each other
+and then no result can be trusted. The orchestrator makes those trees
+from the main checkout, `/Users/jose/devel/xlsx_rs` until the owner
+renames the folder (`docs/architecture.md`, section 9), `git -C <the
+main checkout> worktree add --detach .claude/worktrees/review-<category>
+<commit>`, and gives each reviewer its path: `isolation: "worktree"`
+makes the tree in the repository the session was started in, which on 28
+September 2026 was popnei_web, and the two reviewers sent so found no
+xlsx_rs in it. The prompt still tells the reviewer to confirm the commit
+with `git rev-parse HEAD` before anything else. The trees are removed
+after the review. The other categories only read, and share the checkout
+of the plan.
 
 ## Acting on the findings
 

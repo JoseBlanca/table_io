@@ -13,18 +13,21 @@ Does the code do what the spec says, and does calamine give what the
 spec says it gives?
 
 - Go through the part of the spec the change builds: what the user of
-  popnei_web sees, each row of a table of cases, the refusals in their
-  order, the open points and their "meanwhile". For each statement find
-  the code that makes it true and the test that would fail if it stopped
-  being true. A statement with no code, or with code and no test, is a
-  finding.
-- Run the cases. Write the file of a case with rust_xlsxwriter, in a crate
-  of trial under `tmp/`, and see what the library gives; add two or three
-  of your own the spec does not name: a sheet with one cell, a value in the
-  last row or the last column of Excel, a merged range that runs outside
-  the rectangle, a text of only spaces.
-- Where a claim of the spec rests on calamine, open calamine's source at
-  the pinned version, in `~/.cargo/registry/src/`, and check it.
+  either application sees, each row of a table of cases, the refusals in
+  their order, the open points and their "meanwhile". For each statement
+  find the code that makes it true and the test that would fail if it
+  stopped being true. A statement with no code, or with code and no
+  test, is a finding.
+- Run the cases. Write the file of a case, an xlsx with rust_xlsxwriter
+  or a text file as its bytes, in a crate of trial under `tmp/`, and see
+  what the library gives; add two or three of your own the spec does not
+  name: a sheet with one cell, a value in the last row or the last column
+  of Excel, a merged range that runs outside the rectangle, a text of only
+  spaces, a CSV in Windows-1252 with a quote never closed.
+- Where a claim of the spec rests on calamine or rust_xlsxwriter, open
+  its source at the pinned version, in `~/.cargo/registry/src/`, and
+  check it; where it moves a rule of popnei_web, check it against
+  popnei_web's TypeScript, `src/worker/individuals/`, and its tests.
 - Look for what the code does that the spec does not say: a value made
   missing, a text trimmed, a cell skipped, an early return. Each is either
   a gap of the spec or a defect of the code, and the finding says which
@@ -81,6 +84,9 @@ The sections "Integers" and "Numbers and dates" of the coding skill.
   the 1904 system, a duration past 24 hours and a negative one.
 - Floats compared with `==`, or a number of a cell changed by arithmetic
   of ours when the spec gives it as calamine gives it.
+- A text read as a number by the standard library's `parse` alone, which
+  takes `inf` and `NaN`, where `specs/values.md` gives its own rule; a
+  float written in a form that does not read back as the same float.
 
 ## errors
 
@@ -89,16 +95,19 @@ The section "Errors, and no panics" of the coding skill.
 - Every path to a panic outside the tests: `unwrap`, `expect`, `[]`,
   `panic!`, a division by zero, an `#[expect]` of one of those lints whose
   reason does not hold. A panic is a trap that ends popnei_web's light
-  worker.
-- For each way the input can be wrong, what does popnei_web receive? The
-  refusal the spec gives, with its fields filled; or an `Error` with
-  calamine's message; never a sheet with fewer cells.
-- An error of calamine turned into a refusal or a sheet, an error dropped,
-  a type of calamine in the public interface.
+  worker, and in Vavilov Explorer's release build it ends the
+  application.
+- For each way the input can be wrong, what does the application
+  receive? The refusal the spec gives, with its fields filled; or a file
+  that cannot be read, with the message of calamine, of the zip crate or
+  of table_io; never a table with fewer rows.
+- An error of calamine turned into a refusal or a table, an error
+  dropped, a type of calamine or of rust_xlsxwriter in the public
+  interface.
 - A test of a malformed input that asserts only that it fails, and not
   which refusal or error it gives. The test that cuts short and changes
-  each byte of a file: does it run, and over a file with every kind of
-  cell?
+  each byte of a file: does it run, over an xlsx with every kind of
+  cell and over a CSV?
 
 ## api
 
@@ -133,7 +142,14 @@ against `docs/architecture.md`.
 - Anything kept for a cell with no value, a copy of the cells where one
   would do.
 - `std::fs`, `std::time`, `std::thread` or `std::env` in the library.
-- A rule of popnei_web in xlsx_rs: a value made missing, a space trimmed.
+- A rule of the table in the step of the cells, the module `xlsx` or the
+  decoding and splitting of the module `csv`: a value made missing, a
+  header found, a space trimmed that `specs/text-files.md` does not
+  remove. A choice of one application in table_io: a default limit, the
+  words of a refusal, what a column means.
+- calamine, zip, quick-xml or rust_xlsxwriter reached from code outside
+  the feature `xlsx`; `cargo build -p table_io --no-default-features
+  --features csv` shows it.
 - A new dependency, a feature turned on, a change of the profile: is it
   pure Rust, does it build for `wasm32-unknown-unknown`, what does it add
   to the package, and did the owner approve it?
@@ -145,10 +161,10 @@ The section "The binding crate and the package" of the coding skill.
 - Logic in the binding crate: an `if` about a cell, a value it works out.
 - The struct: `getter_with_clone`, each field `readonly`, the names in
   camelCase as the spec gives them.
-- Build the package and compare `wasm/xlsx_rs.d.ts` with the declarations
+- Build the package and compare `wasm/table_io.d.ts` with the declarations
   of the spec, line by line. Any difference is a finding.
 - The test under node: does it load the package as it is released, with
   the bytes of the `.wasm` given to `init`, read one of the owner's files
   and one refusal, and free what it gets?
 - `package.json`: the name, `"type": "module"`, the `exports`, the `files`,
-  the scripts of the build, against `docs/architecture.md`, section 5.
+  the scripts of the build, against `docs/architecture.md`, section 10.

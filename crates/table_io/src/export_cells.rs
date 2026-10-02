@@ -60,7 +60,7 @@ pub(crate) trait CellWriter {
 }
 
 /// The error of an export that refuses `refusal`.
-pub(crate) fn refused(refusal: ExportRefusal) -> ExportError {
+pub(crate) fn refusal_error(refusal: ExportRefusal) -> ExportError {
     ExportError::Refused(refusal)
 }
 
@@ -115,10 +115,10 @@ pub(crate) fn write_cells(
         let column = number_from(index, 1);
         let may_be_empty = index == 0 && !columns.is_empty();
         if name.is_empty() && !may_be_empty {
-            return Err(refused(ExportRefusal::EmptyName { column }));
+            return Err(refusal_error(ExportRefusal::EmptyName { column }));
         }
         if let Some(&first_column) = first_column_of.get(name) {
-            return Err(refused(ExportRefusal::DuplicateName {
+            return Err(refusal_error(ExportRefusal::DuplicateName {
                 name: name.to_owned(),
                 first_column,
                 second_column: column,
@@ -132,10 +132,10 @@ pub(crate) fn write_cells(
     for (index, name) in names.names.iter().enumerate() {
         let row = number_from(index, 1);
         if name.is_empty() {
-            return Err(refused(ExportRefusal::EmptyIndividual { row }));
+            return Err(refusal_error(ExportRefusal::EmptyIndividual { row }));
         }
         if let Some(&first_row) = first_row_of.get(name.as_str()) {
-            return Err(refused(ExportRefusal::DuplicateIndividual {
+            return Err(refusal_error(ExportRefusal::DuplicateIndividual {
                 name: name.clone(),
                 first_row,
                 second_row: row,
@@ -151,10 +151,10 @@ pub(crate) fn write_cells(
             let value = value_at(&column.values, index);
             match value {
                 ExportValue::Text(text) if is_missing(text) => {
-                    return Err(refused(ExportRefusal::ReadsAsMissing { place }));
+                    return Err(refusal_error(ExportRefusal::ReadsAsMissing { place }));
                 }
                 ExportValue::Float(float) if !float.is_finite() => {
-                    return Err(refused(ExportRefusal::NotFinite { place }));
+                    return Err(refusal_error(ExportRefusal::NotFinite { place }));
                 }
                 ExportValue::Missing
                 | ExportValue::Integer(_)

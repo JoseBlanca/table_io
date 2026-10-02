@@ -118,12 +118,15 @@ pub enum ExportRefusal {
         second_row: u32,
     },
     /// A text value that the import takes for a missing value: empty, `NA`
-    /// or `-`, whatever the text of a missing value of the file is.
+    /// or `-`, whatever the text of a missing value of the file is, and in
+    /// an xlsx one of the seven errors of Excel, `#N/A` among them.
     ReadsAsMissing {
         /// The cell.
         place: CellPlace,
     },
-    /// In an xlsx, a name that is one of the seven errors of Excel.
+    /// In an xlsx, a name of the header that is one of the seven errors of
+    /// Excel, which the import refuses; a name of an individual that is
+    /// one is written, and reads back as itself.
     ErrorAsName {
         /// The cell.
         place: CellPlace,
@@ -185,7 +188,9 @@ pub enum ExportRefusal {
 pub enum ExportError {
     /// A table refused, with what the words of the refusal need.
     Refused(ExportRefusal),
-    /// rust_xlsxwriter's message, for whoever reports the problem.
+    /// The message of the writer of the file, for whoever reports the
+    /// problem: rust_xlsxwriter's, or table_io's own for a cell past the
+    /// sheet, which the check of the size leaves none of.
     Failed(String),
 }
 

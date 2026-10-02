@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use super::{
     BYTE_ORDER_MARK, UTF8_MARK, WINDOWS_1252_80_TO_9F, is_blank, is_variants_file, separator_byte,
 };
-use crate::export_cells::{CellWriter, ExportValue, refused, write_cells};
+use crate::export_cells::{CellWriter, ExportValue, refusal_error, write_cells};
 use crate::types::boolean_text;
 use crate::value::float_text;
 use crate::{
@@ -37,7 +37,7 @@ pub(crate) fn csv_of_table(
     // The import removes the marks at the start of the text before it
     // looks for a variants file.
     if is_variants_file(header_line.trim_start_matches(BYTE_ORDER_MARK)) {
-        return Err(refused(ExportRefusal::ReadsAsVariantsFile));
+        return Err(refusal_error(ExportRefusal::ReadsAsVariantsFile));
     }
     let mut writer = CsvWriter {
         bytes: match csv_export.encoding {
@@ -156,7 +156,10 @@ impl CsvWriter {
         self.start_cell();
         for character in quoted_cell(text, self.csv_export.separator).chars() {
             if character == '\0' {
-                return Err(refused(ExportRefusal::CannotCarry { place, character }));
+                return Err(refusal_error(ExportRefusal::CannotCarry {
+                    place,
+                    character,
+                }));
             }
             match self.csv_export.encoding {
                 CsvEncoding::Utf8 | CsvEncoding::Utf8WithMark => {
@@ -165,8 +168,9 @@ impl CsvWriter {
                         .extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
                 }
                 CsvEncoding::Windows1252 => {
-                    let byte = windows_1252_byte(character)
-                        .ok_or(refused(ExportRefusal::CannotCarry { place, character }))?;
+                    let byte = windows_1252_byte(character).ok_or(refusal_error(
+                        ExportRefusal::CannotCarry { place, character },
+                    ))?;
                     self.bytes.push(byte);
                 }
             }
@@ -180,7 +184,7 @@ impl CellWriter for CsvWriter {
         // The import removes a mark at the start of the text, which the
         // first name starts.
         if place.column == 1 && name.starts_with(BYTE_ORDER_MARK) {
-            return Err(refused(ExportRefusal::CannotCarry {
+            return Err(refusal_error(ExportRefusal::CannotCarry {
                 place,
                 character: BYTE_ORDER_MARK,
             }));

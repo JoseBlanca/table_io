@@ -12,7 +12,7 @@
 
 use rust_xlsxwriter::{ColNum, RowNum, Workbook, Worksheet, XlsxError};
 
-use crate::export_cells::{CellWriter, ExportValue, count_of, refused, write_cells};
+use crate::export_cells::{CellWriter, ExportValue, count_of, refusal_error, write_cells};
 use crate::table::is_excel_error;
 use crate::{CellPlace, Column, ExportError, ExportRefusal, NameColumn};
 
@@ -51,7 +51,7 @@ pub(crate) fn xlsx_of_table(
     let rows = count_of(names.names.len());
     let num_columns = count_of(columns.len()).saturating_add(1);
     if rows > MAX_ROWS || num_columns > MAX_COLUMNS {
-        return Err(refused(ExportRefusal::TooLargeForSheet {
+        return Err(refusal_error(ExportRefusal::TooLargeForSheet {
             rows,
             columns: num_columns,
         }));
@@ -60,12 +60,12 @@ pub(crate) fn xlsx_of_table(
     // rust_xlsxwriter names its first sheet `Sheet1`.
     let worksheet = workbook.add_worksheet();
     write_cells(names, columns, &mut XlsxWriter { worksheet })?;
-    workbook.save_to_buffer().map_err(failed)
+    workbook.save_to_buffer().map_err(failure_of)
 }
 
 /// The error of an export for an error of rust_xlsxwriter, its message
 /// kept as text.
-fn failed(error: XlsxError) -> ExportError {
+fn failure_of(error: XlsxError) -> ExportError {
     ExportError::Failed(error.to_string())
 }
 
@@ -170,12 +170,12 @@ impl XlsxWriter<'_> {
     /// The refusal of the text, or a failure of rust_xlsxwriter.
     fn write_text(&mut self, text: &str, place: CellPlace) -> Result<(), ExportError> {
         if let Some(refusal) = text_refusal(text, place) {
-            return Err(refused(refusal));
+            return Err(refusal_error(refusal));
         }
         let (row, column) = sheet_place(place)?;
         self.worksheet
             .write_string(row, column, text)
-            .map_err(failed)?;
+            .map_err(failure_of)?;
         Ok(())
     }
 }
@@ -183,7 +183,7 @@ impl XlsxWriter<'_> {
 impl CellWriter for XlsxWriter<'_> {
     fn header_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportError> {
         if is_excel_error(name) {
-            return Err(refused(ExportRefusal::ErrorAsName { place }));
+            return Err(refusal_error(ExportRefusal::ErrorAsName { place }));
         }
         // An empty name of the names' column is no cell.
         if name.is_empty() {
@@ -202,26 +202,26 @@ impl CellWriter for XlsxWriter<'_> {
             ExportValue::Missing => return Ok(()),
             ExportValue::Integer(integer) => {
                 let float = exact_float(integer)
-                    .ok_or(refused(ExportRefusal::IntegerTooLarge { place }))?;
+                    .ok_or(refusal_error(ExportRefusal::IntegerTooLarge { place }))?;
                 self.worksheet
                     .write_number(row, column, float)
-                    .map_err(failed)?;
+                    .map_err(failure_of)?;
             }
             ExportValue::Float(float) => {
                 self.worksheet
                     .write_number(row, column, float)
-                    .map_err(failed)?;
+                    .map_err(failure_of)?;
             }
             ExportValue::Boolean(is_true) => {
                 self.worksheet
                     .write_boolean(row, column, is_true)
-                    .map_err(failed)?;
+                    .map_err(failure_of)?;
             }
             ExportValue::Text(text) => {
                 // The import of an xlsx takes an error of Excel in a
                 // column for a missing value.
                 if is_excel_error(text) {
-                    return Err(refused(ExportRefusal::ReadsAsMissing { place }));
+                    return Err(refusal_error(ExportRefusal::ReadsAsMissing { place }));
                 }
                 return self.write_text(text, place);
             }

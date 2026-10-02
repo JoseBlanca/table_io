@@ -17,8 +17,7 @@ package 6, the export of an xlsx, is next.
 
 Two questions wait on the owner, and nothing of the plan rests on them.
 
-The first. 
-A file of UTF-8 without the mark of its encoding, cut short in the
+The first. A file of UTF-8 without the mark of its encoding, cut short in the
 middle of an accented letter, as an interrupted copy leaves it, is not
 valid UTF-8, so it is read as Windows-1252, and every accented letter of
 the file is shown wrong: `España` becomes `EspaÃ±a`, with only the line

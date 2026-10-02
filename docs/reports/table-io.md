@@ -117,8 +117,9 @@ each answer is a small change that can be made on `main` after it.
    rust_xlsxwriter's repository on GitHub, which is the owner's to do,
    since it publishes outside this project; what the issue says is under
    "The issues to open".
-4. A file of UTF-8 without a mark of its encoding, the bytes `EF BB BF`
-   that Excel's "CSV UTF-8" writes first, cut short in the middle of an
+4. Excel's "CSV UTF-8" starts a file with three bytes, `EF BB BF`,
+   that mark it as UTF-8; other programs write UTF-8 without them. A
+   file of UTF-8 without those three bytes, cut short in the middle of an
    accented letter, as an interrupted copy leaves it, is not valid
    UTF-8, so it is read as Windows-1252, and every accented letter of
    the file is shown wrong: `España` becomes `EspaÃ±a`, with only the
@@ -143,13 +144,15 @@ each answer is a small change that can be made on `main` after it.
    and the export of a CSV writes the first name of the header there.
    Five first names, written as they are, make the file read back as
    something else: in Windows-1252, a name that starts with `ÿþ` or
-   `þÿ` makes the file read as UTF-16, as text of other characters,
-   which gives no table; one that starts with `ï»¿` loses those three
+   `þÿ` makes the file read as UTF-16, an encoding of two bytes a
+   character, so every pair of its letters becomes one character of
+   another script, and the file is refused as empty; one that starts with `ï»¿` loses those three
    characters, read as the mark of UTF-8; in any encoding, `PK` and the
    control characters 3 and 4 make the file read as an xlsx, which then
    cannot be read, and the eight characters that start an old Excel
    file make it refused as one. The spec already refuses two cases of
-   the kind, a header that reads as a variants file and a first name
+   the kind, a header that starts as a VCF file of variants does,
+   `#CHROM`, which the import refuses, and a first name
    that starts with the mark of UTF-8, and refuses the latter even when
    the name is in quotes, where it would read back as itself. The
    options:

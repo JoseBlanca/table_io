@@ -220,6 +220,12 @@ fn even_of_tie(number: f64, rust_digits: ShortestDigits) -> ShortestDigits {
 
 /// The digits less one in the last place when the last is odd, `126` for
 /// `127`, or None when the last digit is even.
+///
+/// In a tie the last odd digit is always 3: a float halfway between two
+/// texts of its shortest digits is a whole number over 2^j with j of 2 or
+/// more, whose exact decimals end in `25` or `75`, so that the digits
+/// above the halfway point end in 3 or 8. The other odd digits are named
+/// all the same, since their digits less one are checked like any other.
 fn digits_less_one_if_odd(digits: &str) -> Option<String> {
     let (head, last) = digits.split_at_checked(digits.len().checked_sub(1)?)?;
     let last_below = match last {

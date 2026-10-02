@@ -142,6 +142,7 @@ fn a_float_is_written_as_javascript_writes_it_with_the_point() {
         (5e-324, "5e-324"),
         (f64::MAX, "1.7976931348623157e+308"),
         (f64::INFINITY, "Infinity"),
+        (f64::NEG_INFINITY, "-Infinity"),
         (f64::NAN, "NaN"),
         (-1.5, "-1.5"),
         (-1.5e-7, "-1.5e-7"),
@@ -171,6 +172,28 @@ fn a_float_halfway_between_two_shortest_texts_takes_the_one_whose_last_digit_is_
         float_text(12_345_678_901_234.062_5, DecimalMark::Point),
         "12345678901234.062"
     );
+}
+
+#[test]
+fn a_float_near_a_halfway_point_that_is_not_a_tie_keeps_its_shortest_digits() {
+    // Each float by the bits node printed for it: the first two round to a
+    // halfway point their exact value is not, the third and the fourth have
+    // lower digits that do not read back as the same float, the last is
+    // 2^-24, a power of two, whose gap below is half the gap above.
+    let cases = [
+        (0x3e89_32dc_447b_6340, "1.8774474796234095e-7"),
+        (0x3f15_012a_7a5c_6078, "0.00008012601628271273"),
+        (0x4414_91df_5f3e_2460, "94861526562499990000"),
+        (0x3dec_0000_0000_0000, "2.0372681319713593e-10"),
+        (0x3e70_0000_0000_0000, "5.960464477539063e-8"),
+    ];
+    for (bits, text) in cases {
+        assert_eq!(
+            float_text(f64::from_bits(bits), DecimalMark::Point),
+            text,
+            "{bits:#x}"
+        );
+    }
 }
 
 /// A text column of `texts`, None for a missing value.
@@ -297,19 +320,6 @@ fn the_float_2_to_the_63_fails_to_convert_to_integer() {
 }
 
 #[test]
-fn the_float_2_to_the_63_is_not_made_the_largest_integer() {
-    let conversion = convert_column(
-        &ColumnValues::Float(vec![Some(9_223_372_036_854_775_808.0)]),
-        ColumnType::Integer,
-        DecimalMark::Point,
-    );
-    assert_eq!(
-        conversion.map_err(|failure| (failure.num_failed, failure.first_row)),
-        Err((1, 1))
-    );
-}
-
-#[test]
 fn the_float_minus_2_to_the_63_converts_to_the_smallest_integer() {
     assert_eq!(
         convert_column(
@@ -392,6 +402,83 @@ fn an_integer_column_of_missing_values_converts_to_boolean_as_missing_values() {
             DecimalMark::Point
         ),
         Ok(ColumnValues::Boolean(vec![None, None]))
+    );
+}
+
+#[test]
+fn integers_convert_to_their_digits_and_a_missing_value_stays_missing() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Integer(vec![Some(1), Some(-3), Some(i64::MIN), None]),
+            ColumnType::Text,
+            DecimalMark::Point
+        ),
+        Ok(texts(&[
+            Some("1"),
+            Some("-3"),
+            Some("-9223372036854775808"),
+            None
+        ]))
+    );
+}
+
+#[test]
+fn a_text_column_converted_to_text_is_itself() {
+    assert_eq!(
+        convert_column(
+            &texts(&[Some("a"), None]),
+            ColumnType::Text,
+            DecimalMark::Point
+        ),
+        Ok(texts(&[Some("a"), None]))
+    );
+}
+
+#[test]
+fn a_float_fails_to_convert_to_boolean() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(1.0)]),
+            ColumnType::Boolean,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 1, "1"))
+    );
+}
+
+#[test]
+fn a_boolean_fails_to_convert_to_float() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Boolean(vec![Some(true)]),
+            ColumnType::Float,
+            DecimalMark::Point
+        ),
+        Err(failure(1, 1, "TRUE"))
+    );
+}
+
+#[test]
+fn a_float_that_fails_to_convert_with_the_comma_is_named_with_the_comma() {
+    assert_eq!(
+        convert_column(
+            &ColumnValues::Float(vec![Some(3.5)]),
+            ColumnType::Integer,
+            DecimalMark::Comma
+        ),
+        Err(failure(1, 1, "3,5"))
+    );
+}
+
+#[test]
+fn texts_of_missing_values_a_caller_did_not_mark_missing_fail_to_convert_to_float() {
+    assert_eq!(
+        convert_column(
+            &texts(&[Some("x"), Some("NA"), Some(""), None]),
+            ColumnType::Float,
+            DecimalMark::Point
+        ),
+        Err(failure(3, 1, "x"))
     );
 }
 

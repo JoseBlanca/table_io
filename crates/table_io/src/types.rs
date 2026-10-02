@@ -52,7 +52,7 @@ impl ColumnValues {
         }
     }
 
-    /// Whether the column has no row.
+    /// Whether the column has no row, which clippy asks for beside len.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -63,7 +63,9 @@ impl ColumnValues {
 pub struct ConversionFailure {
     /// How many values do not convert, 1 or more.
     pub num_failed: u64,
-    /// The row of the first, among the rows of the table, from 1.
+    /// The row of the first, among the rows of the table, from 1; a first
+    /// value past row 4,294,967,295, which no import gives, is named as
+    /// row 4,294,967,295.
     pub first_row: u32,
     /// Its text, as "The text of a value" writes it.
     pub first_text: String,
@@ -240,4 +242,23 @@ fn row_of_index(index: usize) -> u32 {
         .ok()
         .and_then(|index| index.checked_add(1))
         .unwrap_or(u32::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::row_of_index;
+
+    #[test]
+    fn the_first_value_is_row_1() {
+        assert_eq!(row_of_index(0), 1);
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn a_value_past_row_4294967295_is_named_as_row_4294967295() {
+        assert_eq!(row_of_index(4_294_967_293), 4_294_967_294);
+        assert_eq!(row_of_index(4_294_967_294), 4_294_967_295);
+        assert_eq!(row_of_index(4_294_967_295), 4_294_967_295);
+        assert_eq!(row_of_index(10_000_000_000), 4_294_967_295);
+    }
 }

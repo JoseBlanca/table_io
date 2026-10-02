@@ -40,7 +40,7 @@ pub(crate) fn csv_of_table(
             CsvEncoding::Utf8WithMark => UTF8_MARK.to_vec(),
             CsvEncoding::Utf8 | CsvEncoding::Windows1252 => Vec::new(),
         },
-        export: *csv_export,
+        csv_export: *csv_export,
         is_row_start: true,
     };
     write_cells(names, columns, &mut writer)?;
@@ -115,7 +115,7 @@ struct CsvWriter {
     /// The bytes written so far, the mark of UTF-8 first when it has one.
     bytes: Vec<u8>,
     /// The choices of the CSV.
-    export: CsvExport,
+    csv_export: CsvExport,
     /// Whether the next cell is the first of its row, with no separator
     /// before it.
     is_row_start: bool,
@@ -125,7 +125,7 @@ impl CsvWriter {
     /// Writes the separator unless the cell is the first of its row.
     fn start_cell(&mut self) {
         if !self.is_row_start {
-            self.bytes.push(separator_byte(self.export.separator));
+            self.bytes.push(separator_byte(self.csv_export.separator));
         }
         self.is_row_start = false;
     }
@@ -145,7 +145,7 @@ impl CsvWriter {
     /// first character the encoding cannot carry, U+0000 in any.
     fn write_text(&mut self, text: &str, place: CellPlace) -> Result<(), ExportError> {
         self.start_cell();
-        let is_quoted = needs_quotes(text, self.export.separator);
+        let is_quoted = needs_quotes(text, self.csv_export.separator);
         if is_quoted {
             self.bytes.push(b'"');
         }
@@ -153,7 +153,7 @@ impl CsvWriter {
             if character == '\0' {
                 return Err(refused(ExportRefusal::CannotCarry { place, character }));
             }
-            match self.export.encoding {
+            match self.csv_export.encoding {
                 CsvEncoding::Utf8 | CsvEncoding::Utf8WithMark => {
                     let mut buffer = [0_u8; 4];
                     self.bytes
@@ -195,13 +195,13 @@ impl CellWriter for CsvWriter {
 
     fn value(&mut self, value: ExportValue<'_>, place: CellPlace) -> Result<(), ExportError> {
         match value {
-            ExportValue::Missing => match self.export.missing {
+            ExportValue::Missing => match self.csv_export.missing {
                 MissingText::Empty => self.write_plain(""),
                 MissingText::Na => self.write_plain("NA"),
             },
             ExportValue::Integer(integer) => self.write_plain(&integer.to_string()),
             ExportValue::Float(float) => {
-                return self.write_text(&float_cell_text(float, self.export.decimal), place);
+                return self.write_text(&float_cell_text(float, self.csv_export.decimal), place);
             }
             ExportValue::Boolean(is_true) => self.write_plain(&boolean_text(is_true)),
             ExportValue::Text(text) => return self.write_text(text, place),

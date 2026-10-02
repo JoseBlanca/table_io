@@ -3,7 +3,8 @@
 //! the separator found unless set, and the text split into lines and cells
 //! by the quotes of RFC 4180. The rows then go to the table step, which
 //! finds the decimal mark when it is not set and the separator does not
-//! give it. It is behind the feature `csv`.
+//! give it. Its module `write` writes a table as a CSV for the export. It
+//! is behind the feature `csv`.
 //!
 //! A cell that needs no change of its text borrows it from the decoded
 //! text, which is the bytes themselves for a file of valid UTF-8, with or
@@ -11,6 +12,9 @@
 //! (`docs/specs/text-files.md`, "How it runs").
 
 use std::borrow::Cow;
+
+mod write;
+pub(crate) use write::csv_of_table;
 
 use crate::table::{Cell, HowReadSoFar, Origin, RowEnd, Rows, table_of_rows};
 use crate::value::is_missing;

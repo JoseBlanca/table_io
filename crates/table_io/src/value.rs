@@ -14,7 +14,7 @@ pub enum DecimalMark {
 
 impl DecimalMark {
     /// The character of the mark.
-    fn character(self) -> char {
+    pub(crate) fn character(self) -> char {
         match self {
             Self::Point => '.',
             Self::Comma => ',',

@@ -6,10 +6,10 @@
 //
 // The owner's excel_en.xlsx and encrypted.xlsx, in tests/data/, and the
 // files crates/table_io/tests/write_fixtures.rs writes there, written.xlsx,
-// empty_first_sheet.xlsx, getting_data.xlsx, wide_table_at_c2.xlsx and
-// unique_count.xlsx, are read from it; the other cases are an xlsx written
-// by test/xlsx.js. The cases of a text file wait for its reading, work
-// package 4 of docs/plans/table-io.md.
+// written.csv, empty_first_sheet.xlsx, getting_data.xlsx,
+// wide_table_at_c2.xlsx and unique_count.xlsx, are read from it; the other
+// cases are an xlsx written by test/xlsx.js or a text file given as its
+// characters, which TextEncoder turns into the bytes of UTF-8.
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -30,9 +30,6 @@ import { workbookParts, sheetXml, xlsxOf, zipOf } from "./xlsx.js";
 const MAX_BYTES = 50_000_000;
 /** MAX_SHEET_CELLS of popnei_web, the limit of cells its light worker gives. */
 const MAX_CELLS = 2_000_000;
-
-/** Why the cases of a text file are skipped. */
-const WAITS_FOR_TEXT = "waits for the reading of a text file, work package 4 of docs/plans/table-io.md";
 
 const packageDir = new URL("../", import.meta.url);
 const dataDir = new URL("../../../tests/data/", import.meta.url);
@@ -136,6 +133,11 @@ const XLSX_TABLE = {
     decimal: "point",
 };
 
+/** The bytes of `text` in UTF-8, a text file as the test writes it. */
+function utf8(text) {
+    return new TextEncoder().encode(text);
+}
+
 /**
  * A column as `fieldsOfImport` gives it: `name`, `number`, `type`, its
  * values `values`, null for a missing one, in the array of its type, and
@@ -235,11 +237,61 @@ test("a table whose header starts at C3 gives the columns of the sheet, C for th
     });
 });
 
-test("written.csv is read as its table", { skip: WAITS_FOR_TEXT }, () => {});
+// The table of write_written_csv of crates/table_io/tests/write_fixtures.rs,
+// a CSV as a Spanish Excel writes it: Windows-1252, ";", the decimal comma
+// and CRLF, the population of ind2 quoted with the separator in it, the
+// height of ind3 empty and its Número NA, and 2^60 + 1 exact.
+test("written.csv is read as Windows-1252 with semicolons and the comma, each column typed", async () => {
+    const fields = fieldsOfImport(await dataFile("written.csv"));
 
-test("a ragged row of a text file is refused with its line, its cells, the header's and the separator", { skip: WAITS_FOR_TEXT }, () => {});
+    assert.deepEqual(fields, {
+        ...NO_TABLE,
+        format: "text",
+        encoding: "windows-1252",
+        separator: "semicolon",
+        decimal: "comma",
+        namesHeader: "Individuo",
+        namesNumber: 1,
+        names: ["ind1", "ind2", "ind3", "ind4"],
+        numColumns: 4,
+        columns: [
+            column("Población", 2, "text", ["Andalucía", "Castilla; León", "Murcia", "Murcia"]),
+            column("Altura", 3, "float", [1.75, 1.62, null, 1.55]),
+            column("Número", 4, "integer", [1152921504606846977n, -3n, null, 12n]),
+            column("Afectado", 5, "boolean", [true, false, true, false]),
+        ],
+    });
+});
 
-test("an individual in two lines of a text file is refused with its name and its two lines", { skip: WAITS_FOR_TEXT }, () => {});
+test("a ragged row of a text file is refused with its line, its cells, the header's and the separator", () => {
+    const bytes = utf8("id;pop;;x\nA;P1;;1\nB;P2\n");
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "raggedRow",
+        format: "text",
+        line: 3,
+        expected: 4,
+        found: 2,
+        separator: "semicolon",
+    });
+});
+
+// The population of the first A is quoted over lines 2 and 3, so that the
+// second A is on line 5 of the file and in row 4 of the table: the lines
+// given are those of the file.
+test("an individual in two lines of a text file is refused with its name and its two lines", () => {
+    const bytes = utf8('id,pop\nA,"P\n1"\nB,P2\nA,P3\n');
+
+    assert.deepEqual(fieldsOfImport(bytes), {
+        ...NO_TABLE,
+        refusal: "duplicateIndividual",
+        format: "text",
+        text: "A",
+        line: 2,
+        secondLine: 5,
+    });
+});
 
 test("an individual in two rows of an xlsx is refused with its name and its two rows of the sheet", () => {
     const bytes = xlsxOf([["id", "pop"], ["A", "P1"], ["B", "P2"], ["A", "P3"]]);

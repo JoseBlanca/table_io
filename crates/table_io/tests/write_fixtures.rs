@@ -1,6 +1,6 @@
-//! Writes the xlsx files of `tests/data/` that the tests make rather than
-//! the owner. Each test is ignored and run by hand, and the file it writes
-//! is committed:
+//! Writes the files of `tests/data/` that the tests make rather than the
+//! owner, the xlsx files and `written.csv`. Each test is ignored and run by
+//! hand, and the file it writes is committed:
 //!
 //! ```text
 //! cargo test -p table_io --test write_fixtures -- --ignored
@@ -85,6 +85,25 @@ fn write_written_xlsx() {
     worksheet.write_string(4, 1, "Murcia").unwrap();
 
     save(&mut workbook, "written.xlsx").unwrap();
+}
+
+/// `written.csv`, which the test of the package reads until the owner's
+/// `excel_es.csv` exists ("How it is verified" of `docs/specs/package.md`),
+/// written as a Spanish Excel writes a CSV: in Windows-1252, `;` between
+/// the cells, the decimal comma and CRLF. A header and four individuals,
+/// with a text, a number, a whole number, `1152921504606846977`, 2^60 + 1,
+/// past the integers a float holds exactly, a boolean, the height of
+/// `ind3` empty and its count `NA`, and a population quoted with the
+/// separator in it. `ó` is the byte 0xF3, `í` 0xED.
+#[test]
+#[ignore = "writes tests/data/written.csv; run by hand"]
+fn write_written_csv() {
+    let bytes: &[u8] = b"Individuo;Poblaci\xF3n;Altura;N\xFAmero;Afectado\r\n\
+ind1;Andaluc\xEDa;1,75;1152921504606846977;TRUE\r\n\
+ind2;\"Castilla; Le\xF3n\";1,62;-3;FALSE\r\n\
+ind3;Murcia;;NA;TRUE\r\n\
+ind4;Murcia;1,55;12;false\r\n";
+    std::fs::write(data_path("written.csv"), bytes).unwrap();
 }
 
 /// `empty_first_sheet.xlsx`, for the refusal `emptySheet` in the test of

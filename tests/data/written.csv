@@ -1,0 +1,5 @@
+Individuo;Población;Altura;Número;Afectado
+ind1;Andalucía;1,75;1152921504606846977;TRUE
+ind2;"Castilla; León";1,62;-3;FALSE
+ind3;Murcia;;NA;TRUE
+ind4;Murcia;1,55;12;false

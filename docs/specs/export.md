@@ -97,6 +97,17 @@ sheet is `Sheet1`, as the owner decided on 2 October 2026; the option
 not taken was a name the application gives, which would have needed a
 refusal of the names Excel does not take.
 
+An empty name of the names' column is no cell either, A1 left empty, and
+reads back as the empty name. A float reads back as the same float, 5 ×
+10^−324 and the largest float, about 1.8 × 10^308, among them, since
+rust_xlsxwriter writes the shortest digits that read back as it, with no
+exponent. Every character of a text but U+FFFE and U+FFFF, refused below,
+reads back as itself: U+0000 and the other controls below U+0020 but the
+tab and `\n`, which rust_xlsxwriter writes as `_x0000_` and its kin, `\r`
+among them; a U+FEFF; and a text that holds such an escape, `_x0041_`,
+which it writes as `_x005F_x0041_` so that it is not read back as `A`.
+Tried with rust_xlsxwriter 0.99.1 and calamine 0.36.1 on 2 October 2026.
+
 ## The refusals
 
 Five are about the whole table and are checked first, in this order: a
@@ -130,8 +141,10 @@ in a row from left to right; the first met is the one given.
   is one of the seven errors of Excel, `#N/A`, `#DIV/0!`, `#NAME?`,
   `#NULL!`, `#NUM!`, `#REF!` and `#VALUE!`, which the import of an xlsx
   takes for missing.
-- **An error of Excel as a name**, in an xlsx: a name that is one of the
-  seven, which the import refuses as a header error.
+- **An error of Excel as a name**, in an xlsx: a name of the header that
+  is one of the seven, which the import refuses as a header error. A name
+  of an individual that is one is written, and reads back as itself,
+  since the import takes the names' column as names (tried as above).
 - **A text with spaces at its ends**, in an xlsx: the import removes the
   spaces and tabs at the ends of a text cell of an xlsx, and an xlsx has
   no quotes to keep them. A name or a value, with its column and row. A

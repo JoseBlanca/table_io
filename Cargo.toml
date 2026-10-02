@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/xlsx_rs", "crates/xlsx_rs_js", "tmp/review-text"]
+members = ["crates/xlsx_rs", "crates/xlsx_rs_js"]
 
 [workspace.package]
 version = "0.1.0"

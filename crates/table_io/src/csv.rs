@@ -540,12 +540,13 @@ impl<'text> SplitSink<'text> for CellCount {
 /// The rows of `text` split with `separator`, each cell made once.
 ///
 /// The cells are counted by a split before they are made, so that their
-/// `Vec` is made once at its size: grown by doubling, the `Vec` of the
-/// 9,761,300 cells of a CSV of 20,000,000 bytes of `0,` held 16,777,216
-/// slots and, while it grew, the 8,388,608 before them too, and the import
-/// of that file peaked at 618.7 MB natively, where it peaks at 391.0 MB
-/// with the count (measured with a counting allocator on the owner's Mac,
-/// release build, 2 October 2026).
+/// `Vec` is made once at its size. Grown by doubling, the `Vec` of the 9.76
+/// million cells of a CSV of 20,000,000 bytes of `0,` reached 16,777,216
+/// slots, and the import of that file grew the memory of the wasm to 558.8
+/// MB, where with the count it grows it to 339.3 MB (the package built for
+/// release, under node 26.8.2 on the owner's Mac, 2 October 2026). Natively
+/// the memory resident is 422.9 MB either way, since the slots never
+/// written are given no pages.
 ///
 /// # Errors
 ///

@@ -202,8 +202,8 @@ the first cell that makes the rectangle of its values larger, by
 `specs/read.md`. A text file is bounded by its bytes alone, as
 popnei_web has it today and as the owner decided on 2 October 2026, the
 tables the two applications need being far smaller: its bytes bound its
-cells to at most half of them and one, a cell and its separator taking
-two bytes at least. The option not taken was the limit of cells for a
+cells to at most their number and one, an empty cell taking only its
+separator, `id,x\nA,,,,,,,,,,1\n` being 18 bytes and 13 cells. The option not taken was the limit of cells for a
 text file too, which with popnei_web's 2,000,000 would have refused a CSV
 of 20 MB of short cells, `0,`, that it reads today.
 

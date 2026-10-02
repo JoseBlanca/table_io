@@ -181,7 +181,11 @@ step's line or row. A quote never closed is found by the module of a
 text file, as it splits the text; a row of the wrong length, which only a
 text file can have, and an error of Excel in the header, which only an
 xlsx can have, are found by the table step, in the order of the refusals
-of `specs/import.md`, which puts them among its rules.
+of `specs/import.md`, which puts them among its rules. The decimal mark
+of a text file that has none set and whose separator is not the comma is
+found by the table step too, from the values below the header, once the
+refusals of the rows are passed (`specs/text-files.md`, "The decimal
+mark"): it needs the header found and the rows checked against it.
 
 The rules of a value, in the module `value`, are what the table step, the
 types and the conversion use: whether a text is missing, the number a

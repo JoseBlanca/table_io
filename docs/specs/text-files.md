@@ -211,7 +211,10 @@ counts, among the cells below the header and outside the first column, those tha
 with a comma, a text that holds a comma and is a number with the comma by
 `specs/values.md`, and those written with a point, the same with the
 point; the comma is taken when the first count is larger, and the point
-otherwise, a file of whole numbers among them. So a file of `1,75` and
+otherwise, a file of whole numbers among them. The count is made by the
+table step, the module `table`, and not by the module `csv`, since it
+needs the header found and the rows checked against it, which are the
+table step's. So a file of `1,75` and
 `1,82` is read with a comma, and a file that mixes `1,75` and `1.82` is
 read with the mark most of its cells use, and the others are text
 (`specs/values.md`, "The type of a column").
@@ -296,12 +299,18 @@ private: an application imports a file with `import_table`
 
 An import of a text file holds the bytes, the text, and the rows of
 cells, and then the table the import makes of them. The separators are
-tried by counting, without making cells, so the cells are made once. For
-a file of 20 MB that is 20 MB of bytes, about 20 MB of text, the cells, a
-`String` of 24 bytes natively and 12 in the wasm, and its characters,
-each, and the table: an
-estimate, not measured. The speed of a file of 100,000 rows and 50
-columns is measured as `objectives.md`, goal 7, says.
+tried by counting, without making cells, and the cells are counted
+before they are made, so they are made once and held at their number. A
+cell is 24 bytes natively and 16 in the wasm, and a `String` of its own,
+with its characters, only when its text is not as the file holds it; a
+blank row keeps no cell. Of five files of 20,000,000 bytes, the import
+grew the memory of the wasm most for a header `id,v` over rows `a,`,
+to 610.5 MB, then for 99 empty cells in each row to 548.0 MB, a header of
+`a` and commas to 361.4 MB, rows of 99 cells `0` to 335.8 MB, and line
+breaks alone to 21.4 MB (the package built for release, under node
+26.8.2 on the owner's Mac, 2 October 2026). The speed of a file of
+100,000 rows and 50 columns is measured as `objectives.md`, goal 7,
+says.
 
 ## How it is verified
 

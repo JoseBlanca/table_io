@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use crate::value::is_missing;
-use crate::{CellPlace, Column, ColumnValues, ExportRefusal, NameColumn};
+use crate::{CellPlace, Column, ColumnValues, ExportError, ExportRefusal, NameColumn};
 
 /// A value of a column other than the names', as the writer of a format
 /// is given it.
@@ -27,33 +27,41 @@ pub(crate) enum ExportValue<'table> {
     Text(&'table str),
 }
 
-/// The writer of a format, given each cell in the order of the file.
+/// The writer of a format, given each cell in the order of the file. It
+/// gives [`ExportError::Refused`] for a cell its format cannot hold, and
+/// [`ExportError::Failed`] for an error of the library that writes the
+/// file.
 pub(crate) trait CellWriter {
     /// Writes the name of a column of the header at `place`, the names'
     /// first, which may be empty when the table has other columns.
     ///
     /// # Errors
     ///
-    /// The refusal of a name the format cannot hold.
-    fn header_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportRefusal>;
+    /// The refusal of a name the format cannot hold, or a failure.
+    fn header_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportError>;
 
     /// Writes the name of the individual of a row, not empty, at `place`,
     /// in the names' column.
     ///
     /// # Errors
     ///
-    /// The refusal of a name the format cannot hold.
-    fn individual_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportRefusal>;
+    /// The refusal of a name the format cannot hold, or a failure.
+    fn individual_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportError>;
 
     /// Writes a value of a column other than the names' at `place`.
     ///
     /// # Errors
     ///
-    /// The refusal of a value the format cannot hold.
-    fn value(&mut self, value: ExportValue<'_>, place: CellPlace) -> Result<(), ExportRefusal>;
+    /// The refusal of a value the format cannot hold, or a failure.
+    fn value(&mut self, value: ExportValue<'_>, place: CellPlace) -> Result<(), ExportError>;
 
     /// Ends the row, the header or that of an individual.
     fn row_end(&mut self);
+}
+
+/// The error of an export that refuses `refusal`.
+pub(crate) fn refused(refusal: ExportRefusal) -> ExportError {
+    ExportError::Refused(refusal)
 }
 
 /// The refusal of the shape of a table, or None: the first column, from
@@ -81,11 +89,13 @@ pub(crate) fn shape_refusal(names: &NameColumn, columns: &[Column]) -> Option<Ex
 }
 
 /// Gives every cell of the table to `writer`, in the order of the file,
-/// and stops at the first refusal, of the cell or of the writer.
+/// and stops at the first refusal, of the cell or of the writer, or at a
+/// failure of the writer.
 ///
 /// # Errors
 ///
-/// The first refusal in the order of the file: an empty name,
+/// [`ExportError::Refused`] for the first refusal in the order of the
+/// file: an empty name,
 /// [`ExportRefusal::EmptyName`], or one that repeats a name before it,
 /// [`ExportRefusal::DuplicateName`]; an empty name of an individual,
 /// [`ExportRefusal::EmptyIndividual`], or one that repeats an individual
@@ -97,7 +107,7 @@ pub(crate) fn write_cells(
     names: &NameColumn,
     columns: &[Column],
     writer: &mut impl CellWriter,
-) -> Result<(), ExportRefusal> {
+) -> Result<(), ExportError> {
     let header_names = std::iter::once(names.header.as_str())
         .chain(columns.iter().map(|column| column.name.as_str()));
     let mut first_column_of: HashMap<&str, u32> = HashMap::with_capacity(columns.len());
@@ -105,14 +115,14 @@ pub(crate) fn write_cells(
         let column = number_from(index, 1);
         let may_be_empty = index == 0 && !columns.is_empty();
         if name.is_empty() && !may_be_empty {
-            return Err(ExportRefusal::EmptyName { column });
+            return Err(refused(ExportRefusal::EmptyName { column }));
         }
         if let Some(&first_column) = first_column_of.get(name) {
-            return Err(ExportRefusal::DuplicateName {
+            return Err(refused(ExportRefusal::DuplicateName {
                 name: name.to_owned(),
                 first_column,
                 second_column: column,
-            });
+            }));
         }
         first_column_of.insert(name, column);
         writer.header_name(name, CellPlace { column, row: 0 })?;
@@ -122,14 +132,14 @@ pub(crate) fn write_cells(
     for (index, name) in names.names.iter().enumerate() {
         let row = number_from(index, 1);
         if name.is_empty() {
-            return Err(ExportRefusal::EmptyIndividual { row });
+            return Err(refused(ExportRefusal::EmptyIndividual { row }));
         }
         if let Some(&first_row) = first_row_of.get(name.as_str()) {
-            return Err(ExportRefusal::DuplicateIndividual {
+            return Err(refused(ExportRefusal::DuplicateIndividual {
                 name: name.clone(),
                 first_row,
                 second_row: row,
-            });
+            }));
         }
         first_row_of.insert(name, row);
         writer.individual_name(name, CellPlace { column: 1, row })?;
@@ -141,10 +151,10 @@ pub(crate) fn write_cells(
             let value = value_at(&column.values, index);
             match value {
                 ExportValue::Text(text) if is_missing(text) => {
-                    return Err(ExportRefusal::ReadsAsMissing { place });
+                    return Err(refused(ExportRefusal::ReadsAsMissing { place }));
                 }
                 ExportValue::Float(float) if !float.is_finite() => {
-                    return Err(ExportRefusal::NotFinite { place });
+                    return Err(refused(ExportRefusal::NotFinite { place }));
                 }
                 ExportValue::Missing
                 | ExportValue::Integer(_)

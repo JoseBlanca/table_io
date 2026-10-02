@@ -6,12 +6,12 @@
 //! never replaced.
 
 use super::{BYTE_ORDER_MARK, UTF8_MARK, WINDOWS_1252_80_TO_9F, is_variants_file, separator_byte};
-use crate::export_cells::{CellWriter, ExportValue, write_cells};
+use crate::export_cells::{CellWriter, ExportValue, refused, write_cells};
 use crate::types::boolean_text;
 use crate::value::float_text;
 use crate::{
-    CellPlace, Column, CsvEncoding, CsvExport, DecimalMark, ExportRefusal, MissingText, NameColumn,
-    Separator,
+    CellPlace, Column, CsvEncoding, CsvExport, DecimalMark, ExportError, ExportRefusal,
+    MissingText, NameColumn, Separator,
 };
 
 /// The bytes of the CSV of the table of `names` and `columns`, whose shape
@@ -19,20 +19,21 @@ use crate::{
 ///
 /// # Errors
 ///
-/// [`ExportRefusal::ReadsAsVariantsFile`] for a header whose line starts
-/// as a variants file's, then the first refusal of a cell of
-/// [`write_cells`], or of a character the encoding cannot carry,
-/// [`ExportRefusal::CannotCarry`], in the order of the file.
+/// [`ExportError::Refused`] for [`ExportRefusal::ReadsAsVariantsFile`],
+/// a header whose line starts as a variants file's, then for the first
+/// refusal of a cell of [`write_cells`], or of a character the encoding
+/// cannot carry, [`ExportRefusal::CannotCarry`], in the order of the
+/// file.
 pub(crate) fn csv_of_table(
     names: &NameColumn,
     columns: &[Column],
     csv_export: &CsvExport,
-) -> Result<Vec<u8>, ExportRefusal> {
+) -> Result<Vec<u8>, ExportError> {
     let header_line = header_line(names, columns, csv_export.separator);
     // The import removes the marks at the start of the text before it
     // looks for a variants file.
     if is_variants_file(header_line.trim_start_matches(BYTE_ORDER_MARK)) {
-        return Err(ExportRefusal::ReadsAsVariantsFile);
+        return Err(refused(ExportRefusal::ReadsAsVariantsFile));
     }
     let mut writer = CsvWriter {
         bytes: match csv_export.encoding {
@@ -140,9 +141,9 @@ impl CsvWriter {
     ///
     /// # Errors
     ///
-    /// [`ExportRefusal::CannotCarry`] for its first character the encoding
-    /// cannot carry, U+0000 in any.
-    fn write_text(&mut self, text: &str, place: CellPlace) -> Result<(), ExportRefusal> {
+    /// [`ExportError::Refused`] for [`ExportRefusal::CannotCarry`], its
+    /// first character the encoding cannot carry, U+0000 in any.
+    fn write_text(&mut self, text: &str, place: CellPlace) -> Result<(), ExportError> {
         self.start_cell();
         let is_quoted = needs_quotes(text, self.export.separator);
         if is_quoted {
@@ -150,7 +151,7 @@ impl CsvWriter {
         }
         for character in text.chars() {
             if character == '\0' {
-                return Err(ExportRefusal::CannotCarry { place, character });
+                return Err(refused(ExportRefusal::CannotCarry { place, character }));
             }
             match self.export.encoding {
                 CsvEncoding::Utf8 | CsvEncoding::Utf8WithMark => {
@@ -160,7 +161,7 @@ impl CsvWriter {
                 }
                 CsvEncoding::Windows1252 => {
                     let byte = windows_1252_byte(character)
-                        .ok_or(ExportRefusal::CannotCarry { place, character })?;
+                        .ok_or(refused(ExportRefusal::CannotCarry { place, character }))?;
                     self.bytes.push(byte);
                 }
             }
@@ -176,23 +177,23 @@ impl CsvWriter {
 }
 
 impl CellWriter for CsvWriter {
-    fn header_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportRefusal> {
+    fn header_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportError> {
         // The import removes a mark at the start of the text, which the
         // first name starts.
         if place.column == 1 && name.starts_with(BYTE_ORDER_MARK) {
-            return Err(ExportRefusal::CannotCarry {
+            return Err(refused(ExportRefusal::CannotCarry {
                 place,
                 character: BYTE_ORDER_MARK,
-            });
+            }));
         }
         self.write_text(name, place)
     }
 
-    fn individual_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportRefusal> {
+    fn individual_name(&mut self, name: &str, place: CellPlace) -> Result<(), ExportError> {
         self.write_text(name, place)
     }
 
-    fn value(&mut self, value: ExportValue<'_>, place: CellPlace) -> Result<(), ExportRefusal> {
+    fn value(&mut self, value: ExportValue<'_>, place: CellPlace) -> Result<(), ExportError> {
         match value {
             ExportValue::Missing => match self.export.missing {
                 MissingText::Empty => self.write_plain(""),

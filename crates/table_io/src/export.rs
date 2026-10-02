@@ -334,7 +334,7 @@ fn csv_file(
     if let Some(refusal) = crate::export_cells::shape_refusal(names, columns) {
         return Err(ExportError::Refused(refusal));
     }
-    crate::csv::csv_of_table(names, columns, csv_export).map_err(ExportError::Refused)
+    crate::csv::csv_of_table(names, columns, csv_export)
 }
 
 /// The refusal of a CSV in a build without the feature `csv`.

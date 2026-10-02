@@ -196,7 +196,11 @@ below the header being row 1, and its text. That row is the table's and
 not the file's: an application that shows a line or a row of the sheet
 keeps that number itself. So the user reads "12
 values are not numbers, such as 'n.d.' in row 40", in the application's
-words. A missing value stays missing and never fails.
+words. A missing value stays missing and never fails. The row is a
+number of 32 bits, as a row of a sheet is, so that a first value past
+row 4,294,967,295, in a column of more rows than that which a caller
+made and no import gives, is named as row 4,294,967,295, a choice made
+with the code on 2 October 2026.
 
 | from \ to | integer | float | boolean | text |
 |---|---|---|---|---|

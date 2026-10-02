@@ -94,8 +94,10 @@ against the caller's limit before (`specs/import.md`).
    none. A U+FFFD that the file holds itself, written by a program that
    had already lost a character, is taken the same way, since it too
    stands where a character was lost.
-6. A U+FEFF at the start of the text that is left, which a file can hold
-   after its mark when it was saved twice with one, is removed.
+6. Every U+FEFF at the start of the text that is left, which a file can
+   hold after its mark when it was saved twice with one, is removed;
+   popnei_web removes up to three, by the bytes, by `TextDecoder` and by
+   its reader, which only a file of four marks tells apart.
 
 Windows-1252 gives each byte the character of Unicode of the same
 number, U+0000 to U+00FF, except the 32 bytes from `80` to `9F`, which
@@ -125,7 +127,8 @@ for popnei_web. A blank line is one of spaces and tabs alone, or of
 nothing. Read as a table, a VCF would most often be one column wide,
 and the user of popnei_web would be told that every individual of the
 variants is missing from it. Vavilov Explorer's users have no variants
-file, and the check costs them nothing (`table_io-needs.md`, section 3).
+file, and the check costs them nothing (its
+`docs/table_io-needs.md`, section 3).
 
 ### The lines, the quotes and the cells
 
@@ -137,7 +140,9 @@ file, and the check costs them nothing (`table_io-needs.md`, section 3).
 - **Quotes** are those of RFC 4180, the standard of CSV, as Excel writes
   them. A cell that starts with `"`, once the spaces before it are
   removed, goes on to the next `"` that is not doubled, and may hold the
-  separator, a line break and `""`, which is one `"`. What follows the
+  separator, a line break and `""`, which is one `"`. The spaces before
+  it are those below, the tabs among them when the separator is not the
+  tab, so `,\t"x, y"` is the cell `x, y`. What follows the
   closing quote, up to the separator, is kept as part of the cell, `"x"y`
   being `xy`. A `"` inside a cell that does not start with one is an
   ordinary character. A quote that is never closed takes the rest of the
@@ -171,7 +176,8 @@ hold no value in any row, a value being any cell but an empty one, `NA`,
 
 A separator **fits** the file when it gives the header two cells or more
 and every row as many cells as the header. A row with more cells than the
-header fits too when every cell it has past the header is empty; a separator with which a
+header fits too when every cell it has past the whole header, its empty
+cells at the end included, is empty; a separator with which a
 quote is never closed does not fit, since whether a `"` opens a cell
 depends on the separator before it. Of the separators that fit, the one
 that gives the header the most cells is taken, and on a tie the tab, then
@@ -188,8 +194,9 @@ A Spanish Excel file, `Individuo;Población;Altura` over rows such as
 ### The decimal mark
 
 With a decimal mark set, it is used. With none set, it is the point when
-the separator is `,`. Otherwise the module counts, among the cells below
-the header and outside the first column, those that are numbers written
+the separator is `,`. Otherwise it is found once the import has found the
+header and checked the rows, as popnei_web's `readCsv` does: the module
+counts, among the cells below the header and outside the first column, those that are numbers written
 with a comma, a text that holds a comma and is a number with the comma by
 `specs/values.md`, and those written with a point, the same with the
 point; the comma is taken when the first count is larger, and the point
@@ -210,6 +217,12 @@ import's own):
 3. **A variants file**, a VCF. No data.
 4. **An unclosed quote**: the line where the cell that is never closed
    starts, and the separator used.
+5. **Too many cells**: the line where the cells split so far, the blank
+   rows' among them, pass the caller's limit, `max_cells` of
+   `specs/import.md`, and the limit. Only the split with the separator
+   taken counts cells against the limit; the search of the separator
+   counts cells to compare the separators and makes none. An unclosed
+   quote and too many cells are given in the order the split meets them.
 
 ## The Rust interface
 
@@ -269,8 +282,6 @@ private: an application imports a file with `import_table`
   has not been checked. If it is Mac Roman, which older versions wrote,
   an accented name is read as other characters by both encodings offered.
   A file of the owner's settles it (below).
-- **A CSV saved with the name `.xlsx`**: read as the text file it is, the
-  format being found from the bytes (`specs/import.md`).
 
 ## How it runs
 
@@ -278,7 +289,8 @@ An import of a text file holds the bytes, the text, and the rows of
 cells, and then the table the import makes of them. The separators are
 tried by counting, without making cells, so the cells are made once. For
 a file of 20 MB that is 20 MB of bytes, about 20 MB of text, the cells, a
-`String` of 24 bytes and its characters each, and the table: an
+`String` of 24 bytes natively and 12 in the wasm, and its characters,
+each, and the table: an
 estimate, not measured. The speed of a file of 100,000 rows and 50
 columns is measured as `objectives.md`, goal 7, says.
 
@@ -296,8 +308,9 @@ Over the bytes and the encoding:
   and `ñ` as `F1`, and `\r\n`: read as Windows-1252, `;`, comma; the
   header `Población`; the cells `España`; `Altura` a float;
 - the same file as UTF-8 with its mark: read as UTF-8, the same table;
-- the same file with the encoding set to UTF-8: the cells `Espa�a`, and
-  the line of the first not decoded 2;
+- the same file with the encoding set to UTF-8: the header
+  `Poblaci�n`, the cells `Espa�a`, and the line of the first not decoded
+  1;
 - the same file as UTF-16 little endian, `FF FE` and two bytes a
   character, and as big endian, `FE FF`: read as UTF-16 and the same
   table, also with the encoding set to Windows-1252;
@@ -309,9 +322,12 @@ Over the bytes and the encoding:
 - the Spanish file as UTF-8 with its mark and the byte `FF` in its third
   line, no encoding set: read as UTF-8, the line not decoded 3, and a
   cell with �; the same file without the bad byte: none;
-- each of the 256 bytes, alone between `a` and `b` in a file read as
-  Windows-1252 with the encoding set: the character of the table above,
-  or of Unicode's first 256. The table is what node 26.8.2's `new
+- each of the 256 bytes between `a` and `b` in the second line of
+  `h\r\na?b\r\n`, read with the encoding set to Windows-1252 and the
+  separator to `;`: the name of one individual, `a`, the character of the
+  table above or of Unicode's first 256, and `b`; but for the byte `00`,
+  not text, `0A` and `0D`, which end the line and give the names `a` and
+  `b`, and `3B`, the separator, a ragged row at line 2. The table is what node 26.8.2's `new
   TextDecoder("windows-1252")` gave for the 32 bytes on the owner's Mac
   on 2 October 2026, every one the same.
 
@@ -323,13 +339,17 @@ give there, and in addition: `"x"y` the cell `xy`; `a,"b""c"` the cells
 `\r\n` give the same table; the line of an unclosed quote that opens on
 line 5 after a quoted cell over lines 2 and 3 is 5.
 
-One property, over texts made by a generator of the tests with a fixed
-seed, no dependency added: a table written as a CSV, with any of the
-three separators and of the three line endings, every cell that holds
-the separator, a quote, a line break or a space at its ends in quotes,
-reads back as itself with that separator set, and with none set when the
-header has two columns or more and no cell holds any of the three
-separators. The export of `specs/export.md` is checked the same way.
+One property, at `import_table`, over tables made by a generator of the
+tests with a fixed seed, no dependency added: a table written as a CSV,
+with any of the three separators and of the three line endings, every
+cell that holds the separator, a quote, a line break, or a space or a
+tab at its ends in quotes, reads back as itself with that separator set,
+and with none set when the header has two columns or more and no cell
+holds any of the three separators. The tables made are those the import
+gives back unchanged: names of the header distinct and not empty; names
+of the first column distinct, not empty, and not starting with `#CHROM`
+or `##fileformat=VCF`; other cells missing, written empty, or texts that
+are not empty, `NA` or `-`; no row whose cells are all empty. The export of `specs/export.md` is checked the same way.
 
 Made by the owner, in `tests/data/`, each read with no option set and
 asserted against what the owner says Excel shows; the tests wait for the
